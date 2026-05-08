@@ -7,65 +7,53 @@ require __DIR__ . '/../includes/MedicationRepository.php';
 function assertSameValue(mixed $expected, mixed $actual, string $message): void
 {
     if ($expected !== $actual) {
-        throw new RuntimeException(sprintf(
-            "%s\nExpected: %s\nActual: %s",
-            $message,
-            var_export($expected, true),
-            var_export($actual, true)
-        ));
+        throw new RuntimeException($message . "\nExpected: " . var_export($expected, true) . "\nActual: " . var_export($actual, true));
     }
 }
 
-function testDatabase(): PDO
-{
-    $db = new PDO('sqlite::memory:');
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-    $db->exec(
-        'CREATE TABLE medications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            dose TEXT NOT NULL,
-            reminder_time TEXT NOT NULL,
-            instructions TEXT NOT NULL DEFAULT \'\',
-            active INTEGER NOT NULL DEFAULT 1
-        );
-        CREATE TABLE dose_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            medication_id INTEGER NOT NULL,
-            taken_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            note TEXT NOT NULL DEFAULT \'\'
-        );'
-    );
+$db = new PDO('sqlite::memory:');
+$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$db->exec("CREATE TABLE medications (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, dose TEXT, instructions TEXT, schedule_mode TEXT, interval_hours INTEGER, first_dose_time TEXT, as_needed INTEGER DEFAULT 0, starting_pill_count INTEGER DEFAULT 0, pill_count INTEGER DEFAULT 0, low_supply_threshold INTEGER DEFAULT 5, active INTEGER DEFAULT 1);
+CREATE TABLE medication_schedule_times (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, reminder_time TEXT);
+CREATE TABLE dose_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, scheduled_for_date TEXT, scheduled_time TEXT, status TEXT, note TEXT, taken_at TEXT DEFAULT CURRENT_TIMESTAMP, created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
 
-    return $db;
+$repo = new MedicationRepository($db);
+$today = (new DateTimeImmutable())->format('Y-m-d');
+
+$repo->createMedication('Fixed Med', '5 mg', '', 'fixed_times', ['08:00:00', '20:00:00'], null, null, false, 10, 2);
+$repo->createMedication('PRN Med', '10 mg', '', 'interval', [], 4, '06:00:00', true, 12, 3);
+
+$all = $repo->activeMedications();
+assertSameValue(2, count($all), 'Two meds expected');
+assertSameValue(10, (int) $all[0]['starting_pill_count'], 'Create should set starting count');
+assertSameValue(10, (int) $all[0]['pill_count'], 'Create should set current count');
+
+$fixedId = (int) $all[0]['id'];
+$repo->updateMedication($fixedId, 'Fixed Med Updated', '5 mg', '', 'fixed_times', ['09:00:00'], null, null, false, 9, 2);
+$edited = $repo->findMedication($fixedId);
+assertSameValue('Fixed Med Updated', $edited['name'], 'Edit should update name');
+assertSameValue(9, (int) $edited['starting_pill_count'], 'Update should reset starting count');
+assertSameValue(9, (int) $edited['pill_count'], 'Update should reset current count');
+
+$schedule = $repo->todaySchedule($today);
+assertSameValue(true, count($schedule) >= 2, 'Schedule should include generated rows');
+
+$repo->recordDoseStatus($fixedId, $today, '09:00:00', 'taken', 'ok');
+$recent = $repo->recentLogs();
+assertSameValue('taken', $recent[0]['status'], 'Taken log should save');
+$afterTaken = $repo->findMedication($fixedId);
+assertSameValue(9, (int) $afterTaken['starting_pill_count'], 'Starting count should not decrement');
+assertSameValue(8, (int) $afterTaken['pill_count'], 'Current count should decrement after taken dose');
+
+$prnId = (int) $all[1]['id'];
+$repo->logDoseNow($prnId, 'PRN now');
+$threw = false;
+try {
+    $repo->logDoseNow($prnId, 'too soon');
+} catch (RuntimeException $exception) {
+    $threw = true;
 }
-
-$db = testDatabase();
-$repository = new MedicationRepository($db);
-
-$repository->createMedication('Night Tablet', '5 mg', '21:00', 'Take with water');
-$repository->createMedication('Morning Capsule', '10 mg', '08:00', 'Take with food');
-
-$activeMedications = $repository->activeMedications();
-assertSameValue(2, count($activeMedications), 'Two medications should be active after creation.');
-assertSameValue('Morning Capsule', $activeMedications[0]['name'], 'Active medications should sort by reminder time.');
-
-$morningMedicationId = (int) $activeMedications[0]['id'];
-$repository->logDose($morningMedicationId, 'No side effects.');
-
-$loggedMedicationIds = $repository->loggedMedicationIdsForDate((new DateTimeImmutable())->format('Y-m-d'));
-assertSameValue([$morningMedicationId], $loggedMedicationIds, 'Logged IDs should include today\'s logged active medication.');
-
-$recentLogs = $repository->recentLogs();
-assertSameValue(1, count($recentLogs), 'Recent logs should include the dose log.');
-assertSameValue('No side effects.', $recentLogs[0]['note'], 'Recent logs should include dose notes.');
-assertSameValue('Morning Capsule', $recentLogs[0]['name'], 'Recent logs should join medication names.');
-
-$repository->deactivateMedication($morningMedicationId);
-$activeMedications = $repository->activeMedications();
-assertSameValue(1, count($activeMedications), 'Deactivated medications should be removed from active plans.');
-assertSameValue('Night Tablet', $activeMedications[0]['name'], 'The remaining active medication should be returned.');
-assertSameValue([], $repository->loggedMedicationIdsForDate((new DateTimeImmutable())->format('Y-m-d')), 'Completed IDs should ignore deactivated medications.');
+assertSameValue(true, $threw, 'Interval medication should block too-early dose.');
 
 echo "MedicationRepository tests passed.\n";
