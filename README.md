@@ -1,10 +1,12 @@
-# Med Log
+# RxTracker
 
 Medication tracking and reminder web app built with HTML, CSS3, JavaScript, PHP, and MySQL.
 
+**App name:** RxTracker
+
 ## MVP scope
 
-Med Log validates the core product experience for medication tracking:
+RxTracker validates the core product experience for medication tracking:
 
 - Maintain an active medication plan with dose, reminder time, and instructions.
 - See the next unlogged dose and a daily adherence percentage.
@@ -34,7 +36,7 @@ The app reads these environment variables, with local defaults shown below:
 ```bash
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=med_log
+DB_DATABASE=rx_tracker
 DB_USERNAME=root
 DB_PASSWORD=
 ```
@@ -49,6 +51,23 @@ php -S localhost:8000
 
 Then open <http://localhost:8000/index.php>.
 
+## Testing
+
+Run syntax checks for the PHP entry point and includes:
+
+```bash
+php -l index.php
+php -l config/database.php
+php -l includes/helpers.php
+php -l includes/MedicationRepository.php
+```
+
+Run the lightweight repository test harness:
+
+```bash
+php tests/MedicationRepositoryTest.php
+```
+
 ## Project structure
 
 - `index.php` handles page rendering and form submissions.
@@ -58,3 +77,4 @@ Then open <http://localhost:8000/index.php>.
 - `assets/css/styles.css` contains the CSS3 UI styling.
 - `assets/js/app.js` contains lightweight JavaScript enhancements.
 - `database/schema.sql` and `database/seed.sql` set up MySQL data storage.
+- `tests/MedicationRepositoryTest.php` verifies repository behavior with an in-memory PDO database.

@@ -13,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = post_string('action');
 
     try {
+        if (!verify_csrf_token(post_string('csrf_token'))) {
+            throw new RuntimeException('Your session expired. Refresh the page and try again.');
+        }
+
         if ($action === 'add_medication') {
             $name = post_string('name');
             $dose = post_string('dose');
@@ -72,8 +76,8 @@ foreach ($medications as $medication) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Med Log helps people track medication doses, reminders, and adherence with PHP and MySQL.">
-    <title>Med Log</title>
+    <meta name="description" content="RxTracker helps people track medication doses, reminders, and adherence with PHP and MySQL.">
+    <title>RxTracker</title>
     <link rel="stylesheet" href="assets/css/styles.css">
     <script src="assets/js/app.js" defer></script>
 </head>
@@ -82,7 +86,7 @@ foreach ($medications as $medication) {
         <section class="hero">
             <div>
                 <p class="eyebrow">Medication tracking and reminders</p>
-                <h1>Med Log keeps today's doses clear.</h1>
+                <h1>RxTracker keeps today's doses clear.</h1>
                 <p class="hero-copy">
                     Track your medication plan, log doses, and review recent adherence from a simple
                     PHP and MySQL web app.
@@ -126,6 +130,7 @@ foreach ($medications as $medication) {
                     <h2>Log a dose</h2>
                 </div>
                 <form class="stacked-form" method="post" action="index.php">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="log_dose">
                     <label>
                         Medication
@@ -154,6 +159,7 @@ foreach ($medications as $medication) {
                     <h2>Add medication</h2>
                 </div>
                 <form class="medication-form" method="post" action="index.php">
+                    <?= csrf_field() ?>
                     <input type="hidden" name="action" value="add_medication">
                     <label>
                         Name
@@ -196,6 +202,7 @@ foreach ($medications as $medication) {
                                     <span class="done-pill">Done</span>
                                 <?php endif; ?>
                                 <form method="post" action="index.php" data-confirm="Remove this medication from your active plan?">
+                                    <?= csrf_field() ?>
                                     <input type="hidden" name="action" value="deactivate_medication">
                                     <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
                                     <button type="submit" class="icon-button" aria-label="Remove <?= e((string) $medication['name']) ?>">×</button>
@@ -232,7 +239,7 @@ foreach ($medications as $medication) {
             <?php endif; ?>
         </section>
 
-        <p class="disclaimer">Med Log is a tracking aid only and does not provide medical advice or clinical decision support.</p>
+        <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
     </main>
 </body>
 </html>

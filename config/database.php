@@ -23,7 +23,7 @@ function db(): PDO
 
     $host = env_value('DB_HOST', '127.0.0.1');
     $port = env_value('DB_PORT', '3306');
-    $database = env_value('DB_DATABASE', 'med_log');
+    $database = env_value('DB_DATABASE', 'rx_tracker');
     $username = env_value('DB_USERNAME', 'root');
     $password = env_value('DB_PASSWORD', '');
 

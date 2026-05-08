@@ -1,4 +1,4 @@
-USE med_log;
+USE rx_tracker;
 
 INSERT INTO medications (name, dose, reminder_time, instructions) VALUES
 ('Daily Vitamin', '1 tablet', '08:00:00', 'Take with breakfast'),
