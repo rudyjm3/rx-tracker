@@ -43,17 +43,21 @@ final class MedicationRepository
         return $medications;
     }
 
-    public function recentLogs(int $limit = 12): array
+    public function recentLogs(?string $date = null, int $limit = 12): array
     {
-        $statement = $this->db->prepare(
-            'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.status,
-                    dose_logs.scheduled_for_date, dose_logs.scheduled_time,
-                    medications.name, medications.dose
-             FROM dose_logs
-             INNER JOIN medications ON medications.id = dose_logs.medication_id
-             ORDER BY dose_logs.taken_at DESC
-             LIMIT :limit'
-        );
+        $sql = 'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.status,
+                       dose_logs.scheduled_for_date, dose_logs.scheduled_time,
+                       medications.name, medications.dose
+                FROM dose_logs
+                INNER JOIN medications ON medications.id = dose_logs.medication_id';
+        if ($date !== null && $date !== '') {
+            $sql .= ' WHERE dose_logs.scheduled_for_date = :scheduled_for_date';
+        }
+        $sql .= ' ORDER BY dose_logs.taken_at DESC LIMIT :limit';
+        $statement = $this->db->prepare($sql);
+        if ($date !== null && $date !== '') {
+            $statement->bindValue(':scheduled_for_date', $date, PDO::PARAM_STR);
+        }
         $statement->bindValue(':limit', $limit, PDO::PARAM_INT);
         $statement->execute();
 
@@ -416,12 +420,24 @@ final class MedicationRepository
             throw new RuntimeException('Grace period must be 30 or 60 minutes.');
         }
 
-        $statement = $this->db->prepare(
-            'INSERT INTO app_settings (setting_key, setting_value)
-             VALUES (:key, :value)
-             ON DUPLICATE KEY UPDATE setting_value = :value'
-        );
-        $statement->execute(['key' => 'missed_grace_minutes', 'value' => (string) $minutes]);
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO app_settings (setting_key, setting_value)
+               VALUES (:key, :value)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+            : 'INSERT INTO app_settings (setting_key, setting_value)
+               VALUES (:key, :insert_value)
+               ON DUPLICATE KEY UPDATE setting_value = :update_value';
+        $statement = $this->db->prepare($sql);
+        if ($driver === 'sqlite') {
+            $statement->execute(['key' => 'missed_grace_minutes', 'value' => (string) $minutes]);
+            return;
+        }
+        $statement->execute([
+            'key' => 'missed_grace_minutes',
+            'insert_value' => (string) $minutes,
+            'update_value' => (string) $minutes,
+        ]);
     }
 
     public function postponeDose(int $medicationId, string $scheduledDate, string $scheduledTime, int $delayMinutes): void
@@ -430,17 +446,21 @@ final class MedicationRepository
             throw new RuntimeException('Postpone must be 5, 15, or 30 minutes.');
         }
 
-        $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $scheduledDate . ' ' . $scheduledTime);
-        if (!$scheduledAt instanceof DateTimeImmutable) {
+        if (!DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $scheduledDate . ' ' . $scheduledTime) instanceof DateTimeImmutable) {
             throw new RuntimeException('Invalid scheduled dose time.');
         }
 
         $postponedUntil = (new DateTimeImmutable('now'))->modify('+' . $delayMinutes . ' minutes')->format('Y-m-d H:i:s');
-        $statement = $this->db->prepare(
-            'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
-             VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
-             ON DUPLICATE KEY UPDATE postponed_until = :postponed_until, resolved_at = NULL'
-        );
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
+               ON CONFLICT(medication_id, scheduled_for_date, scheduled_time)
+               DO UPDATE SET postponed_until = excluded.postponed_until, resolved_at = NULL'
+            : 'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
+               ON DUPLICATE KEY UPDATE postponed_until = :postponed_until, resolved_at = NULL';
+        $statement = $this->db->prepare($sql);
         $statement->execute([
             'medication_id' => $medicationId,
             'scheduled_for_date' => $scheduledDate,

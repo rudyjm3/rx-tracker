@@ -180,7 +180,7 @@ $inactiveMedications = $repository->inactiveMedications();
 $medicationPlanCount = count($medications);
 $inactiveMedicationCount = count($inactiveMedications);
 $todaySchedule = $repository->todaySchedule($today);
-$recentLogs = $repository->recentLogs();
+$recentLogs = $repository->recentLogs($today, 50);
 $missedCount = $repository->missedDoseCount($today, $currentTime);
 
 $requiredRows = array_filter($todaySchedule, static fn(array $row): bool => !$row['as_needed']);
@@ -407,9 +407,15 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
               <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit"<?= $isCompleted ? ' disabled' : '' ?>>Taken</button></form>
               <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
               <?php if (!$isCompleted): ?>
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="5"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 5m</button></form>
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="15"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 15m</button></form>
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="30"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 30m</button></form>
+                <button
+                  type="button"
+                  class="secondary"
+                  data-open-postpone-modal
+                  data-medication-id="<?= e((string) $dose['medication_id']) ?>"
+                  data-scheduled-date="<?= e($today) ?>"
+                  data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"
+                  <?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>
+                >Postpone</button>
               <?php endif; ?>
             </div>
           </div>
@@ -418,7 +424,7 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
     </article>
   </section>
 
-  <section class="panel history-panel"><div class="panel-heading"><h2>Recent history</h2></div><ol class="history-list"><?php foreach ($recentLogs as $log): ?><li><span><?= e(to12h((string) $log['scheduled_time'])) ?></span><div><strong><?= e((string) $log['name']) ?></strong><p><?= e((string) $log['status']) ?></p></div></li><?php endforeach; ?></ol></section>
+  <section class="panel history-panel" data-history-panel><div class="panel-heading"><h2>Recent history</h2></div><ol class="history-list" data-history-list><?php foreach ($recentLogs as $log): ?><li><span><?= e(to12h((string) $log['scheduled_time'])) ?></span><div><strong><?= e((string) $log['name']) ?></strong><p><?= e((string) $log['status']) ?></p></div></li><?php endforeach; ?></ol><?php if (count($recentLogs) > 4): ?><button type="button" class="history-view-more" data-history-toggle>View more</button><?php endif; ?></section>
   <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 
@@ -468,6 +474,30 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
       </label>
       <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
       <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" data-postpone-modal>
+  <div class="modal-dialog postpone-dialog" role="dialog" aria-modal="true" aria-labelledby="postpone-modal-title">
+    <div class="modal-header">
+      <h2 id="postpone-modal-title">Postpone reminder</h2>
+      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">X</button>
+    </div>
+    <form method="post" action="index.php" class="stacked-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="postpone_dose">
+      <input type="hidden" name="medication_id" data-postpone-medication-id>
+      <input type="hidden" name="scheduled_date" data-postpone-scheduled-date>
+      <input type="hidden" name="scheduled_time" data-postpone-scheduled-time>
+      <label>Choose postpone time
+        <select name="postpone_minutes" required>
+          <option value="5">5 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+        </select>
+      </label>
+      <button type="submit">Confirm postpone</button>
     </form>
   </div>
 </div>

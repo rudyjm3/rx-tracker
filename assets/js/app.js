@@ -19,6 +19,11 @@ if (firstInvalidField) {
 const medicationModal = document.querySelector('[data-medication-modal]');
 const openMedicationModalButton = document.querySelector('[data-open-medication-modal]');
 const closeMedicationModalButton = document.querySelector('[data-close-medication-modal]');
+const postponeModal = document.querySelector('[data-postpone-modal]');
+const closePostponeModalButton = document.querySelector('[data-close-postpone-modal]');
+const postponeMedicationId = document.querySelector('[data-postpone-medication-id]');
+const postponeScheduledDate = document.querySelector('[data-postpone-scheduled-date]');
+const postponeScheduledTime = document.querySelector('[data-postpone-scheduled-time]');
 
 const openMedicationModal = () => {
   if (!medicationModal) return;
@@ -37,6 +42,39 @@ const closeMedicationModal = () => {
 
 openMedicationModalButton?.addEventListener('click', openMedicationModal);
 closeMedicationModalButton?.addEventListener('click', closeMedicationModal);
+
+const openPostponeModal = (medicationId, scheduledDate, scheduledTime) => {
+  if (!postponeModal) return;
+  if (postponeMedicationId) postponeMedicationId.value = medicationId;
+  if (postponeScheduledDate) postponeScheduledDate.value = scheduledDate;
+  if (postponeScheduledTime) postponeScheduledTime.value = scheduledTime;
+  postponeModal.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+};
+
+const closePostponeModal = () => {
+  if (!postponeModal) return;
+  postponeModal.classList.remove('is-open');
+  document.body.style.overflow = medicationModal?.classList.contains('is-open') ? 'hidden' : '';
+};
+
+document.querySelectorAll('[data-open-postpone-modal]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const medicationId = button.getAttribute('data-medication-id') ?? '';
+    const scheduledDate = button.getAttribute('data-scheduled-date') ?? '';
+    const scheduledTime = button.getAttribute('data-scheduled-time') ?? '';
+    if (!medicationId || !scheduledDate || !scheduledTime) return;
+    openPostponeModal(medicationId, scheduledDate, scheduledTime);
+  });
+});
+
+closePostponeModalButton?.addEventListener('click', closePostponeModal);
+
+postponeModal?.addEventListener('click', (event) => {
+  if (event.target === postponeModal) {
+    closePostponeModal();
+  }
+});
 
 document.querySelectorAll('.modal-edit-link').forEach((link) => {
   link.addEventListener('click', () => {
@@ -96,6 +134,114 @@ planTabs.forEach((tab) => {
 });
 
 setPlanTab('active');
+
+const historyPanel = document.querySelector('[data-history-panel]');
+const historyList = document.querySelector('[data-history-list]');
+const historyToggle = document.querySelector('[data-history-toggle]');
+
+historyToggle?.addEventListener('click', () => {
+  if (!historyPanel || !historyList) return;
+  const expanded = historyPanel.classList.toggle('is-expanded');
+  historyToggle.textContent = expanded ? 'View less' : 'View more';
+});
+
+const enableRemindersButton = document.querySelector('[data-enable-reminders]');
+const inAppAlert = document.querySelector('[data-in-app-alert]');
+
+const readSeenMap = () => {
+  try {
+    return JSON.parse(window.localStorage.getItem('rxtracker_reminder_seen') ?? '{}');
+  } catch (error) {
+    return {};
+  }
+};
+
+const writeSeenMap = (map) => {
+  window.localStorage.setItem('rxtracker_reminder_seen', JSON.stringify(map));
+};
+
+const showFallbackAlert = (items) => {
+  if (!inAppAlert) return;
+  if (items.length === 0) {
+    inAppAlert.hidden = true;
+    inAppAlert.textContent = '';
+    return;
+  }
+  const top = items[0];
+  inAppAlert.textContent = `Dose reminder: ${top.name} ${top.dose} is due now.`;
+  inAppAlert.hidden = false;
+};
+
+const notifyItems = (items) => {
+  if (items.length === 0) {
+    showFallbackAlert([]);
+    return;
+  }
+
+  const seenMap = readSeenMap();
+  const nowIso = new Date().toISOString();
+  const unseen = items.filter((item) => {
+    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+    return !seenMap[key];
+  });
+
+  if (unseen.length === 0) {
+    showFallbackAlert([]);
+    return;
+  }
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    unseen.forEach((item) => {
+      const dueText = item.postponed_until
+        ? `Postponed dose due now`
+        : `Dose due now`;
+      new Notification(`${item.name} (${item.dose})`, {
+        body: dueText,
+      });
+      const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+      seenMap[key] = nowIso;
+    });
+    writeSeenMap(seenMap);
+    showFallbackAlert([]);
+    return;
+  }
+
+  showFallbackAlert(unseen);
+  unseen.forEach((item) => {
+    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+    seenMap[key] = nowIso;
+  });
+  writeSeenMap(seenMap);
+};
+
+const pollDueReminders = async () => {
+  try {
+    const response = await window.fetch('index.php?action=poll_due', { credentials: 'same-origin' });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!payload || payload.ok !== true || !Array.isArray(payload.items)) return;
+    notifyItems(payload.items);
+  } catch (error) {
+    // swallow polling errors
+  }
+};
+
+enableRemindersButton?.addEventListener('click', async () => {
+  if (!('Notification' in window)) {
+    window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    window.alert('Reminders are already enabled.');
+    return;
+  }
+  await Notification.requestPermission();
+});
+
+if (document.querySelector('.schedule-list')) {
+  pollDueReminders();
+  window.setInterval(pollDueReminders, 30000);
+}
 
 if (medicationModal?.classList.contains('is-open')) {
   document.body.style.overflow = 'hidden';

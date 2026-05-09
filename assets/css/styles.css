@@ -55,6 +55,28 @@ button:disabled {
   padding: 2rem;
 }
 
+.top-nav {
+  display: flex;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.top-nav a {
+  background: #f3f6fb;
+  border: 1px solid #dce4f0;
+  border-radius: 0.8rem;
+  color: #21304a;
+  font-weight: 800;
+  padding: 0.6rem 0.9rem;
+  text-decoration: none;
+}
+
+.top-nav a.is-active {
+  background: #1269ff;
+  border-color: #1269ff;
+  color: #fff;
+}
+
 .hero {
   align-items: stretch;
   background:
@@ -142,6 +164,16 @@ h1 {
   gap: 1.25rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 1.25rem;
+}
+
+.notice {
+  background: #eef8ff;
+  border: 1px solid #cde7fb;
+  border-radius: 1rem;
+  color: #12486f;
+  font-weight: 800;
+  margin-top: 1.25rem;
+  padding: 1rem;
 }
 
 .content-grid {
@@ -370,6 +402,8 @@ select:focus,
 .schedule-list {
   display: grid;
   gap: 0.75rem;
+  max-height: 24.5rem;
+  overflow-y: auto;
 }
 
 .schedule-row {
@@ -446,6 +480,21 @@ select:focus,
   margin-top: 1.25rem;
 }
 
+.reminder-panel,
+.settings-panel {
+  margin-top: 1.25rem;
+}
+
+.in-app-alert {
+  background: #fff8e8;
+  border: 1px solid #f5d68b;
+  border-radius: 0.8rem;
+  color: #704f08;
+  font-weight: 700;
+  margin-top: 0.8rem;
+  padding: 0.75rem;
+}
+
 .inactive-list {
   display: grid;
   gap: 0.75rem;
@@ -456,9 +505,29 @@ select:focus,
   gap: 0.75rem;
   list-style: none;
   margin: 0;
-  max-height: 25.5rem;
+  max-height: 17rem;
   overflow-y: auto;
   padding: 0;
+}
+
+.history-panel.is-expanded .history-list {
+  max-height: 42.5rem;
+}
+
+.history-view-more {
+  background: transparent;
+  color: #1269ff;
+  font-weight: 800;
+  margin-top: 0.75rem;
+  padding: 0;
+  text-align: left;
+}
+
+.history-view-more:hover {
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+  transform: none;
 }
 
 .history-list li {
@@ -511,6 +580,10 @@ select:focus,
   overflow: auto;
   padding: 1rem;
   width: 100%;
+}
+
+.postpone-dialog {
+  max-width: 420px;
 }
 
 .modal-header {
