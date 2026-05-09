@@ -14,6 +14,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 button,
@@ -186,6 +187,7 @@ h1 {
   border-radius: 1.5rem;
   box-shadow: 0 18px 50px rgb(23 32 51 / 8%);
   padding: 1.35rem;
+  width: 100%;
 }
 
 .panel-heading {
@@ -257,6 +259,11 @@ h1 {
   padding: 1.25rem;
 }
 
+.next-dose-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
 .next-dose-card span {
   color: #1269ff;
   font-weight: 900;
@@ -268,9 +275,24 @@ h1 {
   margin: 0.35rem 0 0.2rem;
 }
 
+.next-dose-card h4 {
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  margin: 0.25rem 0 0.15rem;
+}
+
 .next-dose-card p {
   font-weight: 800;
   margin-bottom: 0.25rem;
+}
+
+.next-dose-card-subtle {
+  background: #f6f9ff;
+  opacity: 0.8;
+}
+
+.next-dose-card-subtle p {
+  font-weight: 700;
 }
 
 .next-dose-card small,
@@ -348,6 +370,7 @@ select:focus,
   display: flex;
   gap: 1rem;
   justify-content: space-between;
+  min-width: 0;
   padding: 0.9rem;
 }
 
@@ -360,6 +383,30 @@ select:focus,
   align-items: center;
   display: flex;
   gap: 0.6rem;
+  min-width: 0;
+}
+
+.row-actions form {
+  margin: 0;
+}
+
+.medication-content {
+  min-width: 0;
+}
+
+.medication-row-plan {
+  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.medication-actions-top {
+  justify-content: flex-end;
+}
+
+.medication-actions-bottom {
+  justify-content: flex-end;
+  width: 100%;
 }
 
 .done-pill {
@@ -413,7 +460,28 @@ select:focus,
   display: flex;
   gap: 1rem;
   justify-content: space-between;
+  min-width: 0;
   padding: 0.9rem;
+}
+
+.schedule-row > div:first-child {
+  min-width: 0;
+}
+
+.schedule-row .row-actions {
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.schedule-actions-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.schedule-actions-buttons button {
+  padding: 0.6rem 0.75rem;
 }
 
 .warn-pill,
@@ -517,10 +585,12 @@ select:focus,
 .history-view-more {
   background: transparent;
   color: #1269ff;
+  display: block;
   font-weight: 800;
+  margin: 0.75rem auto 0;
   margin-top: 0.75rem;
   padding: 0;
-  text-align: left;
+  text-align: center;
 }
 
 .history-view-more:hover {
@@ -606,6 +676,7 @@ select:focus,
 @media (max-width: 800px) {
   .app-shell {
     padding: 1rem;
+    width: 100%;
   }
 
   .hero,
@@ -618,6 +689,49 @@ select:focus,
 
   .hero-card {
     align-self: stretch;
+  }
+
+  .panel,
+  .hero,
+  .hero-card,
+  .schedule-row,
+  .medication-row,
+  .next-dose-card {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .medication-plan-heading,
+  .medication-plan-actions,
+  .row-actions,
+  .schedule-actions-buttons {
+    flex-wrap: wrap;
+  }
+
+  .medication-actions-bottom {
+    border-top: 1px solid #e7edf6;
+    justify-content: flex-start;
+    margin-top: 0.5rem;
+    padding-top: 0.55rem;
+  }
+
+  .medication-actions-bottom button {
+    font-size: 0.84rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .medication-actions-top {
+    justify-content: flex-start;
+    margin-top: 0.15rem;
+  }
+
+  .schedule-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .schedule-row .row-actions {
+    margin-top: 0.45rem;
   }
 
   .modal-overlay {
