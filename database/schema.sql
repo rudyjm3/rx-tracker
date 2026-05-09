@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS medications (
     dose VARCHAR(120) NOT NULL,
     instructions VARCHAR(255) NOT NULL DEFAULT '',
     schedule_mode ENUM('fixed_times', 'interval') NOT NULL DEFAULT 'fixed_times',
+    time_format ENUM('24h', '12h') NOT NULL DEFAULT '24h',
     interval_hours TINYINT UNSIGNED NULL,
     first_dose_time TIME NULL,
     as_needed TINYINT(1) NOT NULL DEFAULT 0,
@@ -21,6 +22,9 @@ CREATE TABLE IF NOT EXISTS medications (
 
 ALTER TABLE medications
     ADD COLUMN IF NOT EXISTS starting_pill_count INT UNSIGNED NOT NULL DEFAULT 0 AFTER as_needed;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS time_format ENUM('24h', '12h') NOT NULL DEFAULT '24h' AFTER schedule_mode;
 
 UPDATE medications
 SET starting_pill_count = pill_count
@@ -52,6 +56,32 @@ CREATE TABLE IF NOT EXISTS dose_logs (
     INDEX idx_dose_logs_status (status),
     INDEX idx_dose_logs_taken_at (taken_at),
     CONSTRAINT fk_dose_logs_medication
+        FOREIGN KEY (medication_id) REFERENCES medications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    setting_key VARCHAR(120) PRIMARY KEY,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+INSERT INTO app_settings (setting_key, setting_value)
+VALUES ('missed_grace_minutes', '60')
+ON DUPLICATE KEY UPDATE setting_value = setting_value;
+
+CREATE TABLE IF NOT EXISTS dose_postpones (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    medication_id INT UNSIGNED NOT NULL,
+    scheduled_for_date DATE NOT NULL,
+    scheduled_time TIME NOT NULL,
+    postponed_until DATETIME NOT NULL,
+    resolved_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_postpone_dose (medication_id, scheduled_for_date, scheduled_time),
+    INDEX idx_postpone_due (postponed_until, resolved_at),
+    CONSTRAINT fk_dose_postpones_medication
         FOREIGN KEY (medication_id) REFERENCES medications (id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB;

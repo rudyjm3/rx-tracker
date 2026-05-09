@@ -69,6 +69,34 @@ medicationPlanToggle?.addEventListener('click', () => {
 
 setMedicationPlanState(false);
 
+const planTabs = document.querySelectorAll('[data-plan-tab]');
+const planPanels = {
+  active: document.querySelector('#active-medications-panel'),
+  inactive: document.querySelector('#inactive-medications-panel'),
+};
+
+const setPlanTab = (target) => {
+  planTabs.forEach((tab) => {
+    const isSelected = tab.getAttribute('data-plan-tab') === target;
+    tab.classList.toggle('is-active', isSelected);
+    tab.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+  });
+  Object.entries(planPanels).forEach(([key, panel]) => {
+    if (!panel) return;
+    panel.hidden = key !== target;
+  });
+};
+
+planTabs.forEach((tab) => {
+  tab.addEventListener('click', () => {
+    const target = tab.getAttribute('data-plan-tab');
+    if (!target) return;
+    setPlanTab(target);
+  });
+});
+
+setPlanTab('active');
+
 if (medicationModal?.classList.contains('is-open')) {
   document.body.style.overflow = 'hidden';
 }

@@ -200,6 +200,25 @@ h1 {
   display: none;
 }
 
+.medication-plan-tabs {
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 0.8rem;
+}
+
+.plan-tab {
+  padding: 0.55rem 0.9rem;
+}
+
+.plan-tab.is-active {
+  background: #1269ff;
+  color: #fff;
+}
+
+.plan-tab-panel[hidden] {
+  display: none;
+}
+
 .next-dose-card {
   background: #eef5ff;
   border-radius: 1.2rem;
@@ -425,6 +444,11 @@ select:focus,
 
 .history-panel {
   margin-top: 1.25rem;
+}
+
+.inactive-list {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .history-list {

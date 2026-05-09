@@ -57,10 +57,31 @@ function to12h(string $time): string
     return $dt ? $dt->format('g:i A') : $time;
 }
 
+function displayTimeByFormat(string $time, string $format): string
+{
+    return $format === '12h' ? to12h($time) : substr($time, 0, 5);
+}
+
 $repository = new MedicationRepository(db());
 $error = null;
+$notice = null;
 $today = today();
 $currentTime = (new DateTimeImmutable())->format('H:i');
+$page = (string) ($_GET['page'] ?? 'dashboard');
+$requestAction = (string) ($_GET['action'] ?? '');
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'poll_due') {
+    header('Content-Type: application/json; charset=utf-8');
+    $graceMinutes = $repository->getMissedGraceMinutes();
+    $now = new DateTimeImmutable('now');
+    $repository->finalizeMissedDoses($now, $graceMinutes);
+    echo json_encode([
+        'ok' => true,
+        'grace_minutes' => $graceMinutes,
+        'items' => $repository->dueReminderItems($now),
+    ], JSON_THROW_ON_ERROR);
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -95,9 +116,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($action === 'add_medication') {
-                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
+                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $timeFormat, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
             } else {
-                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
+                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $timeFormat, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
             }
 
             redirect_home();
@@ -121,13 +142,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $repository->deactivateMedication((int) post_string('medication_id'));
             redirect_home();
         }
+
+        if ($action === 'activate_medication') {
+            $repository->activateMedication((int) post_string('medication_id'));
+            redirect_home();
+        }
+
+        if ($action === 'postpone_dose') {
+            $delayMinutes = (int) post_string('postpone_minutes');
+            $repository->postponeDose(
+                (int) post_string('medication_id'),
+                post_string('scheduled_date'),
+                post_string('scheduled_time'),
+                $delayMinutes
+            );
+            header('Location: index.php?notice=Dose postponed');
+            exit;
+        }
+
+        if ($action === 'save_settings') {
+            $graceMinutes = (int) post_string('missed_grace_minutes');
+            $repository->setMissedGraceMinutes($graceMinutes);
+            header('Location: index.php?page=settings&notice=Settings saved');
+            exit;
+        }
     } catch (Throwable $exception) {
         $error = $exception->getMessage();
     }
 }
 
+$graceMinutes = $repository->getMissedGraceMinutes();
+$repository->finalizeMissedDoses(new DateTimeImmutable('now'), $graceMinutes);
+$notice = trim((string) ($_GET['notice'] ?? '')) ?: null;
+
 $medications = $repository->activeMedications();
+$inactiveMedications = $repository->inactiveMedications();
 $medicationPlanCount = count($medications);
+$inactiveMedicationCount = count($inactiveMedications);
 $todaySchedule = $repository->todaySchedule($today);
 $recentLogs = $repository->recentLogs();
 $missedCount = $repository->missedDoseCount($today, $currentTime);
@@ -158,6 +209,11 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
 </head>
 <body>
 <main class="app-shell">
+  <nav class="top-nav">
+    <a href="index.php"<?= $page !== 'settings' ? ' class="is-active"' : '' ?>>Dashboard</a>
+    <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
+  </nav>
+
   <section class="hero">
     <div>
       <p class="eyebrow">Medication tracking and reminders</p>
@@ -172,7 +228,41 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
     </div>
   </section>
 
+  <?php if ($notice !== null): ?><div class="notice"><?= e($notice) ?></div><?php endif; ?>
   <?php if ($error !== null): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
+
+  <?php if ($page === 'settings'): ?>
+    <section class="panel settings-panel">
+      <div class="panel-heading"><h2>Reminder Settings</h2></div>
+      <form method="post" action="index.php?page=settings" class="stacked-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_settings">
+        <label>Missed-dose grace period
+          <select name="missed_grace_minutes">
+            <option value="30"<?= $graceMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
+            <option value="60"<?= $graceMinutes === 60 ? ' selected' : '' ?>>60 minutes</option>
+          </select>
+        </label>
+        <button type="submit">Save settings</button>
+      </form>
+    </section>
+    <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
+  </main>
+  </body>
+  </html>
+  <?php
+  exit;
+  ?>
+  <?php endif; ?>
+
+  <section class="panel reminder-panel">
+    <div class="panel-heading"><h2>Reminders</h2></div>
+    <div class="row-actions">
+      <button type="button" class="secondary" data-enable-reminders>Enable reminders</button>
+      <span class="muted">Grace period: <?= e((string) $graceMinutes) ?> minutes</span>
+    </div>
+    <div class="in-app-alert" data-in-app-alert hidden></div>
+  </section>
 
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel medication-list-panel is-collapsed" data-medication-plan>
@@ -193,37 +283,90 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
         </div>
       </div>
       <div class="medication-list-wrap" id="medication-plan-body" hidden>
-        <div class="medication-list">
-          <?php if ($medicationPlanCount === 0): ?>
-            <div class="empty-state"><p>No active medications yet.</p></div>
-          <?php endif; ?>
-          <?php foreach ($medications as $medication): ?>
-            <div class="medication-row">
-              <div>
-                <strong><?= e((string) $medication['name']) ?></strong>
-                <p><?= e((string) $medication['dose']) ?></p>
-                <p>
-                  <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
-                    Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(substr((string) $medication['first_dose_time'], 0, 5)) ?>
-                  <?php else: ?>
-                    <?= e(implode(', ', $medication['times'])) ?>
-                  <?php endif; ?>
-                  <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
-                </p>
-                <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+        <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
+          <button
+            type="button"
+            class="secondary plan-tab is-active"
+            data-plan-tab="active"
+            role="tab"
+            aria-selected="true"
+            aria-controls="active-medications-panel"
+            id="active-medications-tab"
+          >Active (<?= e((string) $medicationPlanCount) ?>)</button>
+          <button
+            type="button"
+            class="secondary plan-tab"
+            data-plan-tab="inactive"
+            role="tab"
+            aria-selected="false"
+            aria-controls="inactive-medications-panel"
+            id="inactive-medications-tab"
+          >Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
+        </div>
+
+        <div class="plan-tab-panel" id="active-medications-panel" role="tabpanel" aria-labelledby="active-medications-tab">
+          <div class="medication-list">
+            <?php if ($medicationPlanCount === 0): ?>
+              <div class="empty-state"><p>No active medications yet.</p></div>
+            <?php endif; ?>
+            <?php foreach ($medications as $medication): ?>
+              <div class="medication-row">
+                <div>
+                  <strong><?= e((string) $medication['name']) ?></strong>
+                  <p><?= e((string) $medication['dose']) ?></p>
+                  <p>
+                    <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
+                      Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(displayTimeByFormat((string) $medication['first_dose_time'], (string) ($medication['time_format'] ?? '24h'))) ?>
+                    <?php else: ?>
+                      <?= e(implode(', ', array_map(static fn(string $time): string => displayTimeByFormat($time, (string) ($medication['time_format'] ?? '24h')), $medication['times']))) ?>
+                    <?php endif; ?>
+                    <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
+                  </p>
+                  <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+                </div>
+                <div class="row-actions">
+                  <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
+                  <form method="post" action="index.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="log_dose_now">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <input type="hidden" name="note" value="Logged now">
+                    <button type="submit" class="secondary">Log dose now</button>
+                  </form>
+                  <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="deactivate_medication">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <button type="submit" class="secondary">Deactivate</button>
+                  </form>
+                </div>
               </div>
-              <div class="row-actions">
-                <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
-                <form method="post" action="index.php">
-                  <?= csrf_field() ?>
-                  <input type="hidden" name="action" value="log_dose_now">
-                  <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                  <input type="hidden" name="note" value="Logged now">
-                  <button type="submit" class="secondary">Log dose now</button>
-                </form>
+            <?php endforeach; ?>
+          </div>
+        </div>
+
+        <div class="plan-tab-panel" id="inactive-medications-panel" role="tabpanel" aria-labelledby="inactive-medications-tab" hidden>
+          <div class="inactive-list">
+            <?php if ($inactiveMedications === []): ?>
+              <div class="empty-state"><p>No inactive medications.</p></div>
+            <?php endif; ?>
+            <?php foreach ($inactiveMedications as $medication): ?>
+              <div class="medication-row">
+                <div>
+                  <strong><?= e((string) $medication['name']) ?></strong>
+                  <p><?= e((string) $medication['dose']) ?></p>
+                </div>
+                <div class="row-actions">
+                  <form method="post" action="index.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="activate_medication">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <button type="submit">Activate</button>
+                  </form>
+                </div>
               </div>
-            </div>
-          <?php endforeach; ?>
+            <?php endforeach; ?>
+          </div>
         </div>
       </div>
     </article>
@@ -258,8 +401,16 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
             </div>
             <div class="row-actions">
               <?php $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true); ?>
+              <?php if (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== ''): ?>
+                <span class="done-pill">Postponed until <?= e(to12h((new DateTimeImmutable((string) $dose['postponed_until']))->format('H:i'))) ?></span>
+              <?php endif; ?>
               <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit"<?= $isCompleted ? ' disabled' : '' ?>>Taken</button></form>
               <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
+              <?php if (!$isCompleted): ?>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="5"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 5m</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="15"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 15m</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="postpone_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="postpone_minutes" value="30"><button type="submit" class="secondary"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Postpone 30m</button></form>
+              <?php endif; ?>
             </div>
           </div>
         <?php endforeach; ?>
@@ -286,8 +437,8 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
       <label>Dose<input name="dose" required value="<?= e((string) ($editing['dose'] ?? '')) ?>"></label>
       <label>Time format
         <select name="time_format">
-          <option value="24h">24-hour</option>
-          <option value="12h">12-hour</option>
+          <option value="24h" <?= (($editing['time_format'] ?? '24h') === '24h') ? 'selected' : '' ?>>24-hour</option>
+          <option value="12h" <?= (($editing['time_format'] ?? '24h') === '12h') ? 'selected' : '' ?>>12-hour</option>
         </select>
       </label>
       <label>Schedule type
@@ -303,7 +454,7 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
         <input type="number" min="1" max="24" name="interval_hours" value="<?= e((string) ($editing['interval_hours'] ?? '')) ?>">
       </label>
       <label>First dose time
-        <input name="first_dose_time" placeholder="08:00 or 8:00 AM" value="<?= e((string) (isset($editing['first_dose_time']) ? substr((string) $editing['first_dose_time'], 0, 5) : '')) ?>">
+        <input name="first_dose_time" placeholder="08:00 or 8:00 AM" value="<?= e((string) (isset($editing['first_dose_time']) ? displayTimeByFormat((string) $editing['first_dose_time'], (string) ($editing['time_format'] ?? '24h')) : '')) ?>">
       </label>
       <label>As needed (PRN)
         <select name="as_needed">

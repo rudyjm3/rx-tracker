@@ -7,14 +7,32 @@ final class MedicationRepository
     public function __construct(private readonly PDO $db)
     {
         $this->ensureStartingPillCountColumn();
+        $this->ensureTimeFormatColumn();
+        $this->ensureSupportTables();
     }
 
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
              FROM medications
              WHERE active = 1
+             ORDER BY name ASC"
+        );
+        $medications = $statement->fetchAll();
+        foreach ($medications as &$medication) {
+            $medication['times'] = $this->scheduleTimesForMedication((int) $medication['id']);
+        }
+
+        return $medications;
+    }
+
+    public function inactiveMedications(): array
+    {
+        $statement = $this->db->query(
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+             FROM medications
+             WHERE active = 0
              ORDER BY name ASC"
         );
         $medications = $statement->fetchAll();
@@ -45,7 +63,7 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
              FROM medications
              WHERE id = :id AND active = 1'
         );
@@ -79,6 +97,7 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
+        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -91,14 +110,15 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (name, dose, instructions, schedule_mode, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold)
-                 VALUES (:name, :dose, :instructions, :schedule_mode, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold)'
+                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold)
+                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold)'
             );
             $statement->execute([
                 'name' => $name,
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
+                'time_format' => $timeFormat,
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -122,6 +142,7 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
+        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -139,6 +160,7 @@ final class MedicationRepository
                      dose = :dose,
                      instructions = :instructions,
                      schedule_mode = :schedule_mode,
+                     time_format = :time_format,
                      interval_hours = :interval_hours,
                      first_dose_time = :first_dose_time,
                      as_needed = :as_needed,
@@ -153,6 +175,7 @@ final class MedicationRepository
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
+                'time_format' => $timeFormat,
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -207,6 +230,9 @@ final class MedicationRepository
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
                     $this->deductPillCount($medicationId);
                 }
+                if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
+                    $this->clearPostponeForDose($medicationId, $date, $time);
+                }
             } else {
                 $insert = $this->db->prepare(
                     'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
@@ -223,6 +249,9 @@ final class MedicationRepository
                 ]);
                 if ($status === 'taken') {
                     $this->deductPillCount($medicationId);
+                }
+                if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
+                    $this->clearPostponeForDose($medicationId, $date, $time);
                 }
             }
 
@@ -274,6 +303,7 @@ final class MedicationRepository
             ]);
 
             $this->deductPillCount($medicationId);
+            $this->clearPostponeForDose($medicationId, $date, $time);
             $this->db->commit();
         } catch (PDOException $exception) {
             $this->db->rollBack();
@@ -291,6 +321,7 @@ final class MedicationRepository
     {
         $medications = $this->activeMedications();
         $logs = $this->doseLogMapForDate($date);
+        $postpones = $this->activePostponesForDate($date);
         $schedule = [];
 
         foreach ($medications as $medication) {
@@ -310,6 +341,7 @@ final class MedicationRepository
                     'reminder_time' => $time,
                     'status' => $log['status'] ?? null,
                     'note' => $log['note'] ?? '',
+                    'postponed_until' => $postpones[$key] ?? null,
                 ];
             }
         }
@@ -362,6 +394,174 @@ final class MedicationRepository
         $statement->execute(['id' => $medicationId]);
     }
 
+    public function activateMedication(int $medicationId): void
+    {
+        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id');
+        $statement->execute(['id' => $medicationId]);
+    }
+
+    public function getMissedGraceMinutes(): int
+    {
+        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key LIMIT 1');
+        $statement->execute(['key' => 'missed_grace_minutes']);
+        $value = (string) ($statement->fetchColumn() ?: '60');
+        $minutes = (int) $value;
+
+        return in_array($minutes, [30, 60], true) ? $minutes : 60;
+    }
+
+    public function setMissedGraceMinutes(int $minutes): void
+    {
+        if (!in_array($minutes, [30, 60], true)) {
+            throw new RuntimeException('Grace period must be 30 or 60 minutes.');
+        }
+
+        $statement = $this->db->prepare(
+            'INSERT INTO app_settings (setting_key, setting_value)
+             VALUES (:key, :value)
+             ON DUPLICATE KEY UPDATE setting_value = :value'
+        );
+        $statement->execute(['key' => 'missed_grace_minutes', 'value' => (string) $minutes]);
+    }
+
+    public function postponeDose(int $medicationId, string $scheduledDate, string $scheduledTime, int $delayMinutes): void
+    {
+        if (!in_array($delayMinutes, [5, 15, 30], true)) {
+            throw new RuntimeException('Postpone must be 5, 15, or 30 minutes.');
+        }
+
+        $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $scheduledDate . ' ' . $scheduledTime);
+        if (!$scheduledAt instanceof DateTimeImmutable) {
+            throw new RuntimeException('Invalid scheduled dose time.');
+        }
+
+        $postponedUntil = (new DateTimeImmutable('now'))->modify('+' . $delayMinutes . ' minutes')->format('Y-m-d H:i:s');
+        $statement = $this->db->prepare(
+            'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
+             VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
+             ON DUPLICATE KEY UPDATE postponed_until = :postponed_until, resolved_at = NULL'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'scheduled_for_date' => $scheduledDate,
+            'scheduled_time' => $scheduledTime,
+            'postponed_until' => $postponedUntil,
+        ]);
+    }
+
+    public function activePostponeForDose(int $medicationId, string $scheduledDate, string $scheduledTime): ?string
+    {
+        $statement = $this->db->prepare(
+            'SELECT postponed_until
+             FROM dose_postpones
+             WHERE medication_id = :medication_id
+               AND scheduled_for_date = :scheduled_for_date
+               AND scheduled_time = :scheduled_time
+               AND resolved_at IS NULL
+             LIMIT 1'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'scheduled_for_date' => $scheduledDate,
+            'scheduled_time' => $scheduledTime,
+        ]);
+        $value = $statement->fetchColumn();
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    public function clearPostponeForDose(int $medicationId, string $scheduledDate, string $scheduledTime): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE dose_postpones
+             SET resolved_at = :resolved_at
+             WHERE medication_id = :medication_id
+               AND scheduled_for_date = :scheduled_for_date
+               AND scheduled_time = :scheduled_time
+               AND resolved_at IS NULL'
+        );
+        $statement->execute([
+            'resolved_at' => (new DateTimeImmutable('now'))->format('Y-m-d H:i:s'),
+            'medication_id' => $medicationId,
+            'scheduled_for_date' => $scheduledDate,
+            'scheduled_time' => $scheduledTime,
+        ]);
+    }
+
+    public function finalizeMissedDoses(DateTimeImmutable $now, int $graceMinutes): void
+    {
+        $schedule = $this->todaySchedule($now->format('Y-m-d'));
+        foreach ($schedule as $row) {
+            if ((bool) $row['as_needed']) {
+                continue;
+            }
+            if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
+                continue;
+            }
+
+            $baseDue = DateTimeImmutable::createFromFormat('Y-m-d H:i', $now->format('Y-m-d') . ' ' . (string) $row['reminder_time']);
+            if (!$baseDue instanceof DateTimeImmutable) {
+                continue;
+            }
+
+            $postponedUntil = $row['postponed_until'] ?? null;
+            $duePoint = $baseDue;
+            if (is_string($postponedUntil) && $postponedUntil !== '') {
+                $postponedAt = new DateTimeImmutable($postponedUntil);
+                if ($postponedAt > $duePoint) {
+                    $duePoint = $postponedAt;
+                }
+            }
+            $cutoff = $duePoint->modify('+' . $graceMinutes . ' minutes');
+            if ($now < $cutoff) {
+                continue;
+            }
+
+            $this->recordDoseStatus(
+                (int) $row['medication_id'],
+                $now->format('Y-m-d'),
+                (string) $row['reminder_time'] . ':00',
+                'missed',
+                'Auto-marked missed'
+            );
+            $this->clearPostponeForDose(
+                (int) $row['medication_id'],
+                $now->format('Y-m-d'),
+                (string) $row['reminder_time'] . ':00'
+            );
+        }
+    }
+
+    public function dueReminderItems(DateTimeImmutable $now): array
+    {
+        $rows = [];
+        foreach ($this->todaySchedule($now->format('Y-m-d')) as $row) {
+            if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
+                continue;
+            }
+            $dueAt = (string) ($row['postponed_until'] ?? '');
+            if ($dueAt === '') {
+                $dueAt = $now->format('Y-m-d') . ' ' . (string) $row['reminder_time'] . ':00';
+            }
+            $dueTime = new DateTimeImmutable($dueAt);
+            if ($dueTime > $now) {
+                continue;
+            }
+            $rows[] = [
+                'medication_id' => (int) $row['medication_id'],
+                'name' => (string) $row['name'],
+                'dose' => (string) $row['dose'],
+                'reminder_time' => (string) $row['reminder_time'],
+                'scheduled_date' => $now->format('Y-m-d'),
+                'scheduled_time' => (string) $row['reminder_time'] . ':00',
+                'postponed_until' => $row['postponed_until'] ?? null,
+                'as_needed' => (bool) $row['as_needed'],
+            ];
+        }
+
+        return $rows;
+    }
+
     private function validateScheduleInputs(string $scheduleMode, array $doseTimes, ?int $intervalHours, ?string $firstDoseTime): void
     {
         if (!in_array($scheduleMode, ['fixed_times', 'interval'], true)) {
@@ -403,6 +603,24 @@ final class MedicationRepository
                 'status' => (string) $row['status'],
                 'note' => (string) $row['note'],
             ];
+        }
+
+        return $map;
+    }
+
+    private function activePostponesForDate(string $date): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT medication_id, scheduled_time, postponed_until
+             FROM dose_postpones
+             WHERE scheduled_for_date = :date
+               AND resolved_at IS NULL'
+        );
+        $statement->execute(['date' => $date]);
+        $map = [];
+        foreach ($statement->fetchAll() as $row) {
+            $key = (int) $row['medication_id'] . '|' . substr((string) $row['scheduled_time'], 0, 5);
+            $map[$key] = (string) $row['postponed_until'];
         }
 
         return $map;
@@ -555,6 +773,109 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureTimeFormatColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'time_format'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format ENUM('24h', '12h') NOT NULL DEFAULT '24h' AFTER schedule_mode");
+                }
+                return;
+            }
+
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'time_format') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format TEXT NOT NULL DEFAULT '24h'");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureSupportTables(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS app_settings (
+                        setting_key VARCHAR(120) PRIMARY KEY,
+                        setting_value VARCHAR(255) NOT NULL,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB"
+                );
+                $this->db->exec(
+                    "INSERT INTO app_settings (setting_key, setting_value)
+                     VALUES ('missed_grace_minutes', '60')
+                     ON DUPLICATE KEY UPDATE setting_value = setting_value"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS dose_postpones (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        scheduled_for_date DATE NOT NULL,
+                        scheduled_time TIME NOT NULL,
+                        postponed_until DATETIME NOT NULL,
+                        resolved_at DATETIME NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_postpone_dose (medication_id, scheduled_for_date, scheduled_time),
+                        INDEX idx_postpone_due (postponed_until, resolved_at),
+                        CONSTRAINT fk_dose_postpones_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS app_settings (
+                        setting_key TEXT PRIMARY KEY,
+                        setting_value TEXT NOT NULL,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                $this->db->exec(
+                    "INSERT INTO app_settings (setting_key, setting_value)
+                     VALUES ('missed_grace_minutes', '60')
+                     ON CONFLICT(setting_key) DO NOTHING"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS dose_postpones (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        scheduled_for_date TEXT NOT NULL,
+                        scheduled_time TEXT NOT NULL,
+                        postponed_until TEXT NOT NULL,
+                        resolved_at TEXT NULL,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (medication_id, scheduled_for_date, scheduled_time)
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails; runtime errors will surface if unresolved.
         }
     }
 }
