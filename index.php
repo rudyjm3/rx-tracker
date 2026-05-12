@@ -394,6 +394,12 @@ foreach ($recentLogs as $log) {
         </label>
         <button type="submit">Save settings</button>
       </form>
+      <hr>
+      <div class="row-actions">
+        <button type="button" class="secondary" data-enable-reminders>Enable reminders</button>
+        <span class="muted" data-reminder-status>Background push reminders are currently disabled on this device.</span>
+      </div>
+      <div class="in-app-alert" data-in-app-alert hidden></div>
     </section>
     <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
   </main>
@@ -533,15 +539,6 @@ foreach ($recentLogs as $log) {
 <?php exit; ?>
 <?php endif; ?>
 
-  <section class="panel reminder-panel">
-    <div class="panel-heading"><h2>Reminders</h2></div>
-    <div class="row-actions">
-      <button type="button" class="secondary" data-enable-reminders>Enable reminders</button>
-      <span class="muted">Grace period: <?= e((string) $graceMinutes) ?> minutes</span>
-    </div>
-    <div class="in-app-alert" data-in-app-alert hidden></div>
-  </section>
-
   <?php if ($lowSupplyMeds !== []): ?>
   <div class="warning-banner" role="alert">
     <?php foreach ($lowSupplyMeds as $lowMed): ?>
@@ -549,6 +546,7 @@ foreach ($recentLogs as $log) {
     <?php endforeach; ?>
   </div>
   <?php endif; ?>
+
 
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel medication-list-panel is-collapsed" data-medication-plan>

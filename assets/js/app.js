@@ -207,6 +207,40 @@ const savePushSubscription = async (subscription) => {
   }
 };
 
+const removePushSubscription = async (endpoint) => {
+  const params = new URLSearchParams();
+  params.set('csrf_token', getCsrfToken());
+  params.set('action', 'remove_push_subscription');
+  params.set('endpoint', endpoint);
+  const response = await window.fetch('index.php', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to remove push subscription.');
+  }
+};
+
+const setReminderToggleState = (enabled) => {
+  if (!enableRemindersButton) return;
+  enableRemindersButton.textContent = enabled ? 'Disable reminders' : 'Enable reminders';
+  if (!reminderStatus) return;
+  reminderStatus.textContent = enabled
+    ? 'Background push reminders are enabled on this device.'
+    : 'Background push reminders are currently disabled on this device.';
+};
+
+const currentPushSubscription = async () => {
+  if (!('serviceWorker' in navigator)) return null;
+  if (!swRegistration) {
+    await registerServiceWorker();
+  }
+  if (!swRegistration) return null;
+  return swRegistration.pushManager.getSubscription();
+};
+
 const readSeenMap = () => {
   try {
     return JSON.parse(window.localStorage.getItem('rxtracker_reminder_seen') ?? '{}');
@@ -339,6 +373,7 @@ alarmSnoozeBtn?.addEventListener('click', () => {
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
+const reminderStatus = document.querySelector('[data-reminder-status]');
 
 const showFallbackAlert = (items) => {
   if (!inAppAlert) return;
@@ -409,26 +444,35 @@ const pollDueReminders = async () => {
 };
 
 enableRemindersButton?.addEventListener('click', async () => {
-  if (!('Notification' in window)) {
-    window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-    pollDueReminders();
-    return;
-  }
-  const permission = Notification.permission === 'default'
-    ? await Notification.requestPermission()
-    : Notification.permission;
-  window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-  if (permission !== 'granted') {
-    window.alert('Notifications were not enabled. In-app reminders will still appear while this page is open.');
-    pollDueReminders();
-    return;
-  }
   try {
-    if (!swRegistration) {
-      await registerServiceWorker();
+    const existing = await currentPushSubscription();
+    if (existing) {
+      const endpoint = existing.endpoint;
+      await existing.unsubscribe();
+      await removePushSubscription(endpoint);
+      window.localStorage.removeItem('rxtracker_alarm_enabled');
+      setReminderToggleState(false);
+      window.alert('Background reminders disabled for this device and browser profile.');
+      return;
     }
-    if (!swRegistration) {
+
+    if (!('Notification' in window)) {
+      window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
+      window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+      pollDueReminders();
+      return;
+    }
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+    if (permission !== 'granted') {
+      window.alert('Notifications were not enabled. In-app reminders will still appear while this page is open.');
+      pollDueReminders();
+      return;
+    }
+    const activeRegistration = await registerServiceWorker();
+    if (!activeRegistration) {
       window.alert('Reminders enabled (in-app alarm active). Push notifications require a service worker.');
       pollDueReminders();
       return;
@@ -439,18 +483,30 @@ enableRemindersButton?.addEventListener('click', async () => {
       pollDueReminders();
       return;
     }
-    const existing = await swRegistration.pushManager.getSubscription();
-    const subscription = existing ?? await swRegistration.pushManager.subscribe({
+    const subscription = await activeRegistration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     });
     await savePushSubscription(subscription);
+    setReminderToggleState(true);
     window.alert('Reminders enabled for this device and browser profile.');
   } catch (error) {
-    window.alert('Could not enable push notifications. In-app reminders are still active.');
+    window.alert('Could not update reminders on this device. Check browser/site permissions and try again.');
   }
   pollDueReminders();
 });
+
+const initializeReminderToggle = async () => {
+  if (!enableRemindersButton) return;
+  try {
+    const subscription = await currentPushSubscription();
+    setReminderToggleState(Boolean(subscription));
+  } catch (error) {
+    setReminderToggleState(false);
+  }
+};
+
+initializeReminderToggle();
 
 if (document.querySelector('.schedule-list')) {
   registerServiceWorker().catch(() => {
