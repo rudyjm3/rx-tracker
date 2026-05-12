@@ -5,6 +5,10 @@ declare(strict_types=1);
 require __DIR__ . '/config/database.php';
 require __DIR__ . '/includes/helpers.php';
 require __DIR__ . '/includes/MedicationRepository.php';
+require __DIR__ . '/includes/PushNotificationService.php';
+if (is_file(__DIR__ . '/vendor/autoload.php')) {
+    require __DIR__ . '/vendor/autoload.php';
+}
 
 function parseTimeValue(string $raw, string $format): string
 {
@@ -85,6 +89,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'poll_due') {
         'ok' => true,
         'grace_minutes' => $graceMinutes,
         'items' => $repository->dueReminderItems($now),
+    ], JSON_THROW_ON_ERROR);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_public_key') {
+    header('Content-Type: application/json; charset=utf-8');
+    $publicKey = trim((string) getenv('PUSH_VAPID_PUBLIC_KEY'));
+    echo json_encode([
+        'ok' => $publicKey !== '',
+        'public_key' => $publicKey,
     ], JSON_THROW_ON_ERROR);
     exit;
 }
@@ -172,7 +186,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: index.php?page=settings&notice=Settings saved');
             exit;
         }
+
+        if ($action === 'save_push_subscription') {
+            header('Content-Type: application/json; charset=utf-8');
+            $endpoint = trim((string) ($_POST['endpoint'] ?? ''));
+            $p256dh = trim((string) ($_POST['p256dh'] ?? ''));
+            $auth = trim((string) ($_POST['auth'] ?? ''));
+            $repository->upsertPushSubscription($endpoint, $p256dh, $auth, (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+
+        if ($action === 'remove_push_subscription') {
+            header('Content-Type: application/json; charset=utf-8');
+            $endpoint = trim((string) ($_POST['endpoint'] ?? ''));
+            $repository->removePushSubscriptionByEndpoint($endpoint);
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
     } catch (Throwable $exception) {
+        if (in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription'], true)) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_THROW_ON_ERROR);
+            exit;
+        }
         $error = $exception->getMessage();
     }
 }

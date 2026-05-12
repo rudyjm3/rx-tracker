@@ -85,3 +85,26 @@ CREATE TABLE IF NOT EXISTS dose_postpones (
         FOREIGN KEY (medication_id) REFERENCES medications (id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    endpoint TEXT NOT NULL,
+    p256dh_key VARCHAR(255) NOT NULL,
+    auth_key VARCHAR(255) NOT NULL,
+    user_agent VARCHAR(255) NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_push_endpoint (endpoint(191))
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS push_delivery_log (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    medication_id INT UNSIGNED NOT NULL,
+    scheduled_for_date DATE NOT NULL,
+    scheduled_time TIME NOT NULL,
+    sent_at DATETIME NOT NULL,
+    UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time),
+    CONSTRAINT fk_push_delivery_medication
+        FOREIGN KEY (medication_id) REFERENCES medications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
