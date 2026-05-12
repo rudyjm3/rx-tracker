@@ -157,10 +157,55 @@ const alarmSnoozeBtn = document.querySelector('[data-alarm-snooze]');
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
+let swRegistration = null;
 const ALARM_RENOTIFY_MS = 5 * 60 * 1000;
 
 const getCsrfToken = () =>
   document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+};
+
+const registerServiceWorker = async () => {
+  if (!('serviceWorker' in navigator)) return null;
+  swRegistration = await navigator.serviceWorker.register('/sw.js');
+  return swRegistration;
+};
+
+const fetchPushPublicKey = async () => {
+  const response = await window.fetch('index.php?action=push_public_key', { credentials: 'same-origin' });
+  if (!response.ok) return '';
+  const payload = await response.json();
+  if (!payload || payload.ok !== true || typeof payload.public_key !== 'string') return '';
+  return payload.public_key;
+};
+
+const savePushSubscription = async (subscription) => {
+  const json = subscription.toJSON();
+  const params = new URLSearchParams();
+  params.set('csrf_token', getCsrfToken());
+  params.set('action', 'save_push_subscription');
+  params.set('endpoint', json.endpoint ?? '');
+  params.set('p256dh', json.keys?.p256dh ?? '');
+  params.set('auth', json.keys?.auth ?? '');
+  const response = await window.fetch('index.php', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to save push subscription.');
+  }
+};
 
 const readSeenMap = () => {
   try {
@@ -367,21 +412,50 @@ enableRemindersButton?.addEventListener('click', async () => {
   if (!('Notification' in window)) {
     window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
     window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+    pollDueReminders();
     return;
   }
-  if (Notification.permission === 'granted') {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-    window.alert('Reminders are already enabled. In-app alarm is now active.');
+  const permission = Notification.permission === 'default'
+    ? await Notification.requestPermission()
+    : Notification.permission;
+  window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+  if (permission !== 'granted') {
+    window.alert('Notifications were not enabled. In-app reminders will still appear while this page is open.');
+    pollDueReminders();
     return;
   }
-  const permission = await Notification.requestPermission();
-  if (permission === 'granted' || permission === 'denied') {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+  try {
+    if (!swRegistration) {
+      await registerServiceWorker();
+    }
+    if (!swRegistration) {
+      window.alert('Reminders enabled (in-app alarm active). Push notifications require a service worker.');
+      pollDueReminders();
+      return;
+    }
+    const vapidPublicKey = await fetchPushPublicKey();
+    if (!vapidPublicKey) {
+      window.alert('Reminders enabled (in-app alarm active). Push key not yet configured on the server.');
+      pollDueReminders();
+      return;
+    }
+    const existing = await swRegistration.pushManager.getSubscription();
+    const subscription = existing ?? await swRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+    await savePushSubscription(subscription);
+    window.alert('Reminders enabled for this device and browser profile.');
+  } catch (error) {
+    window.alert('Could not enable push notifications. In-app reminders are still active.');
   }
   pollDueReminders();
 });
 
 if (document.querySelector('.schedule-list')) {
+  registerServiceWorker().catch(() => {
+    // keep reminder polling working even if SW registration fails
+  });
   pollDueReminders();
   window.setInterval(pollDueReminders, 30000);
 }
