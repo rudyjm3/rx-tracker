@@ -59,9 +59,9 @@ final class PushNotificationService
         foreach ($due as $item) {
             $payload = json_encode([
                 'title' => (string) $item['name'] . ' (' . (string) $item['dose'] . ')',
-                'body' => (string) ($item['postponed_until'] ? 'Postponed dose due now' : 'Dose due now'),
+                'body' => (string) ($item['postponed_until'] ? 'Snoozed dose due now' : 'Dose due now'),
                 'tag' => 'dose|' . (int) $item['medication_id'] . '|' . (string) $item['scheduled_date'] . '|' . (string) $item['scheduled_time'],
-                'url' => '/index.php',
+                'url' => 'index.php',
             ], JSON_THROW_ON_ERROR);
 
             foreach ($subscriptions as $subscriptionRow) {
