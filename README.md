@@ -21,6 +21,7 @@ RxTracker validates the core product experience for medication tracking:
 - PHP 8.1 or newer with the PDO MySQL extension enabled.
 - MySQL 8.0 or compatible MariaDB.
 - A local PHP-compatible web server.
+- Composer (for web push dependencies).
 
 ## Database setup
 
@@ -39,6 +40,15 @@ DB_PORT=3306
 DB_DATABASE=rx_tracker
 DB_USERNAME=root
 DB_PASSWORD=
+PUSH_VAPID_PUBLIC_KEY=
+PUSH_VAPID_PRIVATE_KEY=
+PUSH_VAPID_SUBJECT=mailto:you@example.com
+```
+
+Install PHP dependencies:
+
+```bash
+composer install
 ```
 
 ## Running locally
@@ -50,6 +60,21 @@ php -S localhost:8000
 ```
 
 Then open <http://localhost:8000/index.php>.
+
+## Background push notifications
+
+RxTracker now supports web push delivery through a service worker when the app page is closed.
+
+1. Configure `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY`, and `PUSH_VAPID_SUBJECT`.
+2. Install dependencies: `composer install`.
+3. Click `Enable reminders` in the app to subscribe the browser.
+4. Run the sender script on a schedule (every minute recommended):
+
+```bash
+php scripts/send_due_push.php
+```
+
+On Linux/macOS, use cron. On Windows, use Task Scheduler.
 
 ## Testing
 

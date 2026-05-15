@@ -1,0 +1,14 @@
+{
+  "name": "rx-tracker/rx-tracker",
+  "description": "Medication tracking and reminders web app",
+  "type": "project",
+  "require": {
+    "php": "^8.1",
+    "minishlink/web-push": "^9.0"
+  },
+  "autoload": {
+    "classmap": [
+      "includes/"
+    ]
+  }
+}
