@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/load_env.php';
+
 function env_value(string $key, string $default = ''): string
 {
     $value = getenv($key);

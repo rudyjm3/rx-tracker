@@ -101,7 +101,6 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
-        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -122,7 +121,7 @@ final class MedicationRepository
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
-                'time_format' => $timeFormat,
+                'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -146,7 +145,6 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
-        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -179,7 +177,7 @@ final class MedicationRepository
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
-                'time_format' => $timeFormat,
+                'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -899,7 +897,7 @@ final class MedicationRepository
             if ($driver === 'mysql') {
                 $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'time_format'");
                 if ($check !== false && $check->fetchColumn() === false) {
-                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format ENUM('24h', '12h') NOT NULL DEFAULT '24h' AFTER schedule_mode");
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format ENUM('24h', '12h') NOT NULL DEFAULT '12h' AFTER schedule_mode");
                 }
                 return;
             }
@@ -917,7 +915,7 @@ final class MedicationRepository
                     }
                 }
                 if (!$hasColumn) {
-                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format TEXT NOT NULL DEFAULT '24h'");
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format TEXT NOT NULL DEFAULT '12h'");
                 }
             }
         } catch (Throwable) {
