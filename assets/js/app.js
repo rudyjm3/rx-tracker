@@ -441,13 +441,6 @@ const notifyItems = (items) => {
     });
     writeSeenMap(seenMap);
     showFallbackAlert([]);
-  } else {
-    showFallbackAlert(unnotified);
-    unnotified.forEach((item) => {
-      const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-      seenMap[key] = nowIso;
-    });
-    writeSeenMap(seenMap);
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
