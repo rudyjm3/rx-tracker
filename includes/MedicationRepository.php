@@ -456,14 +456,20 @@ final class MedicationRepository
                ON CONFLICT(medication_id, scheduled_for_date, scheduled_time)
                DO UPDATE SET postponed_until = excluded.postponed_until, resolved_at = NULL'
             : 'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
-               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
-               ON DUPLICATE KEY UPDATE postponed_until = :postponed_until, resolved_at = NULL';
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :insert_postponed_until, NULL)
+               ON DUPLICATE KEY UPDATE postponed_until = :update_postponed_until, resolved_at = NULL';
         $statement = $this->db->prepare($sql);
-        $statement->execute([
+        $statement->execute($driver === 'sqlite' ? [
             'medication_id' => $medicationId,
             'scheduled_for_date' => $scheduledDate,
             'scheduled_time' => $scheduledTime,
             'postponed_until' => $postponedUntil,
+        ] : [
+            'medication_id' => $medicationId,
+            'scheduled_for_date' => $scheduledDate,
+            'scheduled_time' => $scheduledTime,
+            'insert_postponed_until' => $postponedUntil,
+            'update_postponed_until' => $postponedUntil,
         ]);
     }
 

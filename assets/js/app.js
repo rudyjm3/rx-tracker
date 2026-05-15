@@ -306,8 +306,6 @@ const notifyItems = (items) => {
       seenMap[key] = nowIso;
     });
     writeSeenMap(seenMap);
-    showFallbackAlert([]);
-    return;
   }
 
   showFallbackAlert(unseen);
