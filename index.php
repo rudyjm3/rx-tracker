@@ -68,6 +68,48 @@ function timeToMinutes(string $time): int
     return ($hour * 60) + $minute;
 }
 
+function isLate(array $log, int $graceMinutes): bool
+{
+    if ((string) $log['status'] !== 'taken') {
+        return false;
+    }
+    $takenAt = (string) ($log['taken_at'] ?? '');
+    $scheduledDate = (string) ($log['scheduled_for_date'] ?? '');
+    $scheduledTime = (string) ($log['scheduled_time'] ?? '');
+    if ($takenAt === '' || $scheduledDate === '' || $scheduledTime === '') {
+        return false;
+    }
+    try {
+        $scheduled = new DateTimeImmutable($scheduledDate . ' ' . $scheduledTime);
+        $threshold = $scheduled->modify('+' . $graceMinutes . ' minutes');
+        $taken = new DateTimeImmutable($takenAt);
+        return $taken > $threshold;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
+function daysUntilRunout(array $medication): ?int
+{
+    $pillCount = (int) ($medication['pill_count'] ?? 0);
+    if ($pillCount <= 0) {
+        return 0;
+    }
+    $dosesPerDay = 0;
+    if ((string) $medication['schedule_mode'] === 'fixed_times') {
+        $dosesPerDay = count($medication['times'] ?? []);
+    } elseif ((string) $medication['schedule_mode'] === 'interval') {
+        $intervalHours = (int) ($medication['interval_hours'] ?? 0);
+        if ($intervalHours > 0) {
+            $dosesPerDay = (int) max(1, round(24 / $intervalHours));
+        }
+    }
+    if ($dosesPerDay <= 0) {
+        return null;
+    }
+    return (int) floor($pillCount / $dosesPerDay);
+}
+
 $repository = new MedicationRepository(db());
 $error = null;
 $notice = null;
@@ -89,7 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'poll_due') {
     exit;
 }
 
+$jsonResponse = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $jsonResponse = post_string('json_response') === '1';
     try {
         if (!verify_csrf_token(post_string('csrf_token'))) {
             throw new RuntimeException('Session expired, refresh and retry.');
@@ -132,6 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($action === 'mark_dose') {
             $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'));
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
@@ -141,6 +190,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Choose a medication first.');
             }
             $repository->logDoseNow($medicationId, post_string('note'));
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
@@ -162,6 +216,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 post_string('scheduled_time'),
                 $delayMinutes
             );
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+                exit;
+            }
             header('Location: index.php?notice=Dose postponed');
             exit;
         }
@@ -173,6 +232,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     } catch (Throwable $exception) {
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => $exception->getMessage()], JSON_THROW_ON_ERROR);
+            exit;
+        }
         $error = $exception->getMessage();
     }
 }
@@ -217,20 +281,44 @@ if ($nextDose !== null) {
 $editId = (int) ($_GET['edit'] ?? 0);
 $editing = $editId > 0 ? $repository->findMedication($editId) : null;
 
+$lowSupplyMeds = array_values(array_filter($medications, static fn(array $m): bool =>
+    (int) ($m['low_supply_threshold'] ?? 0) > 0 &&
+    (int) ($m['pill_count'] ?? 0) <= (int) ($m['low_supply_threshold'] ?? 0)
+));
+
+$onTimeCount = 0;
+$lateCount = 0;
+foreach ($recentLogs as $log) {
+    if ((string) $log['status'] === 'taken') {
+        if (isLate($log, $graceMinutes)) {
+            $lateCount++;
+        } else {
+            $onTimeCount++;
+        }
+    }
+}
+
 ?>
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1269ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
   <title>RxTracker</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js" defer></script>
 </head>
 <body>
 <main class="app-shell">
   <nav class="top-nav">
-    <a href="index.php"<?= $page !== 'settings' ? ' class="is-active"' : '' ?>>Dashboard</a>
+    <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+    <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
+    <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
     <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
   </nav>
 
@@ -244,6 +332,9 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
       <span class="stat-label">Today's adherence</span>
       <strong><?= e((string) $adherence) ?>%</strong>
       <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
+      <?php if ($onTimeCount + $lateCount > 0): ?>
+        <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?></span>
+      <?php endif; ?>
       <span>Missed required doses today: <?= e((string) $missedCount) ?></span>
     </div>
   </section>
@@ -275,6 +366,135 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
   ?>
   <?php endif; ?>
 
+  <?php if ($page === 'calendar'): ?>
+  <?php
+    $monthParam = (string) ($_GET['m'] ?? date('Y-m'));
+    if (!preg_match('/^\d{4}-(?:0[1-9]|1[0-2])$/', $monthParam)) {
+        $monthParam = date('Y-m');
+    }
+    $monthStart = $monthParam . '-01';
+    $calMonthDt = new DateTimeImmutable($monthStart);
+    $monthEnd = $calMonthDt->modify('last day of this month')->format('Y-m-d');
+    $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
+    $prevMonth = $calMonthDt->modify('-1 month')->format('Y-m');
+    $nextMonth = $calMonthDt->modify('+1 month')->format('Y-m');
+    $monthLabel = $calMonthDt->format('F Y');
+    $firstDow = (int) $calMonthDt->format('w');
+    $daysInMonth = (int) $calMonthDt->modify('last day of this month')->format('j');
+    $todayDate = date('Y-m-d');
+  ?>
+  <section class="panel calendar-section">
+    <div class="panel-heading calendar-nav">
+      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($prevMonth) ?>">&lsaquo; Prev</a>
+      <h2><?= e($monthLabel) ?></h2>
+      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($nextMonth) ?>">Next &rsaquo;</a>
+    </div>
+    <div class="calendar-grid">
+      <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dayName): ?>
+        <div class="calendar-day calendar-day--header"><strong><?= e($dayName) ?></strong></div>
+      <?php endforeach; ?>
+      <?php for ($i = 0; $i < $firstDow; $i++): ?>
+        <div class="calendar-day calendar-day--empty"></div>
+      <?php endfor; ?>
+      <?php for ($day = 1; $day <= $daysInMonth; $day++): ?>
+        <?php
+          $dateStr = sprintf('%s-%02d', $monthParam, $day);
+          $marker = $calendarMarkers[$dateStr] ?? ['taken' => 0, 'skipped' => 0, 'missed' => 0];
+          $isFuture = $dateStr > $todayDate;
+          $isToday = $dateStr === $todayDate;
+          if ($isFuture) {
+              $dayClass = 'calendar-day--future';
+          } elseif ($marker['missed'] > 0) {
+              $dayClass = 'calendar-day--missed';
+          } elseif ($marker['skipped'] > 0 && $marker['taken'] === 0) {
+              $dayClass = 'calendar-day--skipped';
+          } elseif ($marker['taken'] > 0) {
+              $dayClass = 'calendar-day--taken';
+          } else {
+              $dayClass = 'calendar-day--empty';
+          }
+        ?>
+        <div class="calendar-day <?= e($dayClass) ?><?= $isToday ? ' calendar-day--today' : '' ?>">
+          <strong><?= e((string) $day) ?></strong>
+          <?php if (!$isFuture && ($marker['taken'] > 0 || $marker['skipped'] > 0 || $marker['missed'] > 0)): ?>
+            <small>
+              <?php if ($marker['taken'] > 0): ?><span class="marker-taken"><?= e((string) $marker['taken']) ?>T</span><?php endif; ?>
+              <?php if ($marker['skipped'] > 0): ?><span class="marker-skipped"><?= e((string) $marker['skipped']) ?>S</span><?php endif; ?>
+              <?php if ($marker['missed'] > 0): ?><span class="marker-missed"><?= e((string) $marker['missed']) ?>M</span><?php endif; ?>
+            </small>
+          <?php endif; ?>
+        </div>
+      <?php endfor; ?>
+    </div>
+    <div class="calendar-legend">
+      <span class="legend-item"><span class="legend-dot legend-dot--taken"></span>Taken</span>
+      <span class="legend-item"><span class="legend-dot legend-dot--skipped"></span>Skipped</span>
+      <span class="legend-item"><span class="legend-dot legend-dot--missed"></span>Missed</span>
+    </div>
+  </section>
+  <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
+</main>
+</body>
+</html>
+<?php exit; ?>
+<?php endif; ?>
+
+  <?php if ($page === 'export'): ?>
+  <section class="panel export-section">
+    <div class="panel-heading">
+      <h2>Medication List &mdash; <?= e(date('F j, Y')) ?></h2>
+      <button type="button" class="no-print" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+    <table class="export-table">
+      <thead>
+        <tr>
+          <th>Medication</th>
+          <th>Dose</th>
+          <th>Schedule</th>
+          <th>Instructions</th>
+          <th>Pills left</th>
+          <th>Refill at</th>
+          <th>Est. days left</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($medications as $med): ?>
+          <?php $exportDays = daysUntilRunout($med); ?>
+          <tr>
+            <td><?= e((string) $med['name']) ?></td>
+            <td><?= e((string) $med['dose']) ?></td>
+            <td>
+              <?php if ((string) $med['schedule_mode'] === 'interval'): ?>
+                Every <?= e((string) $med['interval_hours']) ?>h from <?= e(displayTimeByFormat((string) $med['first_dose_time'], (string) ($med['time_format'] ?? '24h'))) ?>
+              <?php else: ?>
+                <?= e(implode(', ', array_map(static fn(string $t): string => displayTimeByFormat($t, (string) ($med['time_format'] ?? '24h')), $med['times']))) ?>
+              <?php endif; ?>
+            </td>
+            <td><?= e((string) ($med['instructions'] ?: '—')) ?></td>
+            <td><?= e((string) $med['pill_count']) ?></td>
+            <td><?= e((string) $med['low_supply_threshold']) ?></td>
+            <td>
+              <?php if ($exportDays !== null): ?>
+                ~<?= e((string) $exportDays) ?> days
+              <?php else: ?>
+                —
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        <?php if ($medications === []): ?>
+          <tr><td colspan="7">No active medications.</td></tr>
+        <?php endif; ?>
+      </tbody>
+    </table>
+  </section>
+  <p class="disclaimer no-print">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
+</main>
+</body>
+</html>
+<?php exit; ?>
+<?php endif; ?>
+
   <section class="panel reminder-panel">
     <div class="panel-heading"><h2>Reminders</h2></div>
     <div class="row-actions">
@@ -283,6 +503,14 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
     </div>
     <div class="in-app-alert" data-in-app-alert hidden></div>
   </section>
+
+  <?php if ($lowSupplyMeds !== []): ?>
+  <div class="warning-banner" role="alert">
+    <?php foreach ($lowSupplyMeds as $lowMed): ?>
+      <p><strong><?= e((string) $lowMed['name']) ?></strong> &mdash; only <?= e((string) $lowMed['pill_count']) ?> pill<?= (int) $lowMed['pill_count'] === 1 ? '' : 's' ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?>)</p>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel medication-list-panel is-collapsed" data-medication-plan>
@@ -330,6 +558,7 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
               <div class="empty-state"><p>No active medications yet.</p></div>
             <?php endif; ?>
             <?php foreach ($medications as $medication): ?>
+              <?php $daysLeft = daysUntilRunout($medication); ?>
               <div class="medication-row medication-row-plan">
                 <div class="medication-content">
                   <strong><?= e((string) $medication['name']) ?></strong>
@@ -343,6 +572,9 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
                     <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
                   </p>
                   <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+                  <?php if ($daysLeft !== null): ?>
+                    <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
+                  <?php endif; ?>
                 </div>
                 <div class="row-actions medication-actions-top">
                   <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
@@ -456,7 +688,33 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
     </article>
   </section>
 
-  <section class="panel history-panel" data-history-panel><div class="panel-heading"><h2>Recent history</h2></div><ol class="history-list" data-history-list><?php foreach ($recentLogs as $log): ?><li><span><?= e(to12h((string) $log['scheduled_time'])) ?></span><div><strong><?= e((string) $log['name']) ?></strong><p><?= e((string) $log['status']) ?></p></div></li><?php endforeach; ?></ol><?php if (count($recentLogs) > 4): ?><button type="button" class="history-view-more" data-history-toggle>View more</button><?php endif; ?></section>
+  <section class="panel history-panel" data-history-panel>
+    <div class="panel-heading"><h2>Recent history</h2></div>
+    <ol class="history-list" data-history-list>
+      <?php foreach ($recentLogs as $log): ?>
+        <li>
+          <span><?= e(to12h((string) $log['scheduled_time'])) ?></span>
+          <div>
+            <strong><?= e((string) $log['name']) ?></strong>
+            <p>
+              <?php if ((string) $log['status'] === 'taken' && isLate($log, $graceMinutes)): ?>
+                <span class="warn-pill">Taken (late)</span>
+              <?php elseif ((string) $log['status'] === 'taken'): ?>
+                <span class="done-pill">Taken</span>
+              <?php elseif ((string) $log['status'] === 'skipped'): ?>
+                <span class="warn-pill">Skipped</span>
+              <?php elseif ((string) $log['status'] === 'missed'): ?>
+                <span class="alert-pill">Missed</span>
+              <?php else: ?>
+                <?= e((string) $log['status']) ?>
+              <?php endif; ?>
+            </p>
+          </div>
+        </li>
+      <?php endforeach; ?>
+    </ol>
+    <?php if (count($recentLogs) > 4): ?><button type="button" class="history-view-more" data-history-toggle>View more</button><?php endif; ?>
+  </section>
   <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 
@@ -531,6 +789,27 @@ $editing = $editId > 0 ? $repository->findMedication($editId) : null;
       </label>
       <button type="submit">Confirm postpone</button>
     </form>
+  </div>
+</div>
+
+<div class="alarm-overlay" data-alarm-overlay aria-modal="true" role="alertdialog" aria-labelledby="alarm-title">
+  <div class="alarm-dialog">
+    <div class="alarm-pulse-ring"></div>
+    <p class="alarm-eyebrow">Dose Due Now</p>
+    <h2 id="alarm-title" class="alarm-med-name" data-alarm-med-name></h2>
+    <p class="alarm-med-dose" data-alarm-med-dose></p>
+    <div class="alarm-actions">
+      <button type="button" class="alarm-take-btn" data-alarm-take>Take Now</button>
+      <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip Dose</button>
+      <div class="alarm-snooze-row">
+        <select data-alarm-snooze-minutes class="alarm-snooze-select">
+          <option value="5">5 min</option>
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+        </select>
+        <button type="button" class="secondary" data-alarm-snooze>Snooze</button>
+      </div>
+    </div>
   </div>
 </div>
 </body>

@@ -145,13 +145,27 @@ historyToggle?.addEventListener('click', () => {
   historyToggle.textContent = expanded ? 'View less' : 'View more';
 });
 
-const enableRemindersButton = document.querySelector('[data-enable-reminders]');
-const inAppAlert = document.querySelector('[data-in-app-alert]');
+// ── Alarm engine ──────────────────────────────────────────────────────────────
+
+const alarmOverlay = document.querySelector('[data-alarm-overlay]');
+const alarmMedNameEl = document.querySelector('[data-alarm-med-name]');
+const alarmMedDoseEl = document.querySelector('[data-alarm-med-dose]');
+const alarmSnoozeMinutesEl = document.querySelector('[data-alarm-snooze-minutes]');
+const alarmTakeBtn = document.querySelector('[data-alarm-take]');
+const alarmSkipBtn = document.querySelector('[data-alarm-skip]');
+const alarmSnoozeBtn = document.querySelector('[data-alarm-snooze]');
+
+let alarmAudioCtx = null;
+let alarmBeepTimer = null;
+const ALARM_RENOTIFY_MS = 5 * 60 * 1000;
+
+const getCsrfToken = () =>
+  document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 
 const readSeenMap = () => {
   try {
     return JSON.parse(window.localStorage.getItem('rxtracker_reminder_seen') ?? '{}');
-  } catch (error) {
+  } catch {
     return {};
   }
 };
@@ -159,6 +173,127 @@ const readSeenMap = () => {
 const writeSeenMap = (map) => {
   window.localStorage.setItem('rxtracker_reminder_seen', JSON.stringify(map));
 };
+
+const isAlarmEnabled = () =>
+  window.localStorage.getItem('rxtracker_alarm_enabled') === '1';
+
+const scheduleBeep = (ctx, startTime, freq, duration) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.25, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.01);
+};
+
+const playAlarmPattern = () => {
+  if (!alarmAudioCtx) return;
+  try {
+    const now = alarmAudioCtx.currentTime;
+    scheduleBeep(alarmAudioCtx, now, 880, 0.18);
+    scheduleBeep(alarmAudioCtx, now + 0.25, 880, 0.18);
+    scheduleBeep(alarmAudioCtx, now + 0.5, 1100, 0.28);
+    alarmBeepTimer = window.setTimeout(playAlarmPattern, 1400);
+  } catch {
+    // audio context may have closed
+  }
+};
+
+const startAlarmAudio = () => {
+  if (alarmAudioCtx) return;
+  try {
+    alarmAudioCtx = new AudioContext();
+    playAlarmPattern();
+  } catch {
+    // AudioContext unavailable (e.g. desktop without audio)
+  }
+};
+
+const stopAlarmAudio = () => {
+  if (alarmBeepTimer) {
+    clearTimeout(alarmBeepTimer);
+    alarmBeepTimer = null;
+  }
+  if (alarmAudioCtx) {
+    alarmAudioCtx.close().catch(() => {});
+    alarmAudioCtx = null;
+  }
+};
+
+const showAlarmOverlay = (item) => {
+  if (!alarmOverlay) return;
+  if (alarmMedNameEl) alarmMedNameEl.textContent = item.name;
+  if (alarmMedDoseEl) alarmMedDoseEl.textContent = item.dose;
+  alarmOverlay.dataset.alarmMedicationId = item.medication_id;
+  alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
+  alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
+  alarmOverlay.classList.add('is-active');
+  document.body.style.overflow = 'hidden';
+  if (isAlarmEnabled()) startAlarmAudio();
+};
+
+const hideAlarmOverlay = () => {
+  if (!alarmOverlay) return;
+  alarmOverlay.classList.remove('is-active');
+  document.body.style.overflow = '';
+  stopAlarmAudio();
+};
+
+const alarmAction = async (action, extra = {}) => {
+  const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
+  const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
+  const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action,
+    medication_id: medicationId,
+    scheduled_date: scheduledDate,
+    scheduled_time: scheduledTime,
+    ...extra,
+  });
+
+  try {
+    const resp = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      hideAlarmOverlay();
+      window.location.reload();
+      return;
+    }
+  } catch {
+    // fall through
+  }
+  hideAlarmOverlay();
+  window.location.reload();
+};
+
+alarmTakeBtn?.addEventListener('click', () => {
+  alarmAction('mark_dose', { status: 'taken', note: '' });
+});
+
+alarmSkipBtn?.addEventListener('click', () => {
+  alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
+});
+
+alarmSnoozeBtn?.addEventListener('click', () => {
+  const minutes = alarmSnoozeMinutesEl?.value ?? '5';
+  alarmAction('postpone_dose', { postpone_minutes: minutes });
+});
+
+// ── Reminders & polling ───────────────────────────────────────────────────────
+
+const enableRemindersButton = document.querySelector('[data-enable-reminders]');
+const inAppAlert = document.querySelector('[data-in-app-alert]');
 
 const showFallbackAlert = (items) => {
   if (!inAppAlert) return;
@@ -179,39 +314,41 @@ const notifyItems = (items) => {
   }
 
   const seenMap = readSeenMap();
-  const nowIso = new Date().toISOString();
-  const unseen = items.filter((item) => {
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+
+  const unnotified = items.filter((item) => {
     const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-    return !seenMap[key];
+    const lastSeen = seenMap[key];
+    if (!lastSeen) return true;
+    return now - new Date(lastSeen).getTime() > ALARM_RENOTIFY_MS;
   });
 
-  if (unseen.length === 0) {
-    showFallbackAlert([]);
-    return;
-  }
-
-  if ('Notification' in window && Notification.permission === 'granted') {
-    unseen.forEach((item) => {
-      const dueText = item.postponed_until
-        ? `Postponed dose due now`
-        : `Dose due now`;
-      new Notification(`${item.name} (${item.dose})`, {
-        body: dueText,
+  if (unnotified.length > 0) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      unnotified.forEach((item) => {
+        const dueText = item.postponed_until ? 'Postponed dose due now' : 'Dose due now';
+        new Notification(`${item.name} (${item.dose})`, { body: dueText });
+        const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+        seenMap[key] = nowIso;
       });
-      const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-      seenMap[key] = nowIso;
-    });
-    writeSeenMap(seenMap);
-    showFallbackAlert([]);
-    return;
+      writeSeenMap(seenMap);
+    } else {
+      showFallbackAlert(unnotified);
+      unnotified.forEach((item) => {
+        const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+        seenMap[key] = nowIso;
+      });
+      writeSeenMap(seenMap);
+      return;
+    }
   }
 
-  showFallbackAlert(unseen);
-  unseen.forEach((item) => {
-    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-    seenMap[key] = nowIso;
-  });
-  writeSeenMap(seenMap);
+  showFallbackAlert([]);
+
+  if (items.length > 0 && !alarmOverlay?.classList.contains('is-active')) {
+    showAlarmOverlay(items[0]);
+  }
 };
 
 const pollDueReminders = async () => {
@@ -221,7 +358,7 @@ const pollDueReminders = async () => {
     const payload = await response.json();
     if (!payload || payload.ok !== true || !Array.isArray(payload.items)) return;
     notifyItems(payload.items);
-  } catch (error) {
+  } catch {
     // swallow polling errors
   }
 };
@@ -229,13 +366,19 @@ const pollDueReminders = async () => {
 enableRemindersButton?.addEventListener('click', async () => {
   if (!('Notification' in window)) {
     window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
     return;
   }
   if (Notification.permission === 'granted') {
-    window.alert('Reminders are already enabled.');
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+    window.alert('Reminders are already enabled. In-app alarm is now active.');
     return;
   }
-  await Notification.requestPermission();
+  const permission = await Notification.requestPermission();
+  if (permission === 'granted' || permission === 'denied') {
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+  }
+  pollDueReminders();
 });
 
 if (document.querySelector('.schedule-list')) {
@@ -246,6 +389,8 @@ if (document.querySelector('.schedule-list')) {
 if (medicationModal?.classList.contains('is-open')) {
   document.body.style.overflow = 'hidden';
 }
+
+// ── Medication form schedule/time-format UI ───────────────────────────────────
 
 const medicationForm = document.querySelector('.medication-form');
 

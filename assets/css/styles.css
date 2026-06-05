@@ -550,6 +550,226 @@ select:focus,
   color: #9f1e1e;
 }
 
+.calendar-day--header {
+  background: transparent;
+  border-color: transparent;
+  text-align: center;
+}
+
+.calendar-day--taken {
+  background: #effaf3;
+  border-color: #afe1bf;
+}
+
+.calendar-day--missed {
+  background: #fff2f2;
+  border-color: #ffa8a8;
+}
+
+.calendar-day--skipped {
+  background: #fff8e8;
+  border-color: #f5d68b;
+}
+
+.calendar-day--future {
+  background: #f8fafc;
+  border-color: #e7edf6;
+  opacity: 0.55;
+}
+
+.calendar-day--empty {
+  background: #f8fafc;
+  border-color: transparent;
+}
+
+.calendar-day--today {
+  box-shadow: 0 0 0 2px #1269ff;
+}
+
+.calendar-section {
+  margin-top: 1.25rem;
+}
+
+.calendar-nav {
+  justify-content: space-between;
+}
+
+.calendar-nav-btn {
+  border: 1px solid #dce4f0;
+  border-radius: 0.8rem;
+  color: #21304a;
+  font-weight: 800;
+  padding: 0.45rem 0.8rem;
+  text-decoration: none;
+}
+
+.calendar-legend {
+  display: flex;
+  gap: 1.2rem;
+  margin-top: 1rem;
+}
+
+.legend-item {
+  align-items: center;
+  display: flex;
+  font-size: 0.84rem;
+  gap: 0.4rem;
+}
+
+.legend-dot {
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
+.legend-dot--taken { background: #afe1bf; }
+.legend-dot--skipped { background: #f5d68b; }
+.legend-dot--missed { background: #ffa8a8; }
+
+.warning-banner {
+  background: #fff8e8;
+  border: 1px solid #f5d68b;
+  border-radius: 1rem;
+  color: #704f08;
+  font-weight: 700;
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+}
+
+.warning-banner p {
+  margin: 0;
+}
+
+.warning-banner p + p {
+  margin-top: 0.4rem;
+}
+
+.refill-soon {
+  color: #956500;
+  font-weight: 800;
+}
+
+.export-section {
+  margin-top: 1.25rem;
+}
+
+.export-table {
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.export-table th,
+.export-table td {
+  border: 1px solid #e3e9f3;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.export-table th {
+  background: #f4f7fb;
+  font-weight: 800;
+}
+
+.export-table tr:nth-child(even) td {
+  background: #fafbfd;
+}
+
+.alarm-overlay {
+  align-items: center;
+  background: rgb(10 18 33 / 80%);
+  display: none;
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 2000;
+}
+
+.alarm-overlay.is-active {
+  display: flex;
+}
+
+.alarm-dialog {
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 32px 80px rgb(3 18 42 / 40%);
+  max-width: 420px;
+  padding: 2rem 1.75rem;
+  position: relative;
+  text-align: center;
+  width: 100%;
+}
+
+.alarm-pulse-ring {
+  animation: alarm-pulse 1.4s ease-in-out infinite;
+  border: 3px solid #e83d3d;
+  border-radius: 1.5rem;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+@keyframes alarm-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgb(232 61 61 / 28%); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 12px rgb(232 61 61 / 0%); }
+}
+
+.alarm-eyebrow {
+  color: #e83d3d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+}
+
+.alarm-med-name {
+  font-size: 1.8rem;
+  letter-spacing: -0.04em;
+  margin-bottom: 0.25rem;
+  margin-top: 0;
+}
+
+.alarm-med-dose {
+  color: #46546c;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+.alarm-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.alarm-take-btn {
+  background: #1a9e4f;
+  font-size: 1.05rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.alarm-take-btn:hover {
+  background: #158040;
+}
+
+.alarm-skip-btn {
+  width: 100%;
+}
+
+.alarm-snooze-row {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr auto;
+}
+
+.alarm-snooze-select {
+  min-height: 2.8rem;
+}
+
 .history-panel {
   margin-top: 1.25rem;
 }
@@ -677,6 +897,42 @@ select:focus,
   font-size: 0.85rem;
   margin-top: 1rem;
   text-align: center;
+}
+
+@media print {
+  .top-nav,
+  .hero,
+  .reminder-panel,
+  .warning-banner,
+  .dashboard-grid,
+  .history-panel,
+  .modal-overlay,
+  .alarm-overlay,
+  .no-print,
+  .disclaimer {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+  }
+
+  .app-shell {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .export-section {
+    border: none;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .export-table th,
+  .export-table td {
+    border: 1px solid #999;
+  }
 }
 
 @media (max-width: 800px) {
