@@ -333,6 +333,7 @@ const notifyItems = (items) => {
         seenMap[key] = nowIso;
       });
       writeSeenMap(seenMap);
+      showFallbackAlert([]);
     } else {
       showFallbackAlert(unnotified);
       unnotified.forEach((item) => {
@@ -340,14 +341,13 @@ const notifyItems = (items) => {
         seenMap[key] = nowIso;
       });
       writeSeenMap(seenMap);
-      return;
     }
-  }
 
-  showFallbackAlert([]);
-
-  if (items.length > 0 && !alarmOverlay?.classList.contains('is-active')) {
-    showAlarmOverlay(items[0]);
+    if (!alarmOverlay?.classList.contains('is-active')) {
+      showAlarmOverlay(unnotified[0]);
+    }
+  } else {
+    showFallbackAlert([]);
   }
 };
 

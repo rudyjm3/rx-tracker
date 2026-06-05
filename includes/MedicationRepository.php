@@ -228,7 +228,7 @@ final class MedicationRepository
             $row = $existing->fetch();
 
             if (is_array($row)) {
-                $takenAt = $status === 'taken' ? ($date . ' ' . $time) : (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+                $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
                 $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at WHERE id = :id');
                 $update->execute(['status' => $status, 'note' => $note, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
@@ -242,7 +242,7 @@ final class MedicationRepository
                     'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
                      VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
                 );
-                $takenAt = $status === 'taken' ? ($date . ' ' . $time) : (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+                $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
                 $insert->execute([
                     'medication_id' => $medicationId,
                     'scheduled_for_date' => $date,
