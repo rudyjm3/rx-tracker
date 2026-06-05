@@ -1,0 +1,25 @@
+# Copy this file to .htaccess and fill in your Hostinger database credentials.
+# .htaccess is in .gitignore so your real credentials will never be committed.
+
+# --- Database credentials ---
+SetEnv DB_HOST 127.0.0.1
+SetEnv DB_PORT 3306
+SetEnv DB_DATABASE u123456_rx_tracker
+SetEnv DB_USERNAME u123456_rxuser
+SetEnv DB_PASSWORD your_password_here
+
+# --- Security: block direct HTTP access to sensitive directories ---
+<FilesMatch "\.(php)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block direct access to config, database, includes, and tests directories
+    RewriteRule ^(config|database|includes|tests)/ - [F,L]
+</IfModule>
+
+# Disable directory listing
+Options -Indexes
