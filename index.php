@@ -344,7 +344,10 @@ foreach ($recentLogs as $log) {
 <body>
 <main class="app-shell">
   <nav class="top-nav">
-    <span class="nav-brand">RxTracker</span>
+    <span class="nav-brand">
+      <img src="assets/icons/icon-192.png" alt="" class="nav-logo" aria-hidden="true">
+      RxTracker
+    </span>
     <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
     <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
     <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>

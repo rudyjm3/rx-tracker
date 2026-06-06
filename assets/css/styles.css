@@ -57,6 +57,7 @@ button:disabled {
 }
 
 .top-nav {
+  align-items: center;
   display: flex;
   gap: 0.8rem;
   margin-bottom: 1rem;
@@ -79,13 +80,23 @@ button:disabled {
 }
 
 .nav-brand {
+  align-items: center;
   color: #172033;
+  display: flex;
   font-size: 1.05rem;
-  font-weight: 900;
+  font-weight: 700;
+  gap: 0.5rem;
   letter-spacing: -0.04em;
   margin-right: auto;
   padding: 0.6rem 0;
   user-select: none;
+}
+
+.nav-logo {
+  border-radius: 0.4rem;
+  display: block;
+  height: 1.75rem;
+  width: 1.75rem;
 }
 
 .hero {
