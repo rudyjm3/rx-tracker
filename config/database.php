@@ -15,6 +15,12 @@ function env_value(string $key, string $default = ''): string
     return $value;
 }
 
+$_appTimezone = env_value('APP_TIMEZONE', 'UTC');
+if ($_appTimezone !== '') {
+    date_default_timezone_set($_appTimezone);
+}
+unset($_appTimezone);
+
 function db(): PDO
 {
     static $pdo = null;
