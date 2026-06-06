@@ -1,0 +1,10 @@
+{
+  "name": "RxTracker",
+  "short_name": "RxTracker",
+  "description": "Medication reminder and adherence tracker",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#1269ff",
+  "icons": []
+}
