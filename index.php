@@ -344,6 +344,7 @@ foreach ($recentLogs as $log) {
 <body>
 <main class="app-shell">
   <nav class="top-nav">
+    <span class="nav-brand">RxTracker</span>
     <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
     <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
     <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
@@ -351,10 +352,29 @@ foreach ($recentLogs as $log) {
   </nav>
 
   <section class="hero">
-    <div>
-      <p class="eyebrow">Medication tracking and reminders</p>
-      <h1>RxTracker keeps today's doses clear.</h1>
-      <p class="hero-copy">Track your medication plan, log doses, and keep reminders aligned to real intake times.</p>
+    <div class="hero-card hero-med-card">
+      <div class="hero-med-card-header">
+        <div class="hero-med-card-title">
+          <span class="stat-label">Medication plan</span>
+          <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
+        </div>
+        <div class="hero-med-card-actions">
+          <button type="button" data-open-medication-modal>Add</button>
+          <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
+        </div>
+      </div>
+      <?php if ($medicationPlanCount > 0): ?>
+        <ul class="hero-med-preview">
+          <?php foreach (array_slice($medications, 0, 3) as $med): ?>
+            <li><span class="hero-med-name"><?= e((string) $med['name']) ?></span><span class="hero-med-dose"><?= e((string) $med['dose']) ?></span></li>
+          <?php endforeach; ?>
+          <?php if ($medicationPlanCount > 3): ?>
+            <li class="hero-med-more">+<?= e((string) ($medicationPlanCount - 3)) ?> more</li>
+          <?php endif; ?>
+        </ul>
+      <?php else: ?>
+        <p class="hero-med-empty">No active medications yet.</p>
+      <?php endif; ?>
     </div>
     <div class="hero-card" aria-label="Today's adherence summary">
       <span class="stat-label">Today's adherence</span>
@@ -544,26 +564,19 @@ foreach ($recentLogs as $log) {
   <div class="in-app-alert" data-in-app-alert hidden></div>
 
 
-  <section class="dashboard-grid" aria-label="Medication dashboard">
-    <article class="panel medication-list-panel is-collapsed" data-medication-plan>
-      <div class="panel-heading medication-plan-heading">
+  <div class="med-plan-modal-overlay" id="med-plan-modal" role="dialog" aria-modal="true" aria-label="Medication plan" hidden>
+    <div class="med-plan-modal-inner">
+      <div class="med-plan-modal-header">
         <div class="medication-plan-title-wrap">
           <h2>Medication plan</h2>
           <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
         </div>
         <div class="medication-plan-actions">
           <button type="button" data-open-medication-modal>Add medication</button>
-          <button
-            type="button"
-            class="secondary collapse-toggle"
-            data-medication-plan-toggle
-            aria-expanded="false"
-            aria-controls="medication-plan-body"
-          >Expand</button>
+          <button type="button" class="secondary med-plan-close-btn" data-close-med-plan-modal aria-label="Close">&times;</button>
         </div>
       </div>
-      <div class="medication-list-wrap" id="medication-plan-body" hidden>
-        <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
+      <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
           <button
             type="button"
             class="secondary plan-tab is-active"
@@ -654,9 +667,10 @@ foreach ($recentLogs as $log) {
             <?php endforeach; ?>
           </div>
         </div>
-      </div>
-    </article>
+    </div>
+  </div>
 
+  <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel next-dose">
       <div class="panel-heading"><h2>Next dose</h2></div>
       <?php if ($nextDose !== null): ?>

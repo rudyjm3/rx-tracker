@@ -88,24 +88,32 @@ medicationModal?.addEventListener('click', (event) => {
   }
 });
 
-const medicationPlanPanel = document.querySelector('[data-medication-plan]');
-const medicationPlanToggle = document.querySelector('[data-medication-plan-toggle]');
-const medicationPlanBody = document.querySelector('#medication-plan-body');
+const medPlanModal = document.querySelector('#med-plan-modal');
+const openMedPlanModalBtns = document.querySelectorAll('[data-open-med-plan-modal]');
+const closeMedPlanModalBtn = document.querySelector('[data-close-med-plan-modal]');
 
-const setMedicationPlanState = (isExpanded) => {
-  if (!medicationPlanPanel || !medicationPlanToggle || !medicationPlanBody) return;
-  medicationPlanPanel.classList.toggle('is-collapsed', !isExpanded);
-  medicationPlanBody.hidden = !isExpanded;
-  medicationPlanToggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
-  medicationPlanToggle.textContent = isExpanded ? 'Collapse' : 'Expand';
+const openMedPlanModal = () => {
+  if (!medPlanModal) return;
+  medPlanModal.hidden = false;
+  document.body.style.overflow = 'hidden';
 };
 
-medicationPlanToggle?.addEventListener('click', () => {
-  const isExpanded = medicationPlanToggle.getAttribute('aria-expanded') === 'true';
-  setMedicationPlanState(!isExpanded);
+const closeMedPlanModal = () => {
+  if (!medPlanModal) return;
+  medPlanModal.hidden = true;
+  document.body.style.overflow = '';
+};
+
+openMedPlanModalBtns.forEach((btn) => btn.addEventListener('click', openMedPlanModal));
+closeMedPlanModalBtn?.addEventListener('click', closeMedPlanModal);
+
+medPlanModal?.addEventListener('click', (event) => {
+  if (event.target === medPlanModal) closeMedPlanModal();
 });
 
-setMedicationPlanState(false);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && medPlanModal && !medPlanModal.hidden) closeMedPlanModal();
+});
 
 const planTabs = document.querySelectorAll('[data-plan-tab]');
 const planPanels = {

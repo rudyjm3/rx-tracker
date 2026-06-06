@@ -26,7 +26,7 @@ select {
 button {
   border: 0;
   border-radius: 0.8rem;
-  background: #1269ff;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
   color: white;
   cursor: pointer;
   font-weight: 800;
@@ -38,8 +38,8 @@ button {
 }
 
 button:hover {
-  background: #0d55d5;
-  box-shadow: 0 12px 24px rgb(18 105 255 / 22%);
+  background: linear-gradient(135deg, #1a2e55 0%, #2e6bc7 100%);
+  box-shadow: 0 12px 24px rgb(17 33 63 / 28%);
   transform: translateY(-1px);
 }
 
@@ -73,9 +73,19 @@ button:disabled {
 }
 
 .top-nav a.is-active {
-  background: #1269ff;
-  border-color: #1269ff;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
+  border-color: transparent;
   color: #fff;
+}
+
+.nav-brand {
+  color: #172033;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  margin-right: auto;
+  padding: 0.6rem 0;
+  user-select: none;
 }
 
 .hero {
@@ -139,6 +149,131 @@ h1 {
   font-size: 4rem;
   letter-spacing: -0.08em;
   line-height: 1;
+}
+
+.hero-med-card {
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.hero-med-card-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.hero-med-card-title {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hero-med-card-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.hero-card button {
+  background: rgb(255 255 255 / 18%);
+  border: 1px solid rgb(255 255 255 / 30%);
+  color: white;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.hero-card button:hover {
+  background: rgb(255 255 255 / 30%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 18%);
+  transform: translateY(-1px);
+}
+
+.hero-ellipsis-btn {
+  font-size: 1.3rem;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  padding: 0.4rem 0.75rem !important;
+}
+
+.hero-count-badge {
+  background: rgb(255 255 255 / 18%);
+  border-color: rgb(255 255 255 / 30%);
+  color: white;
+}
+
+.hero-med-preview {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hero-med-preview li {
+  align-items: center;
+  display: flex;
+  font-size: 0.88rem;
+  font-weight: 700;
+  justify-content: space-between;
+}
+
+.hero-med-name {
+  color: #fff;
+}
+
+.hero-med-dose {
+  color: #b8dcff;
+  font-weight: 400;
+}
+
+.hero-med-more,
+.hero-med-empty {
+  color: #b8dcff;
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+/* ── Medication plan modal ─────────────────────────────────────────────────── */
+
+.med-plan-modal-overlay {
+  align-items: center;
+  background: rgb(10 18 33 / 60%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1.5rem;
+  position: fixed;
+  z-index: 900;
+}
+
+.med-plan-modal-overlay[hidden] {
+  display: none;
+}
+
+.med-plan-modal-inner {
+  background: #fff;
+  border-radius: 1.5rem;
+  box-shadow: 0 32px 80px rgb(10 18 33 / 28%);
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  max-width: 720px;
+  overflow-y: auto;
+  padding: 1.5rem;
+  width: 100%;
+}
+
+.med-plan-modal-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.med-plan-close-btn {
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 0.4rem 0.75rem;
 }
 
 .stat-label {
@@ -245,7 +380,8 @@ h1 {
 }
 
 .plan-tab.is-active {
-  background: #1269ff;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
+  border-color: transparent;
   color: #fff;
 }
 
@@ -829,7 +965,7 @@ select:focus,
 }
 
 .toggle-control input:checked + .toggle-slider {
-  background: #1269ff;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
 }
 
 .toggle-control input:checked + .toggle-slider::after {
@@ -991,6 +1127,19 @@ select:focus,
 }
 
 @media (max-width: 800px) {
+  .med-plan-modal-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .med-plan-modal-inner {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: none;
+    max-width: 100%;
+    width: 100%;
+  }
+
   .app-shell {
     padding: 1rem;
     width: 100%;
