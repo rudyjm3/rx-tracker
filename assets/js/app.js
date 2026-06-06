@@ -158,7 +158,6 @@ const alarmSnoozeBtn = document.querySelector('[data-alarm-snooze]');
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
 let swRegistration = null;
-const ALARM_RENOTIFY_MS = 5 * 60 * 1000;
 
 const getCsrfToken = () =>
   document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
@@ -258,6 +257,8 @@ const currentPushSubscription = async () => {
   if (!swRegistration) return null;
   return swRegistration.pushManager.getSubscription();
 };
+
+const SEEN_EXPIRY_MS = 5 * 60 * 1000;
 
 const readSeenMap = () => {
   try {
@@ -415,20 +416,26 @@ const notifyItems = (items) => {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
-  const unnotified = items.filter((item) => {
+  const unseen = items.filter((item) => {
     const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
     const lastSeen = seenMap[key];
     if (!lastSeen) return true;
-    return now - new Date(lastSeen).getTime() > ALARM_RENOTIFY_MS;
+    return now - new Date(lastSeen).getTime() > SEEN_EXPIRY_MS;
   });
 
-  if (unnotified.length === 0) {
+  if (unseen.length === 0) {
     showFallbackAlert([]);
     return;
   }
 
+  unseen.forEach((item) => {
+    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+    seenMap[key] = nowIso;
+  });
+  writeSeenMap(seenMap);
+
   if ('Notification' in window && Notification.permission === 'granted') {
-    unnotified.forEach((item) => {
+    unseen.forEach((item) => {
       const dueText = item.postponed_until ? 'Snoozed dose due now' : 'Dose due now';
       const title = `${item.name} (${item.dose})`;
       if (swRegistration) {
@@ -436,15 +443,14 @@ const notifyItems = (items) => {
       } else {
         new Notification(title, { body: dueText });
       }
-      const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-      seenMap[key] = nowIso;
     });
-    writeSeenMap(seenMap);
     showFallbackAlert([]);
+  } else {
+    showFallbackAlert(unseen);
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
-    showAlarmOverlay(unnotified[0]);
+    showAlarmOverlay(unseen[0]);
   }
 };
 
