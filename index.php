@@ -500,9 +500,9 @@ foreach ($recentLogs as $log) {
             <td><?= e((string) $med['dose']) ?></td>
             <td>
               <?php if ((string) $med['schedule_mode'] === 'interval'): ?>
-                Every <?= e((string) $med['interval_hours']) ?>h from <?= e(displayTimeByFormat((string) $med['first_dose_time'], (string) ($med['time_format'] ?? '24h'))) ?>
+                Every <?= e((string) $med['interval_hours']) ?>h from <?= e(to12h((string) $med['first_dose_time'])) ?>
               <?php else: ?>
-                <?= e(implode(', ', array_map(static fn(string $t): string => displayTimeByFormat($t, (string) ($med['time_format'] ?? '24h')), $med['times']))) ?>
+                <?= e(implode(', ', array_map(static fn(string $t): string => to12h($t), $med['times']))) ?>
               <?php endif; ?>
             </td>
             <td><?= e((string) ($med['instructions'] ?: '—')) ?></td>
@@ -537,6 +537,8 @@ foreach ($recentLogs as $log) {
     <?php endforeach; ?>
   </div>
   <?php endif; ?>
+
+  <div class="in-app-alert" data-in-app-alert hidden></div>
 
 
   <section class="dashboard-grid" aria-label="Medication dashboard">

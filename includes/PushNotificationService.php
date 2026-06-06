@@ -75,8 +75,11 @@ final class PushNotificationService
             $sentReminders[] = $item;
         }
 
+        $hasSuccessfulDelivery = false;
+
         foreach ($webPush->flush() as $report) {
             if ($report->isSuccess()) {
+                $hasSuccessfulDelivery = true;
                 continue;
             }
             $endpoint = $report->getRequest()->getUri()->__toString();
@@ -84,6 +87,10 @@ final class PushNotificationService
             if (in_array($statusCode, [404, 410], true)) {
                 $this->repository->removePushSubscriptionByEndpoint($endpoint);
             }
+        }
+
+        if (!$hasSuccessfulDelivery) {
+            return 0;
         }
 
         $this->repository->markPushSentForReminderItems($sentReminders, $now);
