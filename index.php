@@ -335,6 +335,9 @@ foreach ($recentLogs as $log) {
   <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
   <title>RxTracker</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js" defer></script>
 </head>
