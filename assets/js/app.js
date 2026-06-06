@@ -157,10 +157,108 @@ const alarmSnoozeBtn = document.querySelector('[data-alarm-snooze]');
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
-const ALARM_RENOTIFY_MS = 5 * 60 * 1000;
+let swRegistration = null;
 
 const getCsrfToken = () =>
   document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+};
+
+const registerServiceWorker = async () => {
+  if (!('serviceWorker' in navigator)) return null;
+  swRegistration = await navigator.serviceWorker.register('sw.js');
+  return swRegistration;
+};
+
+const fetchPushPublicKey = async () => {
+  const response = await window.fetch('index.php?action=push_public_key', { credentials: 'same-origin' });
+  if (!response.ok) return '';
+  const payload = await response.json();
+  if (!payload || payload.ok !== true || typeof payload.public_key !== 'string') return '';
+  return payload.public_key;
+};
+
+const savePushSubscription = async (subscription) => {
+  const json = subscription.toJSON();
+  const params = new URLSearchParams();
+  params.set('csrf_token', getCsrfToken());
+  params.set('action', 'save_push_subscription');
+  params.set('endpoint', json.endpoint ?? '');
+  params.set('p256dh', json.keys?.p256dh ?? '');
+  params.set('auth', json.keys?.auth ?? '');
+  const response = await window.fetch('index.php', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    let errorMessage = 'Failed to save push subscription.';
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.error === 'string' && payload.error) {
+        errorMessage = payload.error;
+      }
+    } catch (error) {
+      // ignore JSON parse issues
+    }
+    throw new Error(errorMessage);
+  }
+};
+
+const removePushSubscription = async (endpoint) => {
+  const params = new URLSearchParams();
+  params.set('csrf_token', getCsrfToken());
+  params.set('action', 'remove_push_subscription');
+  params.set('endpoint', endpoint);
+  const response = await window.fetch('index.php', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    let errorMessage = 'Failed to remove push subscription.';
+    try {
+      const payload = await response.json();
+      if (payload && typeof payload.error === 'string' && payload.error) {
+        errorMessage = payload.error;
+      }
+    } catch (error) {
+      // ignore JSON parse issues
+    }
+    throw new Error(errorMessage);
+  }
+};
+
+const setReminderToggleState = (enabled) => {
+  if (!enableRemindersButton) return;
+  enableRemindersButton.checked = enabled;
+  if (!reminderStatus) return;
+  reminderStatus.textContent = enabled
+    ? 'Background push reminders are enabled on this device.'
+    : 'Background push reminders are currently disabled on this device.';
+};
+
+const currentPushSubscription = async () => {
+  if (!('serviceWorker' in navigator)) return null;
+  if (!swRegistration) {
+    await registerServiceWorker();
+  }
+  if (!swRegistration) return null;
+  return swRegistration.pushManager.getSubscription();
+};
+
+const SEEN_EXPIRY_MS = 5 * 60 * 1000;
 
 const readSeenMap = () => {
   try {
@@ -294,6 +392,7 @@ alarmSnoozeBtn?.addEventListener('click', () => {
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
+const reminderStatus = document.querySelector('[data-reminder-status]');
 
 const showFallbackAlert = (items) => {
   if (!inAppAlert) return;
@@ -317,37 +416,41 @@ const notifyItems = (items) => {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
-  const unnotified = items.filter((item) => {
+  const unseen = items.filter((item) => {
     const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
     const lastSeen = seenMap[key];
     if (!lastSeen) return true;
-    return now - new Date(lastSeen).getTime() > ALARM_RENOTIFY_MS;
+    return now - new Date(lastSeen).getTime() > SEEN_EXPIRY_MS;
   });
 
-  if (unnotified.length > 0) {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      unnotified.forEach((item) => {
-        const dueText = item.postponed_until ? 'Postponed dose due now' : 'Dose due now';
-        new Notification(`${item.name} (${item.dose})`, { body: dueText });
-        const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-        seenMap[key] = nowIso;
-      });
-      writeSeenMap(seenMap);
-      showFallbackAlert([]);
-    } else {
-      showFallbackAlert(unnotified);
-      unnotified.forEach((item) => {
-        const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-        seenMap[key] = nowIso;
-      });
-      writeSeenMap(seenMap);
-    }
-
-    if (!alarmOverlay?.classList.contains('is-active')) {
-      showAlarmOverlay(unnotified[0]);
-    }
-  } else {
+  if (unseen.length === 0) {
     showFallbackAlert([]);
+    return;
+  }
+
+  unseen.forEach((item) => {
+    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+    seenMap[key] = nowIso;
+  });
+  writeSeenMap(seenMap);
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    unseen.forEach((item) => {
+      const dueText = item.postponed_until ? 'Snoozed dose due now' : 'Dose due now';
+      const title = `${item.name} (${item.dose})`;
+      if (swRegistration) {
+        swRegistration.showNotification(title, { body: dueText });
+      } else {
+        new Notification(title, { body: dueText });
+      }
+    });
+    showFallbackAlert([]);
+  } else {
+    showFallbackAlert(unseen);
+  }
+
+  if (!alarmOverlay?.classList.contains('is-active')) {
+    showAlarmOverlay(unseen[0]);
   }
 };
 
@@ -363,28 +466,93 @@ const pollDueReminders = async () => {
   }
 };
 
-enableRemindersButton?.addEventListener('click', async () => {
-  if (!('Notification' in window)) {
-    window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
+enableRemindersButton?.addEventListener('change', async () => {
+  try {
+    if (!window.isSecureContext) {
+      window.alert('Reminders require a secure context (HTTPS or localhost).');
+      return;
+    }
+
+    const existing = await currentPushSubscription();
+    if (existing && !enableRemindersButton.checked) {
+      const endpoint = existing.endpoint;
+      await existing.unsubscribe();
+      await removePushSubscription(endpoint);
+      window.localStorage.removeItem('rxtracker_alarm_enabled');
+      setReminderToggleState(false);
+      window.alert('Background reminders disabled for this device and browser profile.');
+      return;
+    }
+    if (existing && enableRemindersButton.checked) {
+      setReminderToggleState(true);
+      return;
+    }
+
+    if (!('Notification' in window)) {
+      window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
+      window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+      pollDueReminders();
+      return;
+    }
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission()
+      : Notification.permission;
     window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-    return;
-  }
-  if (Notification.permission === 'granted') {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-    window.alert('Reminders are already enabled. In-app alarm is now active.');
-    return;
-  }
-  const permission = await Notification.requestPermission();
-  if (permission === 'granted' || permission === 'denied') {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+    if (permission !== 'granted') {
+      if (permission === 'denied') {
+        window.alert('Notifications are blocked for this site. Enable browser/site notification permission first.');
+        return;
+      }
+      window.alert('Notifications were not enabled. In-app reminders will still appear while this page is open.');
+      pollDueReminders();
+      return;
+    }
+    const activeRegistration = await registerServiceWorker();
+    if (!activeRegistration) {
+      window.alert('Reminders enabled (in-app alarm active). Push notifications require a service worker.');
+      pollDueReminders();
+      return;
+    }
+    const vapidPublicKey = await fetchPushPublicKey();
+    if (!vapidPublicKey) {
+      window.alert('Reminders enabled (in-app alarm active). Push key not yet configured on the server.');
+      pollDueReminders();
+      return;
+    }
+    const existingAfterRegister = await activeRegistration.pushManager.getSubscription();
+    const subscription = existingAfterRegister ?? await activeRegistration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+    await savePushSubscription(subscription);
+    setReminderToggleState(true);
+    window.alert('Reminders enabled for this device and browser profile.');
+  } catch (error) {
+    const subscription = await currentPushSubscription().catch(() => null);
+    setReminderToggleState(Boolean(subscription));
+    const detail = error instanceof Error && error.message ? `\n\nDetails: ${error.message}` : '';
+    window.alert(`Could not update reminders on this device.${detail}`);
   }
   pollDueReminders();
 });
 
-if (document.querySelector('.schedule-list')) {
-  pollDueReminders();
-  window.setInterval(pollDueReminders, 30000);
-}
+const initializeReminderToggle = async () => {
+  if (!enableRemindersButton) return;
+  try {
+    const subscription = await currentPushSubscription();
+    setReminderToggleState(Boolean(subscription));
+  } catch (error) {
+    setReminderToggleState(false);
+  }
+};
+
+initializeReminderToggle();
+
+registerServiceWorker().catch(() => {
+  // keep reminder polling working even if SW registration fails
+});
+pollDueReminders();
+window.setInterval(pollDueReminders, 30000);
 
 if (medicationModal?.classList.contains('is-open')) {
   document.body.style.overflow = 'hidden';
@@ -396,7 +564,6 @@ const medicationForm = document.querySelector('.medication-form');
 
 if (medicationForm) {
   const scheduleMode = medicationForm.querySelector('select[name="schedule_mode"]');
-  const timeFormat = medicationForm.querySelector('select[name="time_format"]');
   const doseTimesInput = medicationForm.querySelector('input[name="dose_times"]');
   const intervalHoursInput = medicationForm.querySelector('input[name="interval_hours"]');
   const firstDoseInput = medicationForm.querySelector('input[name="first_dose_time"]');
@@ -435,13 +602,7 @@ if (medicationForm) {
     return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
   };
 
-  const normalizeToken = (token, format) => {
-    if (format === '24h') {
-      const from24 = parse24h(token);
-      if (from24) return from24;
-      const from12 = parse12h(token);
-      return from12;
-    }
+  const normalizeToken = (token) => {
     const from12 = parse12h(token);
     if (from12) return to12h(from12);
     const from24 = parse24h(token);
@@ -449,11 +610,11 @@ if (medicationForm) {
     return null;
   };
 
-  const normalizeCommaTimes = (raw, format) => {
+  const normalizeCommaTimes = (raw) => {
     const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
     const normalized = [];
     for (const part of parts) {
-      const value = normalizeToken(part, format);
+      const value = normalizeToken(part);
       if (!value) return null;
       normalized.push(value);
     }
@@ -470,42 +631,28 @@ if (medicationForm) {
     if (firstDoseInput) firstDoseInput.required = intervalMode;
   };
 
-  const convertVisibleTimes = () => {
-    const format = timeFormat?.value === '12h' ? '12h' : '24h';
-    if (doseTimesInput && doseTimesInput.value.trim() !== '') {
-      const convertedList = normalizeCommaTimes(doseTimesInput.value, format);
-      if (convertedList) doseTimesInput.value = convertedList;
-    }
-    if (firstDoseInput && firstDoseInput.value.trim() !== '') {
-      const converted = normalizeToken(firstDoseInput.value, format);
-      if (converted) firstDoseInput.value = converted;
-    }
-  };
-
   scheduleMode?.addEventListener('change', applyScheduleVisibility);
-  timeFormat?.addEventListener('change', convertVisibleTimes);
 
   applyScheduleVisibility();
 
   medicationForm.addEventListener('submit', (event) => {
-    const format = timeFormat?.value === '12h' ? '12h' : '24h';
     const intervalMode = scheduleMode?.value === 'interval';
 
     if (!intervalMode && doseTimesInput && doseTimesInput.value.trim() !== '') {
-      const normalized = normalizeCommaTimes(doseTimesInput.value, format);
+      const normalized = normalizeCommaTimes(doseTimesInput.value);
       if (!normalized) {
         event.preventDefault();
-        window.alert('Invalid dose times. Use HH:MM (24h) or h:MM AM/PM (12h).');
+        window.alert('Invalid dose times. Use h:MM AM/PM format (e.g. 8:00 AM, 2:30 PM).');
         return;
       }
       doseTimesInput.value = normalized;
     }
 
     if (intervalMode && firstDoseInput && firstDoseInput.value.trim() !== '') {
-      const normalized = normalizeToken(firstDoseInput.value, format);
+      const normalized = normalizeToken(firstDoseInput.value);
       if (!normalized) {
         event.preventDefault();
-        window.alert('Invalid first dose time. Use HH:MM (24h) or h:MM AM/PM (12h).');
+        window.alert('Invalid first dose time. Use h:MM AM/PM format (e.g. 8:00 AM).');
         return;
       }
       firstDoseInput.value = normalized;

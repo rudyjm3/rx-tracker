@@ -101,7 +101,6 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
-        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -122,7 +121,7 @@ final class MedicationRepository
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
-                'time_format' => $timeFormat,
+                'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -146,7 +145,6 @@ final class MedicationRepository
         string $dose,
         string $instructions,
         string $scheduleMode,
-        string $timeFormat,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
@@ -179,7 +177,7 @@ final class MedicationRepository
                 'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
-                'time_format' => $timeFormat,
+                'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
@@ -459,7 +457,7 @@ final class MedicationRepository
                DO UPDATE SET postponed_until = excluded.postponed_until, resolved_at = NULL'
             : 'INSERT INTO dose_postpones (medication_id, scheduled_for_date, scheduled_time, postponed_until, resolved_at)
                VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :postponed_until, NULL)
-               ON DUPLICATE KEY UPDATE postponed_until = :postponed_until, resolved_at = NULL';
+               ON DUPLICATE KEY UPDATE postponed_until = VALUES(postponed_until), resolved_at = NULL';
         $statement = $this->db->prepare($sql);
         $statement->execute([
             'medication_id' => $medicationId,
@@ -580,6 +578,101 @@ final class MedicationRepository
         }
 
         return $rows;
+    }
+
+    public function upsertPushSubscription(string $endpoint, ?string $publicKey, ?string $authToken, ?string $userAgent): void
+    {
+        if ($endpoint === '') {
+            throw new RuntimeException('Subscription endpoint is required.');
+        }
+        if ($publicKey === null || $publicKey === '' || $authToken === null || $authToken === '') {
+            throw new RuntimeException('Subscription keys are required.');
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO push_subscriptions (endpoint, p256dh_key, auth_key, user_agent, created_at, updated_at)
+               VALUES (:endpoint, :p256dh_key, :auth_key, :user_agent, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+               ON CONFLICT(endpoint)
+               DO UPDATE SET p256dh_key = excluded.p256dh_key, auth_key = excluded.auth_key, user_agent = excluded.user_agent, updated_at = CURRENT_TIMESTAMP'
+            : 'INSERT INTO push_subscriptions (endpoint, p256dh_key, auth_key, user_agent)
+               VALUES (:endpoint, :p256dh_key, :auth_key, :user_agent)
+               ON DUPLICATE KEY UPDATE p256dh_key = VALUES(p256dh_key), auth_key = VALUES(auth_key), user_agent = VALUES(user_agent), updated_at = CURRENT_TIMESTAMP';
+        $statement = $this->db->prepare($sql);
+        $statement->execute([
+            'endpoint' => $endpoint,
+            'p256dh_key' => $publicKey,
+            'auth_key' => $authToken,
+            'user_agent' => $userAgent ?? '',
+        ]);
+    }
+
+    public function removePushSubscriptionByEndpoint(string $endpoint): void
+    {
+        if ($endpoint === '') {
+            return;
+        }
+        $statement = $this->db->prepare('DELETE FROM push_subscriptions WHERE endpoint = :endpoint');
+        $statement->execute(['endpoint' => $endpoint]);
+    }
+
+    public function pushSubscriptions(): array
+    {
+        $statement = $this->db->query('SELECT endpoint, p256dh_key, auth_key FROM push_subscriptions ORDER BY id ASC');
+        return $statement->fetchAll();
+    }
+
+    public function markPushSentForReminderItems(array $items, DateTimeImmutable $sentAt): void
+    {
+        if ($items === []) {
+            return;
+        }
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at)
+               ON CONFLICT(medication_id, scheduled_for_date, scheduled_time) DO NOTHING'
+            : 'INSERT IGNORE INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at)';
+        $statement = $this->db->prepare($sql);
+        foreach ($items as $item) {
+            $statement->execute([
+                'medication_id' => (int) ($item['medication_id'] ?? 0),
+                'scheduled_for_date' => (string) ($item['scheduled_date'] ?? ''),
+                'scheduled_time' => (string) ($item['scheduled_time'] ?? ''),
+                'sent_at' => $sentAt->format('Y-m-d H:i:s'),
+            ]);
+        }
+    }
+
+    public function dueReminderItemsNotYetPushed(DateTimeImmutable $now): array
+    {
+        $items = $this->dueReminderItems($now);
+        if ($items === []) {
+            return [];
+        }
+
+        $check = $this->db->prepare(
+            'SELECT 1
+             FROM push_delivery_log
+             WHERE medication_id = :medication_id
+               AND scheduled_for_date = :scheduled_for_date
+               AND scheduled_time = :scheduled_time
+             LIMIT 1'
+        );
+        $unsent = [];
+        foreach ($items as $item) {
+            $check->execute([
+                'medication_id' => (int) $item['medication_id'],
+                'scheduled_for_date' => (string) $item['scheduled_date'],
+                'scheduled_time' => (string) $item['scheduled_time'],
+            ]);
+            if ($check->fetchColumn() === false) {
+                $unsent[] = $item;
+            }
+        }
+
+        return $unsent;
     }
 
     private function validateScheduleInputs(string $scheduleMode, array $doseTimes, ?int $intervalHours, ?string $firstDoseTime): void
@@ -804,7 +897,7 @@ final class MedicationRepository
             if ($driver === 'mysql') {
                 $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'time_format'");
                 if ($check !== false && $check->fetchColumn() === false) {
-                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format ENUM('24h', '12h') NOT NULL DEFAULT '24h' AFTER schedule_mode");
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format ENUM('24h', '12h') NOT NULL DEFAULT '12h' AFTER schedule_mode");
                 }
                 return;
             }
@@ -822,7 +915,7 @@ final class MedicationRepository
                     }
                 }
                 if (!$hasColumn) {
-                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format TEXT NOT NULL DEFAULT '24h'");
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN time_format TEXT NOT NULL DEFAULT '12h'");
                 }
             }
         } catch (Throwable) {
@@ -864,6 +957,31 @@ final class MedicationRepository
                             ON DELETE CASCADE
                     ) ENGINE=InnoDB"
                 );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS push_subscriptions (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        endpoint TEXT NOT NULL,
+                        p256dh_key VARCHAR(255) NOT NULL,
+                        auth_key VARCHAR(255) NOT NULL,
+                        user_agent VARCHAR(255) NOT NULL DEFAULT '',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_push_endpoint (endpoint(191))
+                    ) ENGINE=InnoDB"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS push_delivery_log (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        scheduled_for_date DATE NOT NULL,
+                        scheduled_time TIME NOT NULL,
+                        sent_at DATETIME NOT NULL,
+                        UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time),
+                        CONSTRAINT fk_push_delivery_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
                 return;
             }
 
@@ -890,6 +1008,27 @@ final class MedicationRepository
                         resolved_at TEXT NULL,
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (medication_id, scheduled_for_date, scheduled_time)
+                    )"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS push_subscriptions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        endpoint TEXT NOT NULL UNIQUE,
+                        p256dh_key TEXT NOT NULL,
+                        auth_key TEXT NOT NULL,
+                        user_agent TEXT NOT NULL DEFAULT '',
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS push_delivery_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        scheduled_for_date TEXT NOT NULL,
+                        scheduled_time TEXT NOT NULL,
+                        sent_at TEXT NOT NULL,
                         UNIQUE (medication_id, scheduled_for_date, scheduled_time)
                     )"
                 );
