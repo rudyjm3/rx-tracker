@@ -9,12 +9,14 @@ final class MedicationRepository
         $this->ensureStartingPillCountColumn();
         $this->ensureTimeFormatColumn();
         $this->ensureSupportTables();
+        $this->ensureTrackDoseFeedbackColumn();
+        $this->ensurePainLevelColumn();
     }
 
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
              FROM medications
              WHERE active = 1
              ORDER BY name ASC"
@@ -30,7 +32,7 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
              FROM medications
              WHERE active = 0
              ORDER BY name ASC"
@@ -45,7 +47,7 @@ final class MedicationRepository
 
     public function recentLogs(?string $date = null, int $limit = 12): array
     {
-        $sql = 'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.status,
+        $sql = 'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
                        medications.name, medications.dose
                 FROM dose_logs
@@ -67,7 +69,7 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
              FROM medications
              WHERE id = :id AND active = 1'
         );
@@ -106,15 +108,16 @@ final class MedicationRepository
         ?string $firstDoseTime,
         bool $asNeeded,
         int $pillCount,
-        int $lowSupplyThreshold
+        int $lowSupplyThreshold,
+        bool $trackDoseFeedback = false
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
 
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold)
-                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold)'
+                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback)
+                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold, :track_dose_feedback)'
             );
             $statement->execute([
                 'name' => $name,
@@ -128,6 +131,7 @@ final class MedicationRepository
                 'starting_pill_count' => $pillCount,
                 'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
+                'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
             ]);
 
             $medicationId = (int) $this->db->lastInsertId();
@@ -150,7 +154,8 @@ final class MedicationRepository
         ?string $firstDoseTime,
         bool $asNeeded,
         int $pillCount,
-        int $lowSupplyThreshold
+        int $lowSupplyThreshold,
+        bool $trackDoseFeedback = false
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
 
@@ -168,7 +173,8 @@ final class MedicationRepository
                      as_needed = :as_needed,
                      starting_pill_count = :starting_pill_count,
                      pill_count = :pill_count,
-                     low_supply_threshold = :low_supply_threshold
+                     low_supply_threshold = :low_supply_threshold,
+                     track_dose_feedback = :track_dose_feedback
                  WHERE id = :id'
             );
             $statement->execute([
@@ -184,6 +190,7 @@ final class MedicationRepository
                 'starting_pill_count' => $pillCount,
                 'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
+                'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
             ]);
 
             $this->replaceScheduleTimes($id, $doseTimes);
@@ -194,10 +201,14 @@ final class MedicationRepository
         }
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null): void
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
+        }
+
+        if ($painLevel !== null && ($painLevel < 1 || $painLevel > 10)) {
+            throw new RuntimeException('Pain level must be between 1 and 10.');
         }
 
         $this->db->beginTransaction();
@@ -227,8 +238,8 @@ final class MedicationRepository
 
             if (is_array($row)) {
                 $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
-                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at WHERE id = :id');
-                $update->execute(['status' => $status, 'note' => $note, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
+                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
+                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
                     $this->deductPillCount($medicationId);
                 }
@@ -237,8 +248,8 @@ final class MedicationRepository
                 }
             } else {
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, taken_at)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :taken_at)'
                 );
                 $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
                 $insert->execute([
@@ -247,6 +258,7 @@ final class MedicationRepository
                     'scheduled_time' => $time,
                     'status' => $status,
                     'note' => $note,
+                    'pain_level' => $painLevel,
                     'taken_at' => $takenAt,
                 ]);
                 if ($status === 'taken') {
@@ -340,6 +352,7 @@ final class MedicationRepository
                     'pill_count' => (int) $medication['pill_count'],
                     'low_supply_threshold' => (int) $medication['low_supply_threshold'],
                     'as_needed' => (int) $medication['as_needed'] === 1,
+                    'track_dose_feedback' => (int) $medication['track_dose_feedback'] === 1,
                     'reminder_time' => $time,
                     'status' => $log['status'] ?? null,
                     'note' => $log['note'] ?? '',
@@ -574,6 +587,7 @@ final class MedicationRepository
                 'scheduled_time' => (string) $row['reminder_time'] . ':00',
                 'postponed_until' => $row['postponed_until'] ?? null,
                 'as_needed' => (bool) $row['as_needed'],
+                'track_dose_feedback' => (bool) $row['track_dose_feedback'],
             ];
         }
 
@@ -708,13 +722,14 @@ final class MedicationRepository
 
     private function doseLogMapForDate(string $date): array
     {
-        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note FROM dose_logs WHERE scheduled_for_date = :date');
+        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level FROM dose_logs WHERE scheduled_for_date = :date');
         $statement->execute(['date' => $date]);
         $map = [];
         foreach ($statement->fetchAll() as $row) {
             $map[(int) $row['medication_id'] . '|' . substr((string) $row['scheduled_time'], 0, 5)] = [
                 'status' => (string) $row['status'],
                 'note' => (string) $row['note'],
+                'pain_level' => $row['pain_level'] !== null ? (int) $row['pain_level'] : null,
             ];
         }
 
@@ -1035,6 +1050,70 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails; runtime errors will surface if unresolved.
+        }
+    }
+
+    private function ensureTrackDoseFeedbackColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'track_dose_feedback'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN track_dose_feedback TINYINT(1) NOT NULL DEFAULT 0');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'track_dose_feedback') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN track_dose_feedback INTEGER NOT NULL DEFAULT 0');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensurePainLevelColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE 'pain_level'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN pain_level TINYINT UNSIGNED NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(dose_logs)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'pain_level') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN pain_level INTEGER NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
 }

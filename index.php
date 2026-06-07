@@ -159,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $asNeeded = post_string('as_needed') === '1';
             $pillCount = max(0, (int) post_string('pill_count'));
             $lowSupplyThreshold = max(0, (int) post_string('low_supply_threshold'));
+            $trackDoseFeedback = post_string('track_dose_feedback') === '1';
 
             if ($name === '' || $dose === '') {
                 throw new RuntimeException('Medication name and dose are required.');
@@ -169,16 +170,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($action === 'add_medication') {
-                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
+                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback);
             } else {
-                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold);
+                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback);
             }
 
             redirect_home();
         }
 
         if ($action === 'mark_dose') {
-            $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'));
+            $rawPainLevel = post_string('pain_level');
+            $painLevel = $rawPainLevel !== '' ? (int) $rawPainLevel : null;
+            $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel);
             if ($jsonResponse) {
                 header('Content-Type: application/json; charset=utf-8');
                 echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
@@ -647,6 +650,39 @@ foreach ($recentLogs as $log) {
       </tbody>
     </table>
   </section>
+
+  <?php $exportLogs = $repository->recentLogs(null, 500); ?>
+  <?php if ($exportLogs !== []): ?>
+  <section class="panel export-section export-history-section">
+    <div class="panel-heading">
+      <h2>Dose History</h2>
+    </div>
+    <table class="export-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Medication</th>
+          <th>Time</th>
+          <th>Status</th>
+          <th>Pain Level</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($exportLogs as $log): ?>
+          <tr>
+            <td><?= e((string) $log['scheduled_for_date']) ?></td>
+            <td><?= e((string) $log['name']) ?></td>
+            <td><?= e(to12h((string) $log['scheduled_time'])) ?></td>
+            <td><?= e(ucfirst((string) $log['status'])) ?></td>
+            <td><?= (isset($log['pain_level']) && $log['pain_level'] !== null) ? e((string) $log['pain_level']) . '/10' : '&mdash;' ?></td>
+            <td><?= e((string) ($log['note'] ?: '—')) ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </section>
+  <?php endif; ?>
   <p class="disclaimer no-print">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 </body>
@@ -707,7 +743,7 @@ foreach ($recentLogs as $log) {
                 <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable((string) $dose['postponed_until']))->format('H:i'))) ?></span>
               <?php endif; ?>
               <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
                 <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
                 <?php if (!$isCompleted): ?>
                   <button
@@ -748,7 +784,13 @@ foreach ($recentLogs as $log) {
               <?php else: ?>
                 <?= e((string) $log['status']) ?>
               <?php endif; ?>
+              <?php if (isset($log['pain_level']) && $log['pain_level'] !== null): ?>
+                <span class="history-pain-badge" title="Pain level"><?= e((string) $log['pain_level']) ?>/10</span>
+              <?php endif; ?>
             </p>
+            <?php if ((string) $log['note'] !== '' && (string) $log['note'] !== 'Skipped dose'): ?>
+              <small class="history-note"><?= e((string) $log['note']) ?></small>
+            <?php endif; ?>
           </div>
         </li>
       <?php endforeach; ?>
@@ -792,12 +834,54 @@ foreach ($recentLogs as $log) {
           <option value="1" <?= ((int) ($editing['as_needed'] ?? 0) === 1) ? 'selected' : '' ?>>Yes</option>
         </select>
       </label>
+      <label>Track dose feedback (pain &amp; comments)
+        <select name="track_dose_feedback">
+          <option value="0" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
+          <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
+        </select>
+      </label>
       <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
       <label>Low supply threshold (pills)
         <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
       </label>
       <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
       <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" data-dose-feedback-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+    <div class="modal-header">
+      <h2 id="feedback-modal-title">How are you feeling?</h2>
+      <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
+    </div>
+    <form method="post" action="index.php" class="stacked-form" data-feedback-form>
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="mark_dose">
+      <input type="hidden" name="status" value="taken">
+      <input type="hidden" name="medication_id" data-feedback-medication-id value="">
+      <input type="hidden" name="scheduled_date" data-feedback-scheduled-date value="">
+      <input type="hidden" name="scheduled_time" data-feedback-scheduled-time value="">
+      <input type="hidden" name="pain_level" data-feedback-pain-level value="">
+
+      <div class="feedback-pain-section" data-feedback-pain-section>
+        <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+        <div class="pain-level-selector" role="group" aria-label="Select pain level">
+          <?php for ($i = 1; $i <= 10; $i++): ?>
+            <button type="button" class="pain-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+          <?php endfor; ?>
+        </div>
+      </div>
+
+      <label>Comments <span class="field-optional">(optional)</span>
+        <textarea name="note" data-feedback-note rows="3" maxlength="255" placeholder="How are you feeling? Any side effects or observations?"></textarea>
+      </label>
+
+      <div class="feedback-actions">
+        <button type="submit">Log dose</button>
+        <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
+      </div>
     </form>
   </div>
 </div>

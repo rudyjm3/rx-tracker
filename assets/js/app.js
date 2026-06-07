@@ -69,6 +69,17 @@ const postponeMedicationId = document.querySelector('[data-postpone-medication-i
 const postponeScheduledDate = document.querySelector('[data-postpone-scheduled-date]');
 const postponeScheduledTime = document.querySelector('[data-postpone-scheduled-time]');
 
+const doseFeedbackModal = document.querySelector('[data-dose-feedback-modal]');
+const closeFeedbackModalButton = document.querySelector('[data-close-feedback-modal]');
+const feedbackForm = document.querySelector('[data-feedback-form]');
+const feedbackMedicationIdEl = document.querySelector('[data-feedback-medication-id]');
+const feedbackScheduledDateEl = document.querySelector('[data-feedback-scheduled-date]');
+const feedbackScheduledTimeEl = document.querySelector('[data-feedback-scheduled-time]');
+const feedbackPainLevelEl = document.querySelector('[data-feedback-pain-level]');
+const feedbackNoteEl = document.querySelector('[data-feedback-note]');
+const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
+const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
+
 const openMedicationModal = () => {
   if (!medicationModal) return;
   closeMedPlanModal();
@@ -123,6 +134,90 @@ postponeModal?.addEventListener('click', (event) => {
   if (event.target === postponeModal) {
     closePostponeModal();
   }
+});
+
+// ── Dose feedback modal ───────────────────────────────────────────────────────
+
+let feedbackAlarmContext = false;
+
+const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showPain, fromAlarm = false) => {
+  if (!doseFeedbackModal) return;
+  feedbackAlarmContext = fromAlarm;
+  if (feedbackMedicationIdEl) feedbackMedicationIdEl.value = medicationId;
+  if (feedbackScheduledDateEl) feedbackScheduledDateEl.value = scheduledDate;
+  if (feedbackScheduledTimeEl) feedbackScheduledTimeEl.value = scheduledTime;
+  if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
+  if (feedbackNoteEl) feedbackNoteEl.value = '';
+  document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
+  if (feedbackPainSection) {
+    feedbackPainSection.classList.toggle('is-hidden', !showPain);
+  }
+  doseFeedbackModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeDoseFeedbackModal = () => {
+  if (!doseFeedbackModal) return;
+  if (!doseFeedbackModal.classList.contains('is-open')) return;
+  doseFeedbackModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('.pain-level-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (feedbackPainLevelEl) feedbackPainLevelEl.value = btn.dataset.painLevel ?? '';
+  });
+});
+
+const submitFeedbackAsAlarmAction = async () => {
+  const note = feedbackNoteEl?.value ?? '';
+  const painLevel = feedbackPainLevelEl?.value ?? '';
+  closeDoseFeedbackModal();
+  hideAlarmOverlay();
+  await alarmAction('mark_dose', { status: 'taken', note, pain_level: painLevel });
+};
+
+feedbackForm?.addEventListener('submit', async (event) => {
+  if (feedbackAlarmContext) {
+    event.preventDefault();
+    await submitFeedbackAsAlarmAction();
+  }
+});
+
+skipFeedbackBtn?.addEventListener('click', async () => {
+  if (feedbackAlarmContext) {
+    closeDoseFeedbackModal();
+    await alarmAction('mark_dose', { status: 'taken', note: '' });
+  } else {
+    if (feedbackMedicationIdEl && feedbackScheduledDateEl && feedbackScheduledTimeEl) {
+      if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
+      if (feedbackNoteEl) feedbackNoteEl.value = '';
+      feedbackForm?.submit();
+    }
+  }
+});
+
+closeFeedbackModalButton?.addEventListener('click', closeDoseFeedbackModal);
+
+doseFeedbackModal?.addEventListener('click', (event) => {
+  if (event.target === doseFeedbackModal) {
+    closeDoseFeedbackModal();
+  }
+});
+
+document.querySelectorAll('[data-take-dose]').forEach((btn) => {
+  btn.addEventListener('click', (event) => {
+    if (btn.dataset.trackDoseFeedback === '1' && !btn.disabled) {
+      event.preventDefault();
+      const medicationId = btn.dataset.medicationId ?? '';
+      const scheduledDate = btn.dataset.scheduledDate ?? '';
+      const scheduledTime = btn.dataset.scheduledTime ?? '';
+      if (!medicationId || !scheduledDate || !scheduledTime) return;
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+    }
+  });
 });
 
 document.querySelectorAll('.modal-edit-link').forEach((link) => {
@@ -395,6 +490,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmMedicationId = item.medication_id;
   alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
   alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
+  alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
   if (isAlarmEnabled()) startAlarmAudio();
@@ -444,7 +540,16 @@ const alarmAction = async (action, extra = {}) => {
 };
 
 alarmTakeBtn?.addEventListener('click', () => {
-  alarmAction('mark_dose', { status: 'taken', note: '' });
+  const trackFeedback = alarmOverlay?.dataset.alarmTrackDoseFeedback === '1';
+  if (trackFeedback) {
+    const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
+    const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
+    const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+    stopAlarmAudio();
+    openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
+  } else {
+    alarmAction('mark_dose', { status: 'taken', note: '' });
+  }
 });
 
 alarmSkipBtn?.addEventListener('click', () => {
