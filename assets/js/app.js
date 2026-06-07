@@ -1144,6 +1144,8 @@ const fetchAndSetSplId = async (name) => {
 if (medNameInput) {
   medNameInput.addEventListener('input', () => {
     clearTimeout(autocompleteTimer);
+    // Any manual edit to the name invalidates the previously-fetched set_id
+    if (setIdInput) setIdInput.value = '';
     const v = medNameInput.value.trim();
     if (v.length < 3) { hideDrugDropdown(); return; }
     autocompleteTimer = setTimeout(() => fetchDrugSuggestions(v), 300);
@@ -1159,18 +1161,23 @@ const PILL_IMG_TTL = 86400000;
 
 const PILL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H20a2 2 0 0 1 2 2v3"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg>`;
 
-const readPillCache = (id) => {
+// Key by setId when available so a medication edited to a different drug
+// immediately resolves its own cache entry rather than reusing the old one.
+const pillCacheKey = (medicationId, setId) => setId ? `s_${setId}` : `m_${medicationId}`;
+
+const readPillCache = (medicationId, setId) => {
+  const key = PILL_IMG_CACHE_PREFIX + pillCacheKey(medicationId, setId);
   try {
-    const raw = localStorage.getItem(PILL_IMG_CACHE_PREFIX + id);
+    const raw = localStorage.getItem(key);
     if (!raw) return undefined;
     const { url, ts } = JSON.parse(raw);
-    if (Date.now() - ts > PILL_IMG_TTL) { localStorage.removeItem(PILL_IMG_CACHE_PREFIX + id); return undefined; }
+    if (Date.now() - ts > PILL_IMG_TTL) { localStorage.removeItem(key); return undefined; }
     return url;
   } catch { return undefined; }
 };
 
-const writePillCache = (id, url) => {
-  try { localStorage.setItem(PILL_IMG_CACHE_PREFIX + id, JSON.stringify({ url, ts: Date.now() })); } catch {}
+const writePillCache = (medicationId, setId, url) => {
+  try { localStorage.setItem(PILL_IMG_CACHE_PREFIX + pillCacheKey(medicationId, setId), JSON.stringify({ url, ts: Date.now() })); } catch {}
 };
 
 const fetchPillImageUrl = async (setId, medicationName) => {
@@ -1197,7 +1204,7 @@ const fetchPillImageUrl = async (setId, medicationName) => {
   return null;
 };
 
-const applyPillImage = (wrap, medicationId, url) => {
+const applyPillImage = (wrap, medicationId, setId, url) => {
   wrap.innerHTML = '';
   if (url) {
     const img = document.createElement('img');
@@ -1206,8 +1213,8 @@ const applyPillImage = (wrap, medicationId, url) => {
     img.width = 48;
     img.height = 48;
     img.addEventListener('error', () => {
-      writePillCache(medicationId, null);
-      applyPillImage(wrap, medicationId, null);
+      writePillCache(medicationId, setId, null);
+      applyPillImage(wrap, medicationId, setId, null);
     });
     img.addEventListener('click', () => {
       openPillLightbox(url, wrap.dataset.medicationName ?? '');
@@ -1223,14 +1230,14 @@ const loadPillImages = () => {
     const { medicationId, setId = '', medicationName = '' } = wrap.dataset;
     if (!medicationId) return;
     wrap.innerHTML = `<span class="pill-img-placeholder">${PILL_SVG}</span>`;
-    const cached = readPillCache(medicationId);
-    if (cached !== undefined) { applyPillImage(wrap, medicationId, cached); return; }
+    const cached = readPillCache(medicationId, setId);
+    if (cached !== undefined) { applyPillImage(wrap, medicationId, setId, cached); return; }
     try {
       const url = await fetchPillImageUrl(setId, medicationName);
-      writePillCache(medicationId, url);
-      applyPillImage(wrap, medicationId, url);
+      writePillCache(medicationId, setId, url);
+      applyPillImage(wrap, medicationId, setId, url);
     } catch {
-      writePillCache(medicationId, null);
+      writePillCache(medicationId, setId, null);
     }
   });
 };
