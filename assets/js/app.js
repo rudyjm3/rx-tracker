@@ -333,6 +333,13 @@ const painLevelColor = (level) => {
   return '#c9213c';
 };
 
+const escSvg = (str) => String(str)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const renderPainChart = (container, data) => {
   const W = 500, H = 200;
   const ml = 32, mr = 12, mt = 12, mb = 36;
@@ -381,8 +388,8 @@ const renderPainChart = (container, data) => {
     const x = xScale(i).toFixed(1);
     const y = yScale(level).toFixed(1);
     const color = painLevelColor(Math.round(level));
-    const tipLines = pts.map((p) => `${p.time.slice(0, 5)}: Pain ${p.pain_level}/10${p.note ? ' — ' + p.note : ''}`).join('&#10;');
-    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${date}&#10;${tipLines}</title></circle>`;
+    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escSvg(date)}&#10;${tipLines}</title></circle>`;
   });
 
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pain level trend chart">
