@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     UNIQUE KEY uq_push_endpoint (endpoint(191))
 ) ENGINE=InnoDB;
 
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS track_dose_feedback TINYINT(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE dose_logs
+    ADD COLUMN IF NOT EXISTS pain_level TINYINT UNSIGNED NULL;
+
 CREATE TABLE IF NOT EXISTS push_delivery_log (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,

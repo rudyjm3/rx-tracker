@@ -1327,3 +1327,213 @@ select:focus,
     width: 100%;
   }
 }
+
+/* ── Pain level trend graph ──────────────────────────────────────────────── */
+
+.pain-graph-btn {
+  color: #6b7a96;
+}
+
+.pain-graph-btn:hover {
+  color: #2563eb;
+}
+
+.pain-graph-dialog {
+  max-width: 600px;
+}
+
+.pain-graph-range-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+}
+
+.range-tab {
+  background: #f4f7fb;
+  border: 1px solid #dce4f0;
+  border-radius: 1rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.3rem 0.9rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.range-tab.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.pain-graph-body {
+  min-height: 6rem;
+}
+
+.pain-graph-body svg {
+  display: block;
+  overflow: visible;
+  width: 100%;
+}
+
+.pain-graph-loading,
+.pain-graph-empty {
+  color: #6b7a96;
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 1rem 0;
+}
+
+/* ── Dose feedback modal ─────────────────────────────────────────────────── */
+
+.feedback-pain-section {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.feedback-pain-section.is-hidden {
+  display: none;
+}
+
+.feedback-pain-label {
+  color: #46546c;
+  font-size: 0.86rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.feedback-pain-hint {
+  font-weight: 400;
+  color: #6b7a96;
+}
+
+.pain-level-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pain-level-btn {
+  align-items: center;
+  background: #f4f7fb;
+  border: 2px solid #dce4f0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+
+.pain-level-btn:hover {
+  border-color: #6b7a96;
+}
+
+.pain-level-btn[data-pain-level="1"],
+.pain-level-btn[data-pain-level="2"],
+.pain-level-btn[data-pain-level="3"] {
+  border-color: #2a9d49;
+}
+
+.pain-level-btn[data-pain-level="4"],
+.pain-level-btn[data-pain-level="5"],
+.pain-level-btn[data-pain-level="6"] {
+  border-color: #d97706;
+}
+
+.pain-level-btn[data-pain-level="7"],
+.pain-level-btn[data-pain-level="8"] {
+  border-color: #e05b30;
+}
+
+.pain-level-btn[data-pain-level="9"],
+.pain-level-btn[data-pain-level="10"] {
+  border-color: #c9213c;
+}
+
+.pain-level-btn.is-selected {
+  color: #fff;
+}
+
+.pain-level-btn.is-selected[data-pain-level="1"],
+.pain-level-btn.is-selected[data-pain-level="2"],
+.pain-level-btn.is-selected[data-pain-level="3"] {
+  background: #2a9d49;
+  border-color: #2a9d49;
+}
+
+.pain-level-btn.is-selected[data-pain-level="4"],
+.pain-level-btn.is-selected[data-pain-level="5"],
+.pain-level-btn.is-selected[data-pain-level="6"] {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+.pain-level-btn.is-selected[data-pain-level="7"],
+.pain-level-btn.is-selected[data-pain-level="8"] {
+  background: #e05b30;
+  border-color: #e05b30;
+}
+
+.pain-level-btn.is-selected[data-pain-level="9"],
+.pain-level-btn.is-selected[data-pain-level="10"] {
+  background: #c9213c;
+  border-color: #c9213c;
+}
+
+.feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.field-optional {
+  color: #6b7a96;
+  font-weight: 400;
+}
+
+.char-counter {
+  color: #6b7a96;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-top: 0.2rem;
+  text-align: left;
+}
+
+/* ── History note & pain badge ───────────────────────────────────────────── */
+
+.history-note {
+  color: #6b7a96;
+  display: block;
+  font-size: 0.78rem;
+  font-style: italic;
+  margin-top: 0.15rem;
+}
+
+.history-pain-badge {
+  background: #fef3c7;
+  border: 1px solid #d97706;
+  border-radius: 0.75rem;
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  white-space: nowrap;
+}
+
+/* ── Export history table ────────────────────────────────────────────────── */
+
+.export-history-section {
+  margin-top: 2rem;
+}
+
+@media print {
+  .export-history-section {
+    margin-top: 1.5rem;
+    page-break-inside: avoid;
+  }
+}

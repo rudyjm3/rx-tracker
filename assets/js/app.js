@@ -69,6 +69,18 @@ const postponeMedicationId = document.querySelector('[data-postpone-medication-i
 const postponeScheduledDate = document.querySelector('[data-postpone-scheduled-date]');
 const postponeScheduledTime = document.querySelector('[data-postpone-scheduled-time]');
 
+const doseFeedbackModal = document.querySelector('[data-dose-feedback-modal]');
+const closeFeedbackModalButton = document.querySelector('[data-close-feedback-modal]');
+const feedbackForm = document.querySelector('[data-feedback-form]');
+const feedbackMedicationIdEl = document.querySelector('[data-feedback-medication-id]');
+const feedbackScheduledDateEl = document.querySelector('[data-feedback-scheduled-date]');
+const feedbackScheduledTimeEl = document.querySelector('[data-feedback-scheduled-time]');
+const feedbackPainLevelEl = document.querySelector('[data-feedback-pain-level]');
+const feedbackNoteEl = document.querySelector('[data-feedback-note]');
+const feedbackCharCounter = document.querySelector('[data-feedback-char-counter]');
+const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
+const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
+
 const openMedicationModal = () => {
   if (!medicationModal) return;
   closeMedPlanModal();
@@ -123,6 +135,96 @@ postponeModal?.addEventListener('click', (event) => {
   if (event.target === postponeModal) {
     closePostponeModal();
   }
+});
+
+// ── Dose feedback modal ───────────────────────────────────────────────────────
+
+let feedbackAlarmContext = false;
+
+const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showPain, fromAlarm = false) => {
+  if (!doseFeedbackModal) return;
+  feedbackAlarmContext = fromAlarm;
+  if (feedbackMedicationIdEl) feedbackMedicationIdEl.value = medicationId;
+  if (feedbackScheduledDateEl) feedbackScheduledDateEl.value = scheduledDate;
+  if (feedbackScheduledTimeEl) feedbackScheduledTimeEl.value = scheduledTime;
+  if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
+  if (feedbackNoteEl) feedbackNoteEl.value = '';
+  if (feedbackCharCounter) feedbackCharCounter.textContent = '[0/250]';
+  document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
+  if (feedbackPainSection) {
+    feedbackPainSection.classList.toggle('is-hidden', !showPain);
+  }
+  doseFeedbackModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeDoseFeedbackModal = () => {
+  if (!doseFeedbackModal) return;
+  if (!doseFeedbackModal.classList.contains('is-open')) return;
+  doseFeedbackModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('.pain-level-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (feedbackPainLevelEl) feedbackPainLevelEl.value = btn.dataset.painLevel ?? '';
+  });
+});
+
+const submitFeedbackAsAlarmAction = async () => {
+  const note = feedbackNoteEl?.value ?? '';
+  const painLevel = feedbackPainLevelEl?.value ?? '';
+  closeDoseFeedbackModal();
+  hideAlarmOverlay();
+  await alarmAction('mark_dose', { status: 'taken', note, pain_level: painLevel });
+};
+
+feedbackForm?.addEventListener('submit', async (event) => {
+  if (feedbackAlarmContext) {
+    event.preventDefault();
+    await submitFeedbackAsAlarmAction();
+  }
+});
+
+skipFeedbackBtn?.addEventListener('click', async () => {
+  if (feedbackAlarmContext) {
+    closeDoseFeedbackModal();
+    await alarmAction('mark_dose', { status: 'taken', note: '' });
+  } else {
+    if (feedbackMedicationIdEl && feedbackScheduledDateEl && feedbackScheduledTimeEl) {
+      if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
+      if (feedbackNoteEl) feedbackNoteEl.value = '';
+      feedbackForm?.submit();
+    }
+  }
+});
+
+feedbackNoteEl?.addEventListener('input', () => {
+  const len = feedbackNoteEl.value.length;
+  if (feedbackCharCounter) feedbackCharCounter.textContent = `[${len}/250]`;
+});
+
+closeFeedbackModalButton?.addEventListener('click', closeDoseFeedbackModal);
+
+doseFeedbackModal?.addEventListener('click', (event) => {
+  if (event.target === doseFeedbackModal) {
+    closeDoseFeedbackModal();
+  }
+});
+
+document.querySelectorAll('[data-take-dose]').forEach((btn) => {
+  btn.addEventListener('click', (event) => {
+    if (btn.dataset.trackDoseFeedback === '1' && !btn.disabled) {
+      event.preventDefault();
+      const medicationId = btn.dataset.medicationId ?? '';
+      const scheduledDate = btn.dataset.scheduledDate ?? '';
+      const scheduledTime = btn.dataset.scheduledTime ?? '';
+      if (!medicationId || !scheduledDate || !scheduledTime) return;
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+    }
+  });
 });
 
 document.querySelectorAll('.modal-edit-link').forEach((link) => {
@@ -192,6 +294,157 @@ planTabs.forEach((tab) => {
 });
 
 setPlanTab('active');
+
+// ── Pain level trend graph ────────────────────────────────────────────────────
+
+const painGraphModal = document.querySelector('[data-pain-graph-modal]');
+const painGraphTitle = document.querySelector('[data-pain-graph-title]');
+const painGraphBody = document.querySelector('[data-pain-graph-body]');
+const painGraphEmpty = document.querySelector('[data-pain-graph-empty]');
+
+let painGraphMedId = null;
+let painGraphDays = 7;
+
+const openPainGraphModal = (medicationId, medicationName) => {
+  if (!painGraphModal) return;
+  painGraphMedId = medicationId;
+  painGraphDays = 7;
+  if (painGraphTitle) painGraphTitle.textContent = medicationName + ' — Pain Trend';
+  painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', t.dataset.range === '7');
+  });
+  closeMedPlanModal();
+  painGraphModal.classList.add('is-open');
+  lockBodyScroll();
+  loadPainGraph();
+};
+
+const closePainGraphModal = () => {
+  if (!painGraphModal) return;
+  if (!painGraphModal.classList.contains('is-open')) return;
+  painGraphModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+const painLevelColor = (level) => {
+  if (level <= 3) return '#2a9d49';
+  if (level <= 6) return '#d97706';
+  if (level <= 8) return '#e05b30';
+  return '#c9213c';
+};
+
+const escSvg = (str) => String(str)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const renderPainChart = (container, data) => {
+  const W = 500, H = 200;
+  const ml = 32, mr = 12, mt = 12, mb = 36;
+  const chartW = W - ml - mr;
+  const chartH = H - mt - mb;
+
+  const yMin = 1, yMax = 10;
+  const yScale = (v) => mt + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  const dates = data.map((d) => d.date);
+  const uniqueDates = [...new Set(dates)];
+  const n = uniqueDates.length;
+  const xScale = (i) => ml + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+
+  // Group by date (average if multiple doses same day)
+  const byDate = uniqueDates.map((date) => {
+    const pts = data.filter((d) => d.date === date);
+    const avg = pts.reduce((s, d) => s + parseInt(d.pain_level, 10), 0) / pts.length;
+    return { date, level: avg, pts };
+  });
+
+  // Grid lines + Y labels
+  let gridLines = '';
+  [1, 3, 5, 7, 10].forEach((v) => {
+    const y = yScale(v).toFixed(1);
+    gridLines += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+    gridLines += `<text x="${ml - 4}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#94a3b8">${v}</text>`;
+  });
+
+  // X-axis date labels — show at most 6, evenly spaced
+  let xLabels = '';
+  const step = Math.max(1, Math.ceil(n / 6));
+  byDate.forEach(({ date }, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    const x = xScale(i).toFixed(1);
+    const label = date.slice(5); // MM-DD
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${label}</text>`;
+  });
+
+  // Polyline
+  const points = byDate.map(({ level }, i) => `${xScale(i).toFixed(1)},${yScale(level).toFixed(1)}`).join(' ');
+
+  // Circles with tooltip
+  let circles = '';
+  byDate.forEach(({ date, level, pts }, i) => {
+    const x = xScale(i).toFixed(1);
+    const y = yScale(level).toFixed(1);
+    const color = painLevelColor(Math.round(level));
+    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escSvg(date)}&#10;${tipLines}</title></circle>`;
+  });
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pain level trend chart">
+    ${gridLines}
+    <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    ${xLabels}
+    <polyline points="${points}" fill="none" stroke="#6b7a96" stroke-width="2" stroke-linejoin="round"/>
+    ${circles}
+  </svg>`;
+};
+
+const loadPainGraph = async () => {
+  if (!painGraphBody || !painGraphEmpty) return;
+  painGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
+  painGraphEmpty.hidden = true;
+  try {
+    const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painGraphMedId ?? '')}&days=${painGraphDays}`);
+    const payload = await resp.json();
+    if (!payload.ok || payload.data.length === 0) {
+      painGraphBody.innerHTML = '';
+      painGraphEmpty.hidden = false;
+      return;
+    }
+    renderPainChart(painGraphBody, payload.data);
+  } catch {
+    painGraphBody.innerHTML = '';
+    painGraphEmpty.hidden = false;
+  }
+};
+
+painGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    painGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+    tab.classList.add('is-active');
+    painGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    loadPainGraph();
+  });
+});
+
+document.querySelectorAll('[data-open-pain-graph]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const medId = btn.dataset.medicationId ?? '';
+    const medName = btn.dataset.medicationName ?? '';
+    if (!medId) return;
+    openPainGraphModal(medId, medName);
+  });
+});
+
+document.querySelector('[data-close-pain-graph]')?.addEventListener('click', closePainGraphModal);
+
+painGraphModal?.addEventListener('click', (event) => {
+  if (event.target === painGraphModal) closePainGraphModal();
+});
+
 
 const historyPanel = document.querySelector('[data-history-panel]');
 const historyList = document.querySelector('[data-history-list]');
@@ -395,6 +648,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmMedicationId = item.medication_id;
   alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
   alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
+  alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
   if (isAlarmEnabled()) startAlarmAudio();
@@ -444,7 +698,16 @@ const alarmAction = async (action, extra = {}) => {
 };
 
 alarmTakeBtn?.addEventListener('click', () => {
-  alarmAction('mark_dose', { status: 'taken', note: '' });
+  const trackFeedback = alarmOverlay?.dataset.alarmTrackDoseFeedback === '1';
+  if (trackFeedback) {
+    const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
+    const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
+    const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+    stopAlarmAudio();
+    openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
+  } else {
+    alarmAction('mark_dose', { status: 'taken', note: '' });
+  }
 });
 
 alarmSkipBtn?.addEventListener('click', () => {
