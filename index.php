@@ -135,6 +135,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_public_key'
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_trend') {
+    header('Content-Type: application/json; charset=utf-8');
+    $medicationId = (int) ($_GET['medication_id'] ?? 0);
+    $days = max(7, min(365, (int) ($_GET['days'] ?? 30)));
+    $data = $repository->painLevelTrend($medicationId, $days);
+    echo json_encode(['ok' => true, 'data' => $data], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jsonResponse = post_string('json_response') === '1';
@@ -446,6 +455,17 @@ foreach ($recentLogs as $log) {
                 </div>
                 <div class="row-actions medication-actions-top">
                   <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
+                  <?php if ((int) $medication['track_dose_feedback'] === 1): ?>
+                  <button
+                    type="button"
+                    class="icon-button pain-graph-btn"
+                    data-open-pain-graph
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                    aria-label="View pain level trend for <?= e((string) $medication['name']) ?>"
+                    title="Pain level trend"
+                  ><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></button>
+                  <?php endif; ?>
                 </div>
                 <div class="row-actions medication-actions-bottom">
                   <form method="post" action="index.php">
@@ -884,6 +904,22 @@ foreach ($recentLogs as $log) {
         <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
       </div>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" data-pain-graph-modal>
+  <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-graph-title">
+    <div class="modal-header">
+      <h2 id="pain-graph-title" data-pain-graph-title>Pain Level Trend</h2>
+      <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
+    </div>
+    <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+      <button class="range-tab is-active" data-range="7">7 days</button>
+      <button class="range-tab" data-range="30">30 days</button>
+      <button class="range-tab" data-range="90">90 days</button>
+    </div>
+    <div class="pain-graph-body" data-pain-graph-body></div>
+    <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
   </div>
 </div>
 

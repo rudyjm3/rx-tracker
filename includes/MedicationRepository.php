@@ -66,6 +66,23 @@ final class MedicationRepository
         return $statement->fetchAll();
     }
 
+    public function painLevelTrend(int $medicationId, int $days): array
+    {
+        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $statement = $this->db->prepare(
+            'SELECT scheduled_for_date AS date, scheduled_time AS time,
+                    pain_level, note, status
+             FROM dose_logs
+             WHERE medication_id = :medication_id
+               AND pain_level IS NOT NULL
+               AND scheduled_for_date >= :start_date
+             ORDER BY scheduled_for_date ASC, scheduled_time ASC'
+        );
+        $statement->execute(['medication_id' => $medicationId, 'start_date' => $startDate]);
+
+        return $statement->fetchAll();
+    }
+
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
