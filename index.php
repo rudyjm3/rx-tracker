@@ -138,8 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_public_key'
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_trend') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);
-    $days = max(7, min(365, (int) ($_GET['days'] ?? 30)));
-    $data = $repository->painLevelTrend($medicationId, $days);
+    $daysParam = (int) ($_GET['days'] ?? 30);
+    if ($daysParam === 0) {
+        $data = $repository->painLevelTrendForDate($medicationId, date('Y-m-d'));
+    } else {
+        $days = max(1, min(365, $daysParam));
+        $data = $repository->painLevelTrend($medicationId, $days);
+    }
     echo json_encode(['ok' => true, 'data' => $data], JSON_THROW_ON_ERROR);
     exit;
 }
@@ -473,7 +478,13 @@ foreach ($recentLogs as $log) {
                     <input type="hidden" name="action" value="log_dose_now">
                     <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
                     <input type="hidden" name="note" value="Logged now">
-                    <button type="submit" class="secondary">Log dose now</button>
+                    <button
+                      type="submit"
+                      class="secondary"
+                      data-log-dose-now
+                      data-medication-id="<?= e((string) $medication['id']) ?>"
+                      data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
+                    >Log dose now</button>
                   </form>
                   <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
                     <?= csrf_field() ?>
@@ -510,6 +521,110 @@ foreach ($recentLogs as $log) {
             <?php endforeach; ?>
           </div>
         </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay<?= $editing ? ' is-open' : '' ?>" data-medication-modal>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
+      <div class="modal-header">
+        <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
+        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">X</button>
+      </div>
+      <form class="medication-form" method="post" action="index.php">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
+        <input type="hidden" name="medication_id" value="<?= e((string) ($editing['id'] ?? 0)) ?>">
+
+        <label>Name<input name="name" required value="<?= e((string) ($editing['name'] ?? '')) ?>"></label>
+        <label>Dose<input name="dose" required value="<?= e((string) ($editing['dose'] ?? '')) ?>"></label>
+        <label>Schedule type
+          <select name="schedule_mode">
+            <option value="fixed_times" <?= (($editing['schedule_mode'] ?? '') === 'fixed_times') ? 'selected' : '' ?>>Fixed times</option>
+            <option value="interval" <?= (($editing['schedule_mode'] ?? '') === 'interval') ? 'selected' : '' ?>>Every X hours</option>
+          </select>
+        </label>
+        <label>Fixed dose times (comma separated)
+          <input name="dose_times" placeholder="8:00 AM, 2:00 PM, 9:00 PM" value="<?= e(isset($editing['times']) ? implode(', ', array_map('to12h', $editing['times'])) : '') ?>">
+        </label>
+        <label>Interval hours
+          <input type="number" min="1" max="24" name="interval_hours" value="<?= e((string) ($editing['interval_hours'] ?? '')) ?>">
+        </label>
+        <label>First dose time
+          <input name="first_dose_time" placeholder="8:00 AM" value="<?= e((string) (isset($editing['first_dose_time']) ? to12h((string) $editing['first_dose_time']) : '')) ?>">
+        </label>
+        <label>As needed (PRN)
+          <select name="as_needed">
+            <option value="0" <?= ((int) ($editing['as_needed'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
+            <option value="1" <?= ((int) ($editing['as_needed'] ?? 0) === 1) ? 'selected' : '' ?>>Yes</option>
+          </select>
+        </label>
+        <label>Track dose feedback (pain &amp; comments)
+          <select name="track_dose_feedback">
+            <option value="0" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
+            <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
+          </select>
+        </label>
+        <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
+        <label>Low supply threshold (pills)
+          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
+        </label>
+        <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
+        <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" data-pain-graph-modal>
+    <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-graph-title">
+      <div class="modal-header">
+        <h2 id="pain-graph-title" data-pain-graph-title>Pain Level Trend</h2>
+        <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
+      </div>
+      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+        <button class="range-tab" data-range="0">Today</button>
+        <button class="range-tab is-active" data-range="7">7 days</button>
+        <button class="range-tab" data-range="30">30 days</button>
+        <button class="range-tab" data-range="90">90 days</button>
+      </div>
+      <div class="pain-graph-body" data-pain-graph-body></div>
+      <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
+    </div>
+  </div>
+
+  <div class="modal-overlay" data-dose-feedback-modal>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
+      <div class="modal-header">
+        <h2 id="feedback-modal-title">How are you feeling?</h2>
+        <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
+      </div>
+      <form method="post" action="index.php" class="stacked-form" data-feedback-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="mark_dose">
+        <input type="hidden" name="status" value="taken">
+        <input type="hidden" name="medication_id" data-feedback-medication-id value="">
+        <input type="hidden" name="scheduled_date" data-feedback-scheduled-date value="">
+        <input type="hidden" name="scheduled_time" data-feedback-scheduled-time value="">
+        <input type="hidden" name="pain_level" data-feedback-pain-level value="">
+
+        <div class="feedback-pain-section" data-feedback-pain-section>
+          <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select pain level">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="pain-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+        </div>
+
+        <label>Comments <span class="field-optional">(optional)</span>
+          <textarea name="note" data-feedback-note rows="3" maxlength="250" placeholder="How are you feeling? Any side effects or observations?"></textarea>
+          <span class="char-counter" data-feedback-char-counter>[0/250]</span>
+        </label>
+
+        <div class="feedback-actions">
+          <button type="submit">Log dose</button>
+          <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -744,7 +859,7 @@ foreach ($recentLogs as $log) {
     </article>
 
     <article class="panel">
-      <div class="panel-heading"><h2>Today schedule</h2></div>
+      <div class="panel-heading"><h2>Today schedule <span class="panel-heading-date"><?= date('D, M j') ?></span></h2></div>
       <div class="schedule-list">
         <?php foreach ($todaySchedule as $dose): ?>
           <div class="schedule-row">
@@ -805,11 +920,12 @@ foreach ($recentLogs as $log) {
                 <?= e((string) $log['status']) ?>
               <?php endif; ?>
               <?php if (isset($log['pain_level']) && $log['pain_level'] !== null): ?>
-                <span class="history-pain-badge" title="Pain level"><?= e((string) $log['pain_level']) ?>/10</span>
+                <?php $pl = (int) $log['pain_level']; $painMod = $pl <= 3 ? 'low' : ($pl <= 6 ? 'mid' : ($pl <= 8 ? 'high' : 'severe')); ?>
+                <span class="history-pain-label">Pain Score</span> <span class="history-pain-badge history-pain-badge--<?= $painMod ?>"><?= e((string) $log['pain_level']) ?>/10</span>
               <?php endif; ?>
             </p>
-            <?php if ((string) $log['note'] !== '' && (string) $log['note'] !== 'Skipped dose'): ?>
-              <small class="history-note"><?= e((string) $log['note']) ?></small>
+            <?php if ((string) $log['note'] !== '' && (string) $log['note'] !== 'Skipped dose' && (string) $log['note'] !== 'Logged now'): ?>
+              <small class="history-note"><span class="history-note-label">Comments:</span> <?= e((string) $log['note']) ?></small>
             <?php endif; ?>
           </div>
         </li>
@@ -819,109 +935,6 @@ foreach ($recentLogs as $log) {
   </section>
   <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
-
-<div class="modal-overlay<?= $editing ? ' is-open' : '' ?>" data-medication-modal>
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
-    <div class="modal-header">
-      <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
-      <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">X</button>
-    </div>
-    <form class="medication-form" method="post" action="index.php">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
-      <input type="hidden" name="medication_id" value="<?= e((string) ($editing['id'] ?? 0)) ?>">
-
-      <label>Name<input name="name" required value="<?= e((string) ($editing['name'] ?? '')) ?>"></label>
-      <label>Dose<input name="dose" required value="<?= e((string) ($editing['dose'] ?? '')) ?>"></label>
-      <label>Schedule type
-        <select name="schedule_mode">
-          <option value="fixed_times" <?= (($editing['schedule_mode'] ?? '') === 'fixed_times') ? 'selected' : '' ?>>Fixed times</option>
-          <option value="interval" <?= (($editing['schedule_mode'] ?? '') === 'interval') ? 'selected' : '' ?>>Every X hours</option>
-        </select>
-      </label>
-      <label>Fixed dose times (comma separated)
-        <input name="dose_times" placeholder="8:00 AM, 2:00 PM, 9:00 PM" value="<?= e(isset($editing['times']) ? implode(', ', array_map('to12h', $editing['times'])) : '') ?>">
-      </label>
-      <label>Interval hours
-        <input type="number" min="1" max="24" name="interval_hours" value="<?= e((string) ($editing['interval_hours'] ?? '')) ?>">
-      </label>
-      <label>First dose time
-        <input name="first_dose_time" placeholder="8:00 AM" value="<?= e((string) (isset($editing['first_dose_time']) ? to12h((string) $editing['first_dose_time']) : '')) ?>">
-      </label>
-      <label>As needed (PRN)
-        <select name="as_needed">
-          <option value="0" <?= ((int) ($editing['as_needed'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
-          <option value="1" <?= ((int) ($editing['as_needed'] ?? 0) === 1) ? 'selected' : '' ?>>Yes</option>
-        </select>
-      </label>
-      <label>Track dose feedback (pain &amp; comments)
-        <select name="track_dose_feedback">
-          <option value="0" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
-          <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
-        </select>
-      </label>
-      <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
-      <label>Low supply threshold (pills)
-        <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
-      </label>
-      <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
-      <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
-    </form>
-  </div>
-</div>
-
-<div class="modal-overlay" data-dose-feedback-modal>
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
-    <div class="modal-header">
-      <h2 id="feedback-modal-title">How are you feeling?</h2>
-      <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
-    </div>
-    <form method="post" action="index.php" class="stacked-form" data-feedback-form>
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="mark_dose">
-      <input type="hidden" name="status" value="taken">
-      <input type="hidden" name="medication_id" data-feedback-medication-id value="">
-      <input type="hidden" name="scheduled_date" data-feedback-scheduled-date value="">
-      <input type="hidden" name="scheduled_time" data-feedback-scheduled-time value="">
-      <input type="hidden" name="pain_level" data-feedback-pain-level value="">
-
-      <div class="feedback-pain-section" data-feedback-pain-section>
-        <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
-        <div class="pain-level-selector" role="group" aria-label="Select pain level">
-          <?php for ($i = 1; $i <= 10; $i++): ?>
-            <button type="button" class="pain-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
-          <?php endfor; ?>
-        </div>
-      </div>
-
-      <label>Comments <span class="field-optional">(optional)</span>
-        <textarea name="note" data-feedback-note rows="3" maxlength="250" placeholder="How are you feeling? Any side effects or observations?"></textarea>
-        <span class="char-counter" data-feedback-char-counter>[0/250]</span>
-      </label>
-
-      <div class="feedback-actions">
-        <button type="submit">Log dose</button>
-        <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div class="modal-overlay" data-pain-graph-modal>
-  <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-graph-title">
-    <div class="modal-header">
-      <h2 id="pain-graph-title" data-pain-graph-title>Pain Level Trend</h2>
-      <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
-    </div>
-    <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-      <button class="range-tab is-active" data-range="7">7 days</button>
-      <button class="range-tab" data-range="30">30 days</button>
-      <button class="range-tab" data-range="90">90 days</button>
-    </div>
-    <div class="pain-graph-body" data-pain-graph-body></div>
-    <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
-  </div>
-</div>
 
 <div class="modal-overlay" data-postpone-modal>
   <div class="modal-dialog postpone-dialog" role="dialog" aria-modal="true" aria-labelledby="postpone-modal-title">

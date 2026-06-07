@@ -376,6 +376,12 @@ h1 {
   margin: 0;
 }
 
+.panel-heading-date {
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
 .medication-list-panel {
   grid-column: 1 / -1;
 }
@@ -1513,16 +1519,50 @@ select:focus,
   margin-top: 0.15rem;
 }
 
+.history-pain-label {
+  color: grey !important;
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-left: 0.3rem;
+}
+
 .history-pain-badge {
-  background: #fef3c7;
-  border: 1px solid #d97706;
+  border: 1px solid;
   border-radius: 0.75rem;
-  color: #92400e;
   font-size: 0.72rem;
   font-weight: 700;
-  margin-left: 0.3rem;
   padding: 0.05rem 0.4rem;
   white-space: nowrap;
+}
+
+.history-pain-badge--low {
+  background: #d1fae5;
+  border-color: #2a9d49;
+  color: #065f46;
+}
+
+.history-pain-badge--mid {
+  background: #fef3c7;
+  border-color: #d97706;
+  color: #92400e;
+}
+
+.history-pain-badge--high {
+  background: #ffedd5;
+  border-color: #e05b30;
+  color: #9a3412;
+}
+
+.history-pain-badge--severe {
+  background: #fee2e2;
+  border-color: #c9213c;
+  color: #7f1d1d;
+}
+
+.history-note .history-note-label {
+  color: grey;
+  font-style: normal;
+  font-weight: 600;
 }
 
 /* ── Export history table ────────────────────────────────────────────────── */

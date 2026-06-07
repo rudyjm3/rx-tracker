@@ -227,6 +227,22 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
   });
 });
 
+document.querySelectorAll('[data-log-dose-now]').forEach((btn) => {
+  btn.addEventListener('click', (event) => {
+    if (btn.dataset.trackDoseFeedback === '1') {
+      event.preventDefault();
+      const medicationId = btn.dataset.medicationId ?? '';
+      if (!medicationId) return;
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const scheduledDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const scheduledTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      closeMedPlanModal();
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+    }
+  });
+});
+
 document.querySelectorAll('.modal-edit-link').forEach((link) => {
   link.addEventListener('click', () => {
     openMedicationModal();
@@ -402,6 +418,54 @@ const renderPainChart = (container, data) => {
   </svg>`;
 };
 
+const renderPainChartToday = (container, data) => {
+  const W = 500, H = 200;
+  const ml = 32, mr = 12, mt = 12, mb = 36;
+  const chartW = W - ml - mr;
+  const chartH = H - mt - mb;
+
+  const yMin = 1, yMax = 10;
+  const yScale = (v) => mt + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  const n = data.length;
+  const xScale = (i) => ml + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+
+  let gridLines = '';
+  [1, 3, 5, 7, 10].forEach((v) => {
+    const y = yScale(v).toFixed(1);
+    gridLines += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+    gridLines += `<text x="${ml - 4}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#94a3b8">${v}</text>`;
+  });
+
+  let xLabels = '';
+  const step = Math.max(1, Math.ceil(n / 6));
+  data.forEach((d, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    const x = xScale(i).toFixed(1);
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(d.time.slice(0, 5))}</text>`;
+  });
+
+  const points = data.map((d, i) => `${xScale(i).toFixed(1)},${yScale(parseInt(d.pain_level, 10)).toFixed(1)}`).join(' ');
+
+  let circles = '';
+  data.forEach((d, i) => {
+    const x = xScale(i).toFixed(1);
+    const y = yScale(parseInt(d.pain_level, 10)).toFixed(1);
+    const color = painLevelColor(parseInt(d.pain_level, 10));
+    const tip = `${escSvg(d.time.slice(0, 5))}: Pain ${escSvg(d.pain_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}`;
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${tip}</title></circle>`;
+  });
+
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pain level trend chart">
+    ${gridLines}
+    <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    ${xLabels}
+    <polyline points="${points}" fill="none" stroke="#6b7a96" stroke-width="2" stroke-linejoin="round"/>
+    ${circles}
+  </svg>`;
+};
+
 const loadPainGraph = async () => {
   if (!painGraphBody || !painGraphEmpty) return;
   painGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
@@ -414,7 +478,11 @@ const loadPainGraph = async () => {
       painGraphEmpty.hidden = false;
       return;
     }
-    renderPainChart(painGraphBody, payload.data);
+    if (painGraphDays === 0) {
+      renderPainChartToday(painGraphBody, payload.data);
+    } else {
+      renderPainChart(painGraphBody, payload.data);
+    }
   } catch {
     painGraphBody.innerHTML = '';
     painGraphEmpty.hidden = false;
