@@ -875,7 +875,8 @@ foreach ($recentLogs as $log) {
       </div>
 
       <label>Comments <span class="field-optional">(optional)</span>
-        <textarea name="note" data-feedback-note rows="3" maxlength="255" placeholder="How are you feeling? Any side effects or observations?"></textarea>
+        <textarea name="note" data-feedback-note rows="3" maxlength="250" placeholder="How are you feeling? Any side effects or observations?"></textarea>
+        <span class="char-counter" data-feedback-char-counter>[0/250]</span>
       </label>
 
       <div class="feedback-actions">

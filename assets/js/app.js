@@ -77,6 +77,7 @@ const feedbackScheduledDateEl = document.querySelector('[data-feedback-scheduled
 const feedbackScheduledTimeEl = document.querySelector('[data-feedback-scheduled-time]');
 const feedbackPainLevelEl = document.querySelector('[data-feedback-pain-level]');
 const feedbackNoteEl = document.querySelector('[data-feedback-note]');
+const feedbackCharCounter = document.querySelector('[data-feedback-char-counter]');
 const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
 const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
 
@@ -148,6 +149,7 @@ const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showP
   if (feedbackScheduledTimeEl) feedbackScheduledTimeEl.value = scheduledTime;
   if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
   if (feedbackNoteEl) feedbackNoteEl.value = '';
+  if (feedbackCharCounter) feedbackCharCounter.textContent = '[0/250]';
   document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
   if (feedbackPainSection) {
     feedbackPainSection.classList.toggle('is-hidden', !showPain);
@@ -197,6 +199,11 @@ skipFeedbackBtn?.addEventListener('click', async () => {
       feedbackForm?.submit();
     }
   }
+});
+
+feedbackNoteEl?.addEventListener('input', () => {
+  const len = feedbackNoteEl.value.length;
+  if (feedbackCharCounter) feedbackCharCounter.textContent = `[${len}/250]`;
 });
 
 closeFeedbackModalButton?.addEventListener('click', closeDoseFeedbackModal);
