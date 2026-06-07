@@ -348,10 +348,13 @@ foreach ($recentLogs as $log) {
       <img src="assets/icons/icon-192.png" alt="" class="nav-logo" aria-hidden="true" width="28" height="28">
       RxTracker
     </span>
-    <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
-    <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
-    <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
-    <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
+    <div class="nav-links">
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
+      <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
+      <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
+    </div>
+    <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>
 
   <section class="hero">
@@ -537,6 +540,7 @@ foreach ($recentLogs as $log) {
     $firstDow = (int) $calMonthDt->format('w');
     $daysInMonth = (int) $calMonthDt->modify('last day of this month')->format('j');
     $todayDate = date('Y-m-d');
+    $todayDow = (int) date('w');
   ?>
   <section class="panel calendar-section">
     <div class="panel-heading calendar-nav">
@@ -545,8 +549,8 @@ foreach ($recentLogs as $log) {
       <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($nextMonth) ?>">Next &rsaquo;</a>
     </div>
     <div class="calendar-grid">
-      <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dayName): ?>
-        <div class="calendar-day calendar-day--header"><strong><?= e($dayName) ?></strong></div>
+      <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $i => $dayName): ?>
+        <div class="calendar-day calendar-day--header<?= $i === $todayDow ? ' calendar-day--header-today' : '' ?>"><strong><?= e($dayName) ?></strong></div>
       <?php endforeach; ?>
       <?php for ($i = 0; $i < $firstDow; $i++): ?>
         <div class="calendar-day calendar-day--empty"></div>

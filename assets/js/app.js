@@ -16,8 +16,52 @@ if (firstInvalidField) {
   });
 }
 
+// ── Nav hamburger ─────────────────────────────────────────────────────────────
+
+const navToggle = document.querySelector('[data-nav-toggle]');
+const topNav = document.querySelector('.top-nav');
+
+navToggle?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const isOpen = topNav?.classList.toggle('is-open');
+  navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+});
+
+document.addEventListener('click', (event) => {
+  if (topNav?.classList.contains('is-open') && !topNav.contains(event.target)) {
+    topNav.classList.remove('is-open');
+    navToggle?.setAttribute('aria-expanded', 'false');
+  }
+});
+
+// ── Scroll lock (iOS-safe) ─────────────────────────────────────────────────────
+
+let scrollLockDepth = 0;
+let scrollLockY = 0;
+
+const lockBodyScroll = () => {
+  if (scrollLockDepth === 0) {
+    scrollLockY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollLockY}px`;
+    document.body.style.width = '100%';
+  }
+  scrollLockDepth++;
+};
+
+const unlockBodyScroll = () => {
+  scrollLockDepth = Math.max(0, scrollLockDepth - 1);
+  if (scrollLockDepth === 0) {
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.width = '';
+    window.scrollTo(0, scrollLockY);
+  }
+};
+
 const medicationModal = document.querySelector('[data-medication-modal]');
-const openMedicationModalButton = document.querySelector('[data-open-medication-modal]');
 const closeMedicationModalButton = document.querySelector('[data-close-medication-modal]');
 const postponeModal = document.querySelector('[data-postpone-modal]');
 const closePostponeModalButton = document.querySelector('[data-close-postpone-modal]');
@@ -27,20 +71,24 @@ const postponeScheduledTime = document.querySelector('[data-postpone-scheduled-t
 
 const openMedicationModal = () => {
   if (!medicationModal) return;
+  closeMedPlanModal();
   medicationModal.classList.add('is-open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 };
 
 const closeMedicationModal = () => {
   if (!medicationModal) return;
+  if (!medicationModal.classList.contains('is-open')) return;
   medicationModal.classList.remove('is-open');
-  document.body.style.overflow = '';
+  unlockBodyScroll();
   if (window.location.search.includes('edit=')) {
     window.history.replaceState({}, '', 'index.php');
   }
 };
 
-openMedicationModalButton?.addEventListener('click', openMedicationModal);
+document.querySelectorAll('[data-open-medication-modal]').forEach((btn) => {
+  btn.addEventListener('click', openMedicationModal);
+});
 closeMedicationModalButton?.addEventListener('click', closeMedicationModal);
 
 const openPostponeModal = (medicationId, scheduledDate, scheduledTime) => {
@@ -49,13 +97,14 @@ const openPostponeModal = (medicationId, scheduledDate, scheduledTime) => {
   if (postponeScheduledDate) postponeScheduledDate.value = scheduledDate;
   if (postponeScheduledTime) postponeScheduledTime.value = scheduledTime;
   postponeModal.classList.add('is-open');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 };
 
 const closePostponeModal = () => {
   if (!postponeModal) return;
+  if (!postponeModal.classList.contains('is-open')) return;
   postponeModal.classList.remove('is-open');
-  document.body.style.overflow = medicationModal?.classList.contains('is-open') ? 'hidden' : '';
+  unlockBodyScroll();
 };
 
 document.querySelectorAll('[data-open-postpone-modal]').forEach((button) => {
@@ -95,13 +144,14 @@ const closeMedPlanModalBtn = document.querySelector('[data-close-med-plan-modal]
 const openMedPlanModal = () => {
   if (!medPlanModal) return;
   medPlanModal.hidden = false;
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 };
 
 const closeMedPlanModal = () => {
   if (!medPlanModal) return;
+  if (medPlanModal.hidden) return;
   medPlanModal.hidden = true;
-  document.body.style.overflow = '';
+  unlockBodyScroll();
 };
 
 openMedPlanModalBtns.forEach((btn) => btn.addEventListener('click', openMedPlanModal));
@@ -309,12 +359,21 @@ const playAlarmPattern = () => {
 };
 
 const startAlarmAudio = () => {
-  if (alarmAudioCtx) return;
+  if (alarmAudioCtx) {
+    if (alarmAudioCtx.state === 'suspended') {
+      alarmAudioCtx.resume().then(playAlarmPattern).catch(() => {});
+    }
+    return;
+  }
   try {
     alarmAudioCtx = new AudioContext();
-    playAlarmPattern();
+    if (alarmAudioCtx.state === 'suspended') {
+      alarmAudioCtx.resume().then(playAlarmPattern).catch(() => {});
+    } else {
+      playAlarmPattern();
+    }
   } catch {
-    // AudioContext unavailable (e.g. desktop without audio)
+    // AudioContext unavailable
   }
 };
 
@@ -337,14 +396,15 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
   alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
   alarmOverlay.classList.add('is-active');
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
   if (isAlarmEnabled()) startAlarmAudio();
 };
 
 const hideAlarmOverlay = () => {
   if (!alarmOverlay) return;
+  if (!alarmOverlay.classList.contains('is-active')) return;
   alarmOverlay.classList.remove('is-active');
-  document.body.style.overflow = '';
+  unlockBodyScroll();
   stopAlarmAudio();
 };
 
@@ -424,8 +484,11 @@ const notifyItems = (items) => {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
+  const itemKey = (item) =>
+    `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}|${item.postponed_until ?? ''}`;
+
   const unseen = items.filter((item) => {
-    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
+    const key = itemKey(item);
     const lastSeen = seenMap[key];
     if (!lastSeen) return true;
     return now - new Date(lastSeen).getTime() > SEEN_EXPIRY_MS;
@@ -437,8 +500,7 @@ const notifyItems = (items) => {
   }
 
   unseen.forEach((item) => {
-    const key = `${item.medication_id}|${item.scheduled_date}|${item.scheduled_time}`;
-    seenMap[key] = nowIso;
+    seenMap[itemKey(item)] = nowIso;
   });
   writeSeenMap(seenMap);
 
@@ -562,8 +624,25 @@ registerServiceWorker().catch(() => {
 pollDueReminders();
 window.setInterval(pollDueReminders, 30000);
 
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollDueReminders();
+});
+
+// Unlock AudioContext on first user interaction (required on mobile browsers)
+let audioUnlocked = false;
+const unlockAudioOnInteraction = () => {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    const ctx = new AudioContext();
+    ctx.resume().then(() => ctx.close()).catch(() => {});
+  } catch {}
+};
+document.addEventListener('touchend', unlockAudioOnInteraction, { passive: true, once: true });
+document.addEventListener('click', unlockAudioOnInteraction, { once: true });
+
 if (medicationModal?.classList.contains('is-open')) {
-  document.body.style.overflow = 'hidden';
+  lockBodyScroll();
 }
 
 // ── Medication form schedule/time-format UI ───────────────────────────────────

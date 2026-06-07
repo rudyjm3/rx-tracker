@@ -61,6 +61,30 @@ button:disabled {
   display: flex;
   gap: 0.8rem;
   margin-bottom: 1rem;
+  position: relative;
+}
+
+.nav-links {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+}
+
+.nav-hamburger {
+  background: #f3f6fb;
+  border: 1px solid #dce4f0;
+  border-radius: 0.8rem;
+  color: #21304a;
+  display: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.55rem 0.75rem;
+}
+
+.nav-hamburger:hover {
+  background: #e8eef8;
+  box-shadow: none;
+  transform: none;
 }
 
 .top-nav a {
@@ -707,6 +731,16 @@ select:focus,
   text-align: center;
 }
 
+.calendar-day--header-today {
+  background: #e9f0ff;
+  border-color: #c8dafd;
+  border-radius: 0.9rem;
+}
+
+.calendar-day--header-today strong {
+  color: #0d55d5;
+}
+
 .calendar-day--taken {
   background: #effaf3;
   border-color: #afe1bf;
@@ -834,6 +868,7 @@ select:focus,
   display: none;
   inset: 0;
   justify-content: center;
+  overflow: hidden;
   padding: 1rem;
   position: fixed;
   z-index: 2000;
@@ -1163,9 +1198,27 @@ select:focus,
   .hero,
   .dashboard-grid,
   .content-grid,
-  .medication-form,
-  .calendar-grid {
+  .medication-form {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-grid {
+    gap: 0.25rem;
+  }
+
+  .calendar-day {
+    padding: 0.3rem 0.2rem;
+  }
+
+  .calendar-day strong {
+    font-size: 0.7rem;
+  }
+
+  .calendar-day small {
+    font-size: 0.58rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem;
   }
 
   .hero-card {
@@ -1230,10 +1283,47 @@ select:focus,
 
   .modal-dialog {
     border-radius: 0;
-    height: 100vh;
-    max-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     max-width: 100vw;
+    overflow-y: auto;
     padding: 1rem;
     width: 100vw;
+  }
+
+  .alarm-dialog {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    width: calc(100% - 0px);
+  }
+
+  .nav-hamburger {
+    display: block;
+    margin-left: auto;
+  }
+
+  .nav-links {
+    background: #fff;
+    border: 1px solid #dce4f0;
+    border-radius: 1rem;
+    box-shadow: 0 8px 24px rgb(23 32 51 / 12%);
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    left: 0;
+    padding: 0.75rem;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.4rem);
+    z-index: 600;
+  }
+
+  .top-nav.is-open .nav-links {
+    display: flex;
+  }
+
+  .nav-links a {
+    text-align: center;
+    width: 100%;
   }
 }
