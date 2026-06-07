@@ -175,9 +175,7 @@ h1 {
 }
 
 .hero-med-card-header {
-  align-items: flex-start;
   display: flex;
-  justify-content: space-between;
 }
 
 .hero-med-card-title {

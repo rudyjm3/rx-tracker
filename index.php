@@ -361,23 +361,11 @@ foreach ($recentLogs as $log) {
           <span class="stat-label">Medication plan</span>
           <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
         </div>
-        <div class="hero-med-card-actions">
-          <button type="button" data-open-medication-modal>Add</button>
-          <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
-        </div>
       </div>
-      <?php if ($medicationPlanCount > 0): ?>
-        <ul class="hero-med-preview">
-          <?php foreach (array_slice($medications, 0, 3) as $med): ?>
-            <li><span class="hero-med-name"><?= e((string) $med['name']) ?></span><span class="hero-med-dose"><?= e((string) $med['dose']) ?></span></li>
-          <?php endforeach; ?>
-          <?php if ($medicationPlanCount > 3): ?>
-            <li class="hero-med-more">+<?= e((string) ($medicationPlanCount - 3)) ?> more</li>
-          <?php endif; ?>
-        </ul>
-      <?php else: ?>
-        <p class="hero-med-empty">No active medications yet.</p>
-      <?php endif; ?>
+      <div class="hero-med-card-actions">
+        <button type="button" data-open-medication-modal>Add</button>
+        <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
+      </div>
     </div>
     <div class="hero-card" aria-label="Today's adherence summary">
       <span class="stat-label">Today's adherence</span>
@@ -392,6 +380,112 @@ foreach ($recentLogs as $log) {
 
   <?php if ($notice !== null): ?><div class="notice"><?= e($notice) ?></div><?php endif; ?>
   <?php if ($error !== null): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
+
+  <div class="med-plan-modal-overlay" id="med-plan-modal" role="dialog" aria-modal="true" aria-label="Medication plan" hidden>
+    <div class="med-plan-modal-inner">
+      <div class="med-plan-modal-header">
+        <div class="medication-plan-title-wrap">
+          <h2>Medication plan</h2>
+          <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
+        </div>
+        <div class="medication-plan-actions">
+          <button type="button" data-open-medication-modal>Add medication</button>
+          <button type="button" class="secondary med-plan-close-btn" data-close-med-plan-modal aria-label="Close">&times;</button>
+        </div>
+      </div>
+      <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
+          <button
+            type="button"
+            class="secondary plan-tab is-active"
+            data-plan-tab="active"
+            role="tab"
+            aria-selected="true"
+            aria-controls="active-medications-panel"
+            id="active-medications-tab"
+          >Active (<?= e((string) $medicationPlanCount) ?>)</button>
+          <button
+            type="button"
+            class="secondary plan-tab"
+            data-plan-tab="inactive"
+            role="tab"
+            aria-selected="false"
+            aria-controls="inactive-medications-panel"
+            id="inactive-medications-tab"
+          >Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
+        </div>
+
+        <div class="plan-tab-panel" id="active-medications-panel" role="tabpanel" aria-labelledby="active-medications-tab">
+          <div class="medication-list">
+            <?php if ($medicationPlanCount === 0): ?>
+              <div class="empty-state"><p>No active medications yet.</p></div>
+            <?php endif; ?>
+            <?php foreach ($medications as $medication): ?>
+              <?php $daysLeft = daysUntilRunout($medication); ?>
+              <div class="medication-row medication-row-plan">
+                <div class="medication-content">
+                  <strong><?= e((string) $medication['name']) ?></strong>
+                  <p><?= e((string) $medication['dose']) ?></p>
+                  <p>
+                    <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
+                      Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(to12h((string) $medication['first_dose_time'])) ?>
+                    <?php else: ?>
+                      <?= e(implode(', ', array_map(static fn(string $time): string => to12h($time), $medication['times']))) ?>
+                    <?php endif; ?>
+                    <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
+                  </p>
+                  <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+                  <?php if ($daysLeft !== null): ?>
+                    <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
+                  <?php endif; ?>
+                </div>
+                <div class="row-actions medication-actions-top">
+                  <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
+                </div>
+                <div class="row-actions medication-actions-bottom">
+                  <form method="post" action="index.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="log_dose_now">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <input type="hidden" name="note" value="Logged now">
+                    <button type="submit" class="secondary">Log dose now</button>
+                  </form>
+                  <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="deactivate_medication">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <button type="submit" class="secondary">Deactivate</button>
+                  </form>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+
+        <div class="plan-tab-panel" id="inactive-medications-panel" role="tabpanel" aria-labelledby="inactive-medications-tab" hidden>
+          <div class="inactive-list">
+            <?php if ($inactiveMedications === []): ?>
+              <div class="empty-state"><p>No inactive medications.</p></div>
+            <?php endif; ?>
+            <?php foreach ($inactiveMedications as $medication): ?>
+              <div class="medication-row">
+                <div>
+                  <strong><?= e((string) $medication['name']) ?></strong>
+                  <p><?= e((string) $medication['dose']) ?></p>
+                </div>
+                <div class="row-actions">
+                  <form method="post" action="index.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="activate_medication">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <button type="submit">Activate</button>
+                  </form>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+    </div>
+  </div>
 
   <?php if ($page === 'settings'): ?>
     <section class="panel settings-panel">
@@ -565,113 +659,6 @@ foreach ($recentLogs as $log) {
   <?php endif; ?>
 
   <div class="in-app-alert" data-in-app-alert hidden></div>
-
-
-  <div class="med-plan-modal-overlay" id="med-plan-modal" role="dialog" aria-modal="true" aria-label="Medication plan" hidden>
-    <div class="med-plan-modal-inner">
-      <div class="med-plan-modal-header">
-        <div class="medication-plan-title-wrap">
-          <h2>Medication plan</h2>
-          <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
-        </div>
-        <div class="medication-plan-actions">
-          <button type="button" data-open-medication-modal>Add medication</button>
-          <button type="button" class="secondary med-plan-close-btn" data-close-med-plan-modal aria-label="Close">&times;</button>
-        </div>
-      </div>
-      <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
-          <button
-            type="button"
-            class="secondary plan-tab is-active"
-            data-plan-tab="active"
-            role="tab"
-            aria-selected="true"
-            aria-controls="active-medications-panel"
-            id="active-medications-tab"
-          >Active (<?= e((string) $medicationPlanCount) ?>)</button>
-          <button
-            type="button"
-            class="secondary plan-tab"
-            data-plan-tab="inactive"
-            role="tab"
-            aria-selected="false"
-            aria-controls="inactive-medications-panel"
-            id="inactive-medications-tab"
-          >Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
-        </div>
-
-        <div class="plan-tab-panel" id="active-medications-panel" role="tabpanel" aria-labelledby="active-medications-tab">
-          <div class="medication-list">
-            <?php if ($medicationPlanCount === 0): ?>
-              <div class="empty-state"><p>No active medications yet.</p></div>
-            <?php endif; ?>
-            <?php foreach ($medications as $medication): ?>
-              <?php $daysLeft = daysUntilRunout($medication); ?>
-              <div class="medication-row medication-row-plan">
-                <div class="medication-content">
-                  <strong><?= e((string) $medication['name']) ?></strong>
-                  <p><?= e((string) $medication['dose']) ?></p>
-                  <p>
-                    <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
-                      Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(to12h((string) $medication['first_dose_time'])) ?>
-                    <?php else: ?>
-                      <?= e(implode(', ', array_map(static fn(string $time): string => to12h($time), $medication['times']))) ?>
-                    <?php endif; ?>
-                    <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
-                  </p>
-                  <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
-                  <?php if ($daysLeft !== null): ?>
-                    <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
-                  <?php endif; ?>
-                </div>
-                <div class="row-actions medication-actions-top">
-                  <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
-                </div>
-                <div class="row-actions medication-actions-bottom">
-                  <form method="post" action="index.php">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="log_dose_now">
-                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                    <input type="hidden" name="note" value="Logged now">
-                    <button type="submit" class="secondary">Log dose now</button>
-                  </form>
-                  <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="deactivate_medication">
-                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                    <button type="submit" class="secondary">Deactivate</button>
-                  </form>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        </div>
-
-        <div class="plan-tab-panel" id="inactive-medications-panel" role="tabpanel" aria-labelledby="inactive-medications-tab" hidden>
-          <div class="inactive-list">
-            <?php if ($inactiveMedications === []): ?>
-              <div class="empty-state"><p>No inactive medications.</p></div>
-            <?php endif; ?>
-            <?php foreach ($inactiveMedications as $medication): ?>
-              <div class="medication-row">
-                <div>
-                  <strong><?= e((string) $medication['name']) ?></strong>
-                  <p><?= e((string) $medication['dose']) ?></p>
-                </div>
-                <div class="row-actions">
-                  <form method="post" action="index.php">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="activate_medication">
-                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                    <button type="submit">Activate</button>
-                  </form>
-                </div>
-              </div>
-            <?php endforeach; ?>
-          </div>
-        </div>
-    </div>
-  </div>
 
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel next-dose">
