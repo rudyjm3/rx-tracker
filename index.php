@@ -348,6 +348,7 @@ foreach ($recentLogs as $log) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1269ff">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
@@ -717,11 +718,11 @@ foreach ($recentLogs as $log) {
     $todayDate = date('Y-m-d');
     $todayDow = (int) date('w');
   ?>
-  <section class="panel calendar-section">
+  <section class="panel calendar-section" id="calendar-section">
     <div class="panel-heading calendar-nav">
-      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($prevMonth) ?>">&lsaquo; Prev</a>
+      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($prevMonth) ?>#calendar-section">&lsaquo; Prev</a>
       <h2><?= e($monthLabel) ?></h2>
-      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($nextMonth) ?>">Next &rsaquo;</a>
+      <a class="calendar-nav-btn secondary" href="?page=calendar&m=<?= e($nextMonth) ?>#calendar-section">Next &rsaquo;</a>
     </div>
     <div class="calendar-grid">
       <?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $i => $dayName): ?>

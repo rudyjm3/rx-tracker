@@ -1,3 +1,5 @@
+const apiProxy = (url) => `api-proxy.php?url=${encodeURIComponent(url)}`;
+
 document.querySelectorAll('[data-confirm]').forEach((form) => {
   form.addEventListener('submit', (event) => {
     const message = form.getAttribute('data-confirm');
@@ -1119,7 +1121,7 @@ const showDrugDropdown = (names) => {
 const fetchDrugSuggestions = async (query) => {
   try {
     const res = await fetch(
-      `https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=10`
+      apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=10`)
     );
     if (!res.ok) return;
     const data = await res.json();
@@ -1133,7 +1135,7 @@ const fetchAndSetSplId = async (name) => {
   setIdInput.value = '';
   try {
     const res = await fetch(
-      `https://dailymed.nlm.nih.gov/dailymed/services/v2/spls.json?drug_name=${encodeURIComponent(name)}&pagesize=1`
+      apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/spls.json?drug_name=${encodeURIComponent(name)}&pagesize=1`)
     );
     if (!res.ok) return;
     const data = await res.json();
@@ -1184,7 +1186,7 @@ const fetchPillImageUrl = async (setId, medicationName) => {
   if (setId) {
     try {
       const res = await fetch(
-        `https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}/media.json`
+        apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}/media.json`)
       );
       if (res.ok) {
         const data = await res.json();
@@ -1198,7 +1200,7 @@ const fetchPillImageUrl = async (setId, medicationName) => {
   }
   try {
     await fetch(
-      `https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`
+      apiProxy(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`)
     );
   } catch {}
   return null;
@@ -1372,9 +1374,9 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
     if (!medDetailCache[cacheKey]) {
       const [, ofdaResult] = await Promise.allSettled([
         setId
-          ? fetch(`https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}.json`).catch(() => null)
+          ? fetch(apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}.json`)).catch(() => null)
           : Promise.resolve(null),
-        fetch(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`)
+        fetch(apiProxy(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`))
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
       ]);

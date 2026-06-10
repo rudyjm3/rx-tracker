@@ -297,7 +297,7 @@ h1 {
   flex-direction: column;
   max-height: 85vh;
   max-width: 720px;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 1.5rem;
   width: 100%;
 }
@@ -430,6 +430,12 @@ h1 {
   color: #fff;
 }
 
+.plan-tab-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .plan-tab-panel[hidden] {
   display: none;
 }
@@ -542,8 +548,6 @@ select:focus,
 .medication-list {
   display: grid;
   gap: 0.75rem;
-  max-height: 28.5rem;
-  overflow-y: auto;
 }
 
 .medication-row {
