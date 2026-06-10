@@ -740,6 +740,8 @@ const hideAlarmOverlay = () => {
   stopAlarmAudio();
 };
 
+const isMedicationModalOpen = () => medicationModal?.classList.contains('is-open') ?? false;
+
 const alarmAction = async (action, extra = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
   const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
@@ -765,14 +767,14 @@ const alarmAction = async (action, extra = {}) => {
     const data = await resp.json();
     if (data.ok) {
       hideAlarmOverlay();
-      window.location.reload();
+      if (!isMedicationModalOpen()) window.location.reload();
       return;
     }
   } catch {
     // fall through
   }
   hideAlarmOverlay();
-  window.location.reload();
+  if (!isMedicationModalOpen()) window.location.reload();
 };
 
 alarmTakeBtn?.addEventListener('click', () => {
@@ -782,6 +784,7 @@ alarmTakeBtn?.addEventListener('click', () => {
     const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
     const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
     stopAlarmAudio();
+    hideAlarmOverlay();
     openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
   } else {
     alarmAction('mark_dose', { status: 'taken', note: '' });
