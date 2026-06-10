@@ -174,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pillCount = max(0, (int) post_string('pill_count'));
             $lowSupplyThreshold = max(0, (int) post_string('low_supply_threshold'));
             $trackDoseFeedback = post_string('track_dose_feedback') === '1';
+            $setId = substr(trim(post_string('set_id')), 0, 64);
 
             if ($name === '' || $dose === '') {
                 throw new RuntimeException('Medication name and dose are required.');
@@ -184,9 +185,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($action === 'add_medication') {
-                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback);
+                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
             } else {
-                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback);
+                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
             }
 
             redirect_home();
@@ -442,6 +443,12 @@ foreach ($recentLogs as $log) {
             <?php foreach ($medications as $medication): ?>
               <?php $daysLeft = daysUntilRunout($medication); ?>
               <div class="medication-row medication-row-plan">
+                <div class="pill-img-wrap"
+                     data-pill-img-wrap
+                     data-medication-id="<?= e((string) $medication['id']) ?>"
+                     data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>"
+                     data-medication-name="<?= e((string) $medication['name']) ?>">
+                </div>
                 <div class="medication-content">
                   <strong><?= e((string) $medication['name']) ?></strong>
                   <p><?= e((string) $medication['dose']) ?></p>
@@ -457,6 +464,10 @@ foreach ($recentLogs as $log) {
                   <?php if ($daysLeft !== null): ?>
                     <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
                   <?php endif; ?>
+                  <button type="button" class="view-details-link"
+                          data-view-details
+                          data-medication-name="<?= e((string) $medication['name']) ?>"
+                          data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
                 </div>
                 <div class="row-actions medication-actions-top">
                   <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
@@ -534,8 +545,12 @@ foreach ($recentLogs as $log) {
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
         <input type="hidden" name="medication_id" value="<?= e((string) ($editing['id'] ?? 0)) ?>">
+        <input type="hidden" name="set_id" data-set-id-input value="<?= e((string) ($editing['set_id'] ?? '')) ?>">
 
-        <label>Name<input name="name" required value="<?= e((string) ($editing['name'] ?? '')) ?>"></label>
+        <label class="autocomplete-wrap">Name
+          <input name="name" required autocomplete="off" data-med-name-input value="<?= e((string) ($editing['name'] ?? '')) ?>">
+          <ul class="autocomplete-dropdown" data-autocomplete-dropdown hidden></ul>
+        </label>
         <label>Dose<input name="dose" required value="<?= e((string) ($editing['dose'] ?? '')) ?>"></label>
         <label>Schedule type
           <select name="schedule_mode">
@@ -625,6 +640,28 @@ foreach ($recentLogs as $log) {
           <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Medication detail modal -->
+  <div class="modal-overlay" data-med-detail-modal>
+    <div class="modal-dialog med-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="med-detail-title">
+      <div class="modal-header">
+        <h2 id="med-detail-title" data-med-detail-title></h2>
+        <button type="button" class="icon-button" data-close-med-detail aria-label="Close">&#10005;</button>
+      </div>
+      <div data-med-detail-body>
+        <p class="pain-graph-loading">Loading&hellip;</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pill image lightbox -->
+  <div class="pill-lightbox-overlay" data-pill-lightbox>
+    <div class="pill-lightbox-dialog" data-pill-lightbox-dialog>
+      <button type="button" class="icon-button pill-lightbox-close" data-close-lightbox aria-label="Close image">&#10005;</button>
+      <img class="pill-lightbox-img" data-lightbox-img src="" alt="">
+      <p class="pill-lightbox-caption" data-lightbox-caption></p>
     </div>
   </div>
 

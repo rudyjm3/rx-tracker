@@ -11,12 +11,13 @@ final class MedicationRepository
         $this->ensureSupportTables();
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
+        $this->ensureSetIdColumn();
     }
 
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
              FROM medications
              WHERE active = 1
              ORDER BY name ASC"
@@ -32,7 +33,7 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
              FROM medications
              WHERE active = 0
              ORDER BY name ASC"
@@ -102,7 +103,7 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
              FROM medications
              WHERE id = :id AND active = 1'
         );
@@ -142,15 +143,16 @@ final class MedicationRepository
         bool $asNeeded,
         int $pillCount,
         int $lowSupplyThreshold,
-        bool $trackDoseFeedback = false
+        bool $trackDoseFeedback = false,
+        string $setId = ''
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
 
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback)
-                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold, :track_dose_feedback)'
+                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id)
+                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold, :track_dose_feedback, :set_id)'
             );
             $statement->execute([
                 'name' => $name,
@@ -165,6 +167,7 @@ final class MedicationRepository
                 'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
                 'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
+                'set_id' => $setId,
             ]);
 
             $medicationId = (int) $this->db->lastInsertId();
@@ -188,7 +191,8 @@ final class MedicationRepository
         bool $asNeeded,
         int $pillCount,
         int $lowSupplyThreshold,
-        bool $trackDoseFeedback = false
+        bool $trackDoseFeedback = false,
+        string $setId = ''
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
 
@@ -207,7 +211,8 @@ final class MedicationRepository
                      starting_pill_count = :starting_pill_count,
                      pill_count = :pill_count,
                      low_supply_threshold = :low_supply_threshold,
-                     track_dose_feedback = :track_dose_feedback
+                     track_dose_feedback = :track_dose_feedback,
+                     set_id = :set_id
                  WHERE id = :id'
             );
             $statement->execute([
@@ -224,6 +229,7 @@ final class MedicationRepository
                 'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
                 'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
+                'set_id' => $setId,
             ]);
 
             $this->replaceScheduleTimes($id, $doseTimes);
@@ -1143,6 +1149,38 @@ final class MedicationRepository
                 }
                 if (!$hasColumn) {
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN pain_level INTEGER NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureSetIdColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'set_id'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN set_id VARCHAR(64) NOT NULL DEFAULT ''");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'set_id') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN set_id TEXT NOT NULL DEFAULT ''");
                 }
             }
         } catch (Throwable) {

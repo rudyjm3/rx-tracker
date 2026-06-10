@@ -280,7 +280,15 @@ medPlanModal?.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && medPlanModal && !medPlanModal.hidden) closeMedPlanModal();
+  if (event.key !== 'Escape') return;
+  // Priority cascade: lightbox > detail modal > plan modal
+  if (pillLightbox?.classList.contains('is-open')) {
+    closePillLightbox();
+  } else if (medDetailModal?.classList.contains('is-open')) {
+    closeMedDetailModal();
+  } else if (medPlanModal && !medPlanModal.hidden) {
+    closeMedPlanModal();
+  }
 });
 
 const planTabs = document.querySelectorAll('[data-plan-tab]');
@@ -1077,3 +1085,308 @@ if (medicationForm) {
     }
   });
 }
+
+// ── Drug name autocomplete ────────────────────────────────────────────────────
+
+const medNameInput = document.querySelector('[data-med-name-input]');
+const autocompleteDropdown = document.querySelector('[data-autocomplete-dropdown]');
+const setIdInput = document.querySelector('[data-set-id-input]');
+let autocompleteTimer = null;
+
+const hideDrugDropdown = () => {
+  if (autocompleteDropdown) autocompleteDropdown.hidden = true;
+};
+
+const showDrugDropdown = (names) => {
+  if (!autocompleteDropdown) return;
+  autocompleteDropdown.innerHTML = '';
+  if (!names.length) { hideDrugDropdown(); return; }
+  names.forEach((name) => {
+    const li = document.createElement('li');
+    li.className = 'autocomplete-item';
+    li.textContent = name;
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (medNameInput) medNameInput.value = name;
+      hideDrugDropdown();
+      fetchAndSetSplId(name);
+    });
+    autocompleteDropdown.appendChild(li);
+  });
+  autocompleteDropdown.hidden = false;
+};
+
+const fetchDrugSuggestions = async (query) => {
+  try {
+    const res = await fetch(
+      `https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=10`
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    const names = (data?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean);
+    showDrugDropdown(names);
+  } catch { hideDrugDropdown(); }
+};
+
+const fetchAndSetSplId = async (name) => {
+  if (!setIdInput) return;
+  setIdInput.value = '';
+  try {
+    const res = await fetch(
+      `https://dailymed.nlm.nih.gov/dailymed/services/v2/spls.json?drug_name=${encodeURIComponent(name)}&pagesize=1`
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    setIdInput.value = data?.data?.[0]?.setid ?? '';
+  } catch {}
+};
+
+if (medNameInput) {
+  medNameInput.addEventListener('input', () => {
+    clearTimeout(autocompleteTimer);
+    // Any manual edit to the name invalidates the previously-fetched set_id
+    if (setIdInput) setIdInput.value = '';
+    const v = medNameInput.value.trim();
+    if (v.length < 3) { hideDrugDropdown(); return; }
+    autocompleteTimer = setTimeout(() => fetchDrugSuggestions(v), 300);
+  });
+  medNameInput.addEventListener('blur', () => { setTimeout(hideDrugDropdown, 150); });
+  medNameInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideDrugDropdown(); });
+}
+
+// ── Pill image loading ────────────────────────────────────────────────────────
+
+const PILL_IMG_CACHE_PREFIX = 'rxtracker_pillimg_v1_';
+const PILL_IMG_TTL = 86400000;
+
+const PILL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H20a2 2 0 0 1 2 2v3"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg>`;
+
+// Key by setId when available so a medication edited to a different drug
+// immediately resolves its own cache entry rather than reusing the old one.
+const pillCacheKey = (medicationId, setId) => setId ? `s_${setId}` : `m_${medicationId}`;
+
+const readPillCache = (medicationId, setId) => {
+  const key = PILL_IMG_CACHE_PREFIX + pillCacheKey(medicationId, setId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return undefined;
+    const { url, ts } = JSON.parse(raw);
+    if (Date.now() - ts > PILL_IMG_TTL) { localStorage.removeItem(key); return undefined; }
+    return url;
+  } catch { return undefined; }
+};
+
+const writePillCache = (medicationId, setId, url) => {
+  try { localStorage.setItem(PILL_IMG_CACHE_PREFIX + pillCacheKey(medicationId, setId), JSON.stringify({ url, ts: Date.now() })); } catch {}
+};
+
+const fetchPillImageUrl = async (setId, medicationName) => {
+  if (setId) {
+    try {
+      const res = await fetch(
+        `https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}/media.json`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const item = (data?.data ?? []).find((d) => (d.type ?? '').startsWith('image/'));
+        if (item) {
+          return item.url
+            ?? `https://dailymed.nlm.nih.gov/dailymed/image.cfm?setid=${encodeURIComponent(setId)}&name=${encodeURIComponent(item.name ?? '')}`;
+        }
+      }
+    } catch {}
+  }
+  try {
+    await fetch(
+      `https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`
+    );
+  } catch {}
+  return null;
+};
+
+const applyPillImage = (wrap, medicationId, setId, url) => {
+  wrap.innerHTML = '';
+  if (url) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    img.width = 48;
+    img.height = 48;
+    img.addEventListener('error', () => {
+      writePillCache(medicationId, setId, null);
+      applyPillImage(wrap, medicationId, setId, null);
+    });
+    img.addEventListener('click', () => {
+      openPillLightbox(url, wrap.dataset.medicationName ?? '');
+    });
+    wrap.appendChild(img);
+  } else {
+    wrap.innerHTML = `<span class="pill-img-placeholder">${PILL_SVG}</span>`;
+  }
+};
+
+const loadPillImages = () => {
+  document.querySelectorAll('[data-pill-img-wrap]').forEach(async (wrap) => {
+    const { medicationId, setId = '', medicationName = '' } = wrap.dataset;
+    if (!medicationId) return;
+    wrap.innerHTML = `<span class="pill-img-placeholder">${PILL_SVG}</span>`;
+    const cached = readPillCache(medicationId, setId);
+    if (cached !== undefined) { applyPillImage(wrap, medicationId, setId, cached); return; }
+    try {
+      const url = await fetchPillImageUrl(setId, medicationName);
+      writePillCache(medicationId, setId, url);
+      applyPillImage(wrap, medicationId, setId, url);
+    } catch {
+      writePillCache(medicationId, setId, null);
+    }
+  });
+};
+
+loadPillImages();
+
+// ── Pill image lightbox ───────────────────────────────────────────────────────
+
+const pillLightbox = document.querySelector('[data-pill-lightbox]');
+const pillLightboxImg = document.querySelector('[data-lightbox-img]');
+const pillLightboxCaption = document.querySelector('[data-lightbox-caption]');
+
+const openPillLightbox = (imageUrl, medicationName) => {
+  if (!pillLightbox || !pillLightboxImg) return;
+  pillLightboxImg.src = imageUrl;
+  pillLightboxImg.alt = medicationName;
+  if (pillLightboxCaption) pillLightboxCaption.textContent = medicationName;
+  pillLightbox.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closePillLightbox = () => {
+  if (!pillLightbox?.classList.contains('is-open')) return;
+  pillLightbox.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelector('[data-close-lightbox]')?.addEventListener('click', closePillLightbox);
+pillLightbox?.addEventListener('click', (e) => { if (e.target === pillLightbox) closePillLightbox(); });
+
+// ── Medication detail modal ───────────────────────────────────────────────────
+
+const medDetailModal = document.querySelector('[data-med-detail-modal]');
+const medDetailTitle = document.querySelector('[data-med-detail-title]');
+const medDetailBody = document.querySelector('[data-med-detail-body]');
+const medDetailCache = {};
+
+const openMedDetailModal = () => {
+  if (!medDetailModal) return;
+  medDetailModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeMedDetailModal = () => {
+  if (!medDetailModal?.classList.contains('is-open')) return;
+  medDetailModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelector('[data-close-med-detail]')?.addEventListener('click', closeMedDetailModal);
+medDetailModal?.addEventListener('click', (e) => { if (e.target === medDetailModal) closeMedDetailModal(); });
+
+const getOfdaField = (data, ...fields) => {
+  const result = data?.results?.[0];
+  if (!result) return null;
+  for (const f of fields) {
+    const v = result[f];
+    if (Array.isArray(v) && v[0]) return v[0];
+  }
+  return null;
+};
+
+const safeHtml = (str) => String(str ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+const textBlock = (raw) => {
+  if (!raw) return '';
+  return raw.trim().split(/\n{2,}/).map((p) => `<p>${safeHtml(p.trim())}</p>`).join('');
+};
+
+const renderDetailContent = (name, setId, ofda) => {
+  const sections = [];
+  const boxedWarning = getOfdaField(ofda, 'boxed_warning');
+  const indications  = getOfdaField(ofda, 'indications_and_usage');
+  const activeIng    = getOfdaField(ofda, 'active_ingredient');
+  const inactiveIng  = getOfdaField(ofda, 'inactive_ingredient');
+  const adverseRx    = getOfdaField(ofda, 'adverse_reactions');
+  const warnCautions = getOfdaField(ofda, 'warnings_and_cautions');
+  const dosageAdmin  = getOfdaField(ofda, 'dosage_and_administration');
+  const warnings     = getOfdaField(ofda, 'warnings');
+  const contraind    = getOfdaField(ofda, 'contraindications');
+
+  if (indications) {
+    sections.push(`<div class="med-detail-section"><h3>What it&rsquo;s used for</h3>${textBlock(indications)}</div>`);
+  }
+
+  if (activeIng || inactiveIng) {
+    let ing = '';
+    if (activeIng) ing += `<p><strong>Active:</strong></p>${textBlock(activeIng)}`;
+    if (inactiveIng) ing += `<p><strong>Inactive:</strong></p>${textBlock(inactiveIng)}`;
+    sections.push(`<div class="med-detail-section"><h3>Ingredients</h3>${ing}</div>`);
+  }
+
+  const sideEffects = adverseRx || warnCautions;
+  if (sideEffects) {
+    sections.push(`<div class="med-detail-section"><h3>Side Effects</h3>${textBlock(sideEffects)}</div>`);
+  }
+
+  if (dosageAdmin) {
+    sections.push(`<div class="med-detail-section"><h3>How to Take This Medication</h3>${textBlock(dosageAdmin)}<p class="muted" style="font-size:0.82rem;margin-top:0.35rem">Always follow your prescriber&rsquo;s specific instructions.</p></div>`);
+  }
+
+  if (boxedWarning || warnings || contraind) {
+    let warnHtml = '';
+    if (boxedWarning) warnHtml += `<div class="boxed-warning-banner"><strong>&#9888; Boxed Warning</strong>${textBlock(boxedWarning)}</div>`;
+    if (warnings) warnHtml += textBlock(warnings);
+    if (contraind) warnHtml += `<p><strong>Contraindications:</strong></p>${textBlock(contraind)}`;
+    sections.push(`<div class="med-detail-section"><h3>Warnings</h3>${warnHtml}</div>`);
+  }
+
+  const dailyMedLink = setId
+    ? `<a href="https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=${encodeURIComponent(setId)}" target="_blank" rel="noopener">View full label on DailyMed &#8599;</a>`
+    : '';
+
+  if (!sections.length) {
+    return `<p class="muted">Detailed information is not available for this medication.</p>${dailyMedLink ? `<div class="med-detail-links">${dailyMedLink}</div>` : ''}`;
+  }
+
+  return sections.join('') + `<div class="med-detail-links"><p class="disclaimer">This information is for general reference only. Always follow your doctor&rsquo;s or pharmacist&rsquo;s instructions.</p>${dailyMedLink}</div>`;
+};
+
+document.querySelectorAll('[data-view-details]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const { medicationName = '', setId = '' } = btn.dataset;
+    if (medDetailTitle) medDetailTitle.textContent = medicationName;
+    if (medDetailBody) medDetailBody.innerHTML = '<p class="pain-graph-loading">Loading&hellip;</p>';
+    openMedDetailModal();
+
+    const cacheKey = setId || `name_${medicationName}`;
+    if (!medDetailCache[cacheKey]) {
+      const [, ofdaResult] = await Promise.allSettled([
+        setId
+          ? fetch(`https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/${encodeURIComponent(setId)}.json`).catch(() => null)
+          : Promise.resolve(null),
+        fetch(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+      ]);
+      medDetailCache[cacheKey] = { ofda: ofdaResult.status === 'fulfilled' ? ofdaResult.value : null };
+    }
+
+    if (medDetailBody) {
+      try {
+        medDetailBody.innerHTML = renderDetailContent(medicationName, setId, medDetailCache[cacheKey].ofda);
+      } catch {
+        medDetailBody.innerHTML = `<p class="muted">Detailed information is not available for this medication.</p>`;
+      }
+    }
+  });
+});
