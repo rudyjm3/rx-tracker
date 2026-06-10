@@ -1427,6 +1427,7 @@ select:focus,
   align-items: center;
   background: #f4f7fb;
   border: 2px solid #dce4f0;
+  color: #9aaabb;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -1440,6 +1441,7 @@ select:focus,
 
 .pain-level-btn:hover {
   border-color: #6b7a96;
+  color: #fff;
 }
 
 .pain-level-btn[data-pain-level="1"],

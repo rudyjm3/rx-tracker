@@ -808,12 +808,17 @@ final class MedicationRepository
             return [$first];
         }
 
+        $windowEnd = $nextDue->modify('+' . (24 * 60 - 1) . ' minutes');
         $times = [$nextDue->format('H:i')];
         for ($i = 1; $i <= 4; $i++) {
-            $times[] = $nextDue->modify('+' . ($i * $step) . ' minutes')->format('H:i');
+            $candidate = $nextDue->modify('+' . ($i * $step) . ' minutes');
+            if ($candidate > $windowEnd) {
+                break;
+            }
+            $times[] = $candidate->format('H:i');
         }
 
-        return $times;
+        return array_values(array_unique($times));
     }
 
     private function timeToMinutes(string $time): int
