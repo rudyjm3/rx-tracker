@@ -67,6 +67,22 @@ final class MedicationRepository
         return $statement->fetchAll();
     }
 
+    public function logsForDateRange(string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
+                    dose_logs.scheduled_for_date, dose_logs.scheduled_time,
+                    medications.name, medications.dose
+             FROM dose_logs
+             INNER JOIN medications ON medications.id = dose_logs.medication_id
+             WHERE dose_logs.scheduled_for_date BETWEEN :start_date AND :end_date
+             ORDER BY dose_logs.scheduled_for_date DESC, dose_logs.scheduled_time DESC'
+        );
+        $statement->execute(['start_date' => $startDate, 'end_date' => $endDate]);
+
+        return $statement->fetchAll();
+    }
+
     public function painLevelTrend(int $medicationId, int $days): array
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
@@ -253,11 +269,10 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             if ($status === 'taken') {
-                $candidate = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time);
-                if (!$candidate instanceof DateTimeImmutable) {
+                if (!DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time) instanceof DateTimeImmutable) {
                     throw new RuntimeException('Invalid scheduled dose time.');
                 }
-                $this->assertIntervalAllowed($medicationId, $candidate);
+                $this->assertIntervalAllowed($medicationId, new DateTimeImmutable('now'));
             }
 
             $existing = $this->db->prepare(

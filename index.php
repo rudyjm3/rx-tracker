@@ -293,7 +293,7 @@ $inactiveMedications = $repository->inactiveMedications();
 $medicationPlanCount = count($medications);
 $inactiveMedicationCount = count($inactiveMedications);
 $todaySchedule = $repository->todaySchedule($today);
-$recentLogs = $repository->recentLogs($today, 50);
+$recentLogs = $repository->recentLogs(null, 50);
 $missedCount = $repository->missedDoseCount($today, $currentTime);
 
 $requiredRows = array_filter($todaySchedule, static fn(array $row): bool => !$row['as_needed']);
@@ -301,7 +301,7 @@ $takenRows = array_filter($requiredRows, static fn(array $row): bool => (string)
 $adherence = count($requiredRows) > 0 ? (int) round((count($takenRows) / count($requiredRows)) * 100) : 0;
 $nextDose = null;
 foreach ($todaySchedule as $row) {
-    if (!in_array((string) ($row['status'] ?? ''), ['taken', 'skipped'], true)) {
+    if (!in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
         $nextDose = $row;
         break;
     }
@@ -311,7 +311,7 @@ if ($nextDose !== null) {
     $startMinutes = timeToMinutes((string) $nextDose['reminder_time']);
     $endMinutes = $startMinutes + (4 * 60);
     foreach ($todaySchedule as $row) {
-        if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped'], true)) {
+        if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
             continue;
         }
         $rowMinutes = timeToMinutes((string) $row['reminder_time']);
@@ -775,6 +775,31 @@ foreach ($recentLogs as $log) {
 <?php endif; ?>
 
   <?php if ($page === 'export'): ?>
+  <?php
+    $exportMonth = (string) ($_GET['m'] ?? date('Y-m'));
+    if (!preg_match('/^\d{4}-\d{2}$/', $exportMonth)) {
+        $exportMonth = date('Y-m');
+    }
+    $rawStart = (string) ($_GET['start_date'] ?? '');
+    $rawEnd   = (string) ($_GET['end_date'] ?? '');
+    $validStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawStart) ? $rawStart : null;
+    $validEnd   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawEnd)   ? $rawEnd   : null;
+    if ($validStart !== null && $validEnd !== null && $validStart <= $validEnd) {
+        $filterStart   = $validStart;
+        $filterEnd     = $validEnd;
+        $isCustomRange = true;
+        $exportMonth   = (new DateTimeImmutable($filterStart))->format('Y-m');
+    } else {
+        $monthDate     = DateTimeImmutable::createFromFormat('Y-m-d', $exportMonth . '-01');
+        $filterStart   = $exportMonth . '-01';
+        $filterEnd     = $monthDate ? $monthDate->format('Y-m-t') : $exportMonth . '-31';
+        $isCustomRange = false;
+    }
+    $monthDateObj = DateTimeImmutable::createFromFormat('Y-m', $exportMonth);
+    $prevMonth    = $monthDateObj ? $monthDateObj->modify('-1 month')->format('Y-m') : '';
+    $nextMonth    = $monthDateObj ? $monthDateObj->modify('+1 month')->format('Y-m') : '';
+    $monthLabel   = $monthDateObj ? $monthDateObj->format('F Y') : $exportMonth;
+  ?>
   <section class="panel export-section">
     <div class="panel-heading">
       <h2>Medication List &mdash; <?= e(date('F j, Y')) ?></h2>
@@ -824,12 +849,34 @@ foreach ($recentLogs as $log) {
     </table>
   </section>
 
-  <?php $exportLogs = $repository->recentLogs(null, 500); ?>
-  <?php if ($exportLogs !== []): ?>
+  <?php $exportLogs = $repository->logsForDateRange($filterStart, $filterEnd); ?>
   <section class="panel export-section export-history-section">
-    <div class="panel-heading">
+    <div class="panel-heading export-history-heading">
       <h2>Dose History</h2>
+      <div class="export-month-nav no-print">
+        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($prevMonth) ?>">&lsaquo;</a>
+        <span class="export-month-label"><?= e($monthLabel) ?></span>
+        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($nextMonth) ?>">&rsaquo;</a>
+      </div>
     </div>
+    <form method="get" action="index.php" class="export-date-filter no-print">
+      <input type="hidden" name="page" value="export">
+      <label>From <input type="date" name="start_date" value="<?= e($filterStart) ?>"></label>
+      <label>To <input type="date" name="end_date" value="<?= e($filterEnd) ?>"></label>
+      <button type="submit" class="secondary">Filter</button>
+      <?php if ($isCustomRange): ?>
+        <a href="?page=export&m=<?= e($exportMonth) ?>" class="secondary">Clear</a>
+      <?php endif; ?>
+    </form>
+    <p class="export-date-range-label">
+      <?php if ($isCustomRange): ?>
+        <?= e((new DateTimeImmutable($filterStart))->format('M j, Y')) ?> &ndash; <?= e((new DateTimeImmutable($filterEnd))->format('M j, Y')) ?>
+      <?php else: ?>
+        <?= e($monthLabel) ?>
+      <?php endif; ?>
+      &mdash; <?= count($exportLogs) ?> record<?= count($exportLogs) !== 1 ? 's' : '' ?>
+    </p>
+    <?php if ($exportLogs !== []): ?>
     <table class="export-table">
       <thead>
         <tr>
@@ -854,8 +901,10 @@ foreach ($recentLogs as $log) {
         <?php endforeach; ?>
       </tbody>
     </table>
+    <?php else: ?>
+    <p class="empty-state-text">No dose records for this period.</p>
+    <?php endif; ?>
   </section>
-  <?php endif; ?>
   <p class="disclaimer no-print">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 </body>
@@ -940,9 +989,22 @@ foreach ($recentLogs as $log) {
   <section class="panel history-panel" data-history-panel>
     <div class="panel-heading"><h2>Recent history</h2></div>
     <ol class="history-list" data-history-list>
+      <?php
+        $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
+      ?>
       <?php foreach ($recentLogs as $log): ?>
+        <?php
+          $logDate = (string) $log['scheduled_for_date'];
+          if ($logDate === $today) {
+              $dateLabel = 'Today';
+          } elseif ($logDate === $yesterday) {
+              $dateLabel = 'Yesterday';
+          } else {
+              $dateLabel = (new DateTimeImmutable($logDate))->format('M j');
+          }
+        ?>
         <li>
-          <span><?= e(to12h((string) $log['scheduled_time'])) ?></span>
+          <span><span class="history-date"><?= e($dateLabel) ?></span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
           <div>
             <strong><?= e((string) $log['name']) ?></strong>
             <p>
