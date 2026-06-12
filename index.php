@@ -175,6 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lowSupplyThreshold = max(0, (int) post_string('low_supply_threshold'));
             $trackDoseFeedback = post_string('track_dose_feedback') === '1';
             $setId = substr(trim(post_string('set_id')), 0, 64);
+            $groupIdRaw = (int) post_string('group_id');
 
             if ($name === '' || $dose === '') {
                 throw new RuntimeException('Medication name and dose are required.');
@@ -186,10 +187,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($action === 'add_medication') {
                 $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
+                $newMedicationId = $repository->lastInsertedMedicationId();
+                if ($groupIdRaw > 0) {
+                    $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
+                }
             } else {
                 $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
+                if ($groupIdRaw > 0) {
+                    $repository->addMedicationToGroup($groupIdRaw, $id);
+                } else {
+                    $repository->removeMedicationFromGroup($id);
+                }
             }
 
+            redirect_home();
+        }
+
+        if ($action === 'create_group') {
+            $groupName = trim(post_string('group_name'));
+            $groupTime = post_string('group_time');
+            if ($groupName === '') {
+                throw new RuntimeException('Group name is required.');
+            }
+            $repository->createGroup($groupName, parseTimeValue($groupTime));
+            redirect_home();
+        }
+
+        if ($action === 'update_group') {
+            $groupId = (int) post_string('group_id');
+            $groupName = trim(post_string('group_name'));
+            $groupTime = post_string('group_time');
+            if ($groupName === '') {
+                throw new RuntimeException('Group name is required.');
+            }
+            $repository->updateGroup($groupId, $groupName, parseTimeValue($groupTime));
+            redirect_home();
+        }
+
+        if ($action === 'delete_group') {
+            $repository->deleteGroup((int) post_string('group_id'));
+            redirect_home();
+        }
+
+        if ($action === 'add_medication_to_group') {
+            $repository->addMedicationToGroup((int) post_string('group_id'), (int) post_string('medication_id'));
+            redirect_home();
+        }
+
+        if ($action === 'remove_medication_from_group') {
+            $repository->removeMedicationFromGroup((int) post_string('medication_id'));
             redirect_home();
         }
 
@@ -323,6 +369,9 @@ if ($nextDose !== null) {
 
 $editId = (int) ($_GET['edit'] ?? 0);
 $editing = $editId > 0 ? $repository->findMedication($editId) : null;
+$editingGroupId = $editing ? (($repository->groupForMedication((int) $editing['id']))['id'] ?? 0) : 0;
+$groups = $repository->allGroups();
+$ungroupedMedications = $repository->ungroupedActiveMedications();
 
 $lowSupplyMeds = array_values(array_filter($medications, static fn(array $m): bool =>
     (int) ($m['low_supply_threshold'] ?? 0) > 0 &&
@@ -434,6 +483,15 @@ foreach ($recentLogs as $log) {
             aria-controls="inactive-medications-panel"
             id="inactive-medications-tab"
           >Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
+          <button
+            type="button"
+            class="secondary plan-tab"
+            data-plan-tab="groups"
+            role="tab"
+            aria-selected="false"
+            aria-controls="groups-panel"
+            id="groups-tab"
+          >Groups (<?= e((string) count($groups)) ?>)</button>
         </div>
 
         <div class="plan-tab-panel" id="active-medications-panel" role="tabpanel" aria-labelledby="active-medications-tab">
@@ -533,6 +591,106 @@ foreach ($recentLogs as $log) {
             <?php endforeach; ?>
           </div>
         </div>
+
+        <div class="plan-tab-panel" id="groups-panel" role="tabpanel" aria-labelledby="groups-tab" hidden>
+          <div class="groups-list">
+            <div class="groups-create-row">
+              <button type="button" class="secondary" data-open-create-group-form>+ Create group</button>
+            </div>
+
+            <!-- Create/edit group inline form -->
+            <div class="group-form-wrap" data-group-form-wrap hidden>
+              <form class="group-inline-form" method="post" action="index.php" data-group-form>
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="create_group" data-group-form-action>
+                <input type="hidden" name="group_id" value="" data-group-form-id>
+                <label>Group name
+                  <input name="group_name" required placeholder="e.g. Morning Medications" data-group-form-name value="">
+                </label>
+                <label>Scheduled time
+                  <input name="group_time" required placeholder="8:00 AM" data-group-form-time value="">
+                </label>
+                <div class="group-form-actions">
+                  <button type="submit" data-group-form-submit>Create group</button>
+                  <button type="button" class="secondary" data-cancel-group-form>Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <?php if ($groups === []): ?>
+              <div class="empty-state groups-empty-state"><p>No groups yet. Create a group to bundle medications taken at the same time.</p></div>
+            <?php endif; ?>
+
+            <?php foreach ($groups as $group): ?>
+              <div class="group-card">
+                <div class="group-card-header">
+                  <div class="group-card-title">
+                    <strong><?= e($group['name']) ?></strong>
+                    <span class="group-time-badge"><?= e(to12h($group['scheduled_time'])) ?></span>
+                    <span class="count-badge"><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
+                  </div>
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="secondary"
+                      data-edit-group
+                      data-group-id="<?= e((string) $group['id']) ?>"
+                      data-group-name="<?= e($group['name']) ?>"
+                      data-group-time="<?= e(to12h($group['scheduled_time'])) ?>"
+                    >Edit</button>
+                    <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action" value="delete_group">
+                      <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
+                      <button type="submit" class="secondary">Delete</button>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="group-members-list">
+                  <?php if ($group['members'] === []): ?>
+                    <p class="group-empty-hint">No medications in this group yet.</p>
+                  <?php endif; ?>
+                  <?php foreach ($group['members'] as $member): ?>
+                    <div class="group-member-row">
+                      <span class="group-member-name"><?= e((string) $member['name']) ?></span>
+                      <span class="group-member-dose"><?= e((string) $member['dose']) ?></span>
+                      <?php if ((int) $member['track_dose_feedback'] === 1): ?>
+                        <span class="group-feedback-badge">tracks feedback</span>
+                      <?php endif; ?>
+                      <form method="post" action="index.php">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="remove_medication_from_group">
+                        <input type="hidden" name="medication_id" value="<?= e((string) $member['medication_id']) ?>">
+                        <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
+                      </form>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+
+                <?php
+                  $eligibleToAdd = array_values(array_filter($ungroupedMedications, static fn(array $m): bool =>
+                      !in_array((int) $m['id'], array_column($group['members'], 'medication_id'), true)
+                  ));
+                ?>
+                <?php if ($eligibleToAdd !== []): ?>
+                  <form class="group-add-med-form" method="post" action="index.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="add_medication_to_group">
+                    <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
+                    <select name="medication_id" class="group-add-select">
+                      <option value="">Add a medication&hellip;</option>
+                      <?php foreach ($eligibleToAdd as $ungrouped): ?>
+                        <option value="<?= e((string) $ungrouped['id']) ?>"><?= e((string) $ungrouped['name']) ?> &mdash; <?= e((string) $ungrouped['dose']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="secondary group-add-btn">Add</button>
+                  </form>
+                <?php endif; ?>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        </div>
     </div>
   </div>
 
@@ -585,6 +743,14 @@ foreach ($recentLogs as $log) {
           <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
         </label>
         <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
+        <label>Medication group <span class="field-optional">(optional)</span>
+          <select name="group_id">
+            <option value="0"<?= $editingGroupId === 0 ? ' selected' : '' ?>>No group (individual)</option>
+            <?php foreach ($groups as $grp): ?>
+              <option value="<?= e((string) $grp['id']) ?>"<?= $editingGroupId === (int) $grp['id'] ? ' selected' : '' ?>><?= e($grp['name']) ?> &mdash; <?= e(to12h($grp['scheduled_time'])) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
         <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
       </form>
     </div>
@@ -610,7 +776,10 @@ foreach ($recentLogs as $log) {
   <div class="modal-overlay" data-dose-feedback-modal>
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
       <div class="modal-header">
-        <h2 id="feedback-modal-title">How are you feeling?</h2>
+        <div>
+          <h2 id="feedback-modal-title">How are you feeling?</h2>
+          <p class="feedback-queue-progress" data-feedback-queue-progress hidden></p>
+        </div>
         <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
       </div>
       <form method="post" action="index.php" class="stacked-form" data-feedback-form>
@@ -953,6 +1122,9 @@ foreach ($recentLogs as $log) {
             <div>
               <strong><?= e((string) $dose['name']) ?></strong>
               <p><?= e(to12h((string) $dose['reminder_time'])) ?> <?= $dose['as_needed'] ? '(PRN)' : '' ?></p>
+              <?php if ($dose['group_name'] !== null): ?>
+                <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
+              <?php endif; ?>
               <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
                 <span class="done-pill">Taken</span>
               <?php elseif ((string) ($dose['status'] ?? '') === 'skipped'): ?>
@@ -1063,12 +1235,23 @@ foreach ($recentLogs as $log) {
 <div class="alarm-overlay" data-alarm-overlay aria-modal="true" role="alertdialog" aria-labelledby="alarm-title">
   <div class="alarm-dialog">
     <div class="alarm-pulse-ring"></div>
-    <p class="alarm-eyebrow">Dose Due Now</p>
-    <h2 id="alarm-title" class="alarm-med-name" data-alarm-med-name></h2>
-    <p class="alarm-med-dose" data-alarm-med-dose></p>
+    <p class="alarm-eyebrow" data-alarm-eyebrow>Dose Due Now</p>
+
+    <!-- Single medication mode -->
+    <div data-alarm-single-mode>
+      <h2 id="alarm-title" class="alarm-med-name" data-alarm-med-name></h2>
+      <p class="alarm-med-dose" data-alarm-med-dose></p>
+    </div>
+
+    <!-- Group mode -->
+    <div data-alarm-group-mode hidden>
+      <h2 id="alarm-title-group" class="alarm-med-name" data-alarm-group-name></h2>
+      <ul class="alarm-group-list" data-alarm-group-list></ul>
+    </div>
+
     <div class="alarm-actions">
       <button type="button" class="alarm-take-btn" data-alarm-take>Take Now</button>
-      <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip Dose</button>
+      <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip</button>
       <div class="alarm-snooze-row">
         <select data-alarm-snooze-minutes class="alarm-snooze-select">
           <option value="5">5 min</option>

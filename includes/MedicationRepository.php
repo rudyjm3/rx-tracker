@@ -12,6 +12,7 @@ final class MedicationRepository
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
         $this->ensureSetIdColumn();
+        $this->ensureGroupTables();
     }
 
     public function activeMedications(): array
@@ -390,10 +391,12 @@ final class MedicationRepository
         $medications = $this->activeMedications();
         $logs = $this->doseLogMapForDate($date);
         $postpones = $this->activePostponesForDate($date);
+        $groupMap = $this->medicationGroupMap();
         $schedule = [];
 
         foreach ($medications as $medication) {
             $times = $this->timesForDate($medication);
+            $medGroup = $groupMap[(int) $medication['id']] ?? null;
             foreach ($times as $time) {
                 $key = (int) $medication['id'] . '|' . $time;
                 $log = $logs[$key] ?? null;
@@ -411,6 +414,8 @@ final class MedicationRepository
                     'status' => $log['status'] ?? null,
                     'note' => $log['note'] ?? '',
                     'postponed_until' => $postpones[$key] ?? null,
+                    'group_id' => $medGroup !== null ? (int) $medGroup['group_id'] : null,
+                    'group_name' => $medGroup !== null ? (string) $medGroup['group_name'] : null,
                 ];
             }
         }
@@ -642,6 +647,8 @@ final class MedicationRepository
                 'postponed_until' => $row['postponed_until'] ?? null,
                 'as_needed' => (bool) $row['as_needed'],
                 'track_dose_feedback' => (bool) $row['track_dose_feedback'],
+                'group_id' => $row['group_id'] !== null ? (int) $row['group_id'] : null,
+                'group_name' => $row['group_name'] !== null ? (string) $row['group_name'] : null,
             ];
         }
 
@@ -924,6 +931,235 @@ final class MedicationRepository
             throw new RuntimeException(
                 'Too early for this medication. Next allowed dose is at ' . $nextAllowed->format('g:i A') . '.'
             );
+        }
+    }
+
+    public function lastInsertedMedicationId(): int
+    {
+        return (int) $this->db->lastInsertId();
+    }
+
+    // ── Medication groups ────────────────────────────────────────────────────────
+
+    public function allGroups(): array
+    {
+        try {
+            $statement = $this->db->query(
+                'SELECT id, name, scheduled_time, active FROM medication_groups ORDER BY scheduled_time ASC, name ASC'
+            );
+            $groups = $statement->fetchAll();
+        } catch (Throwable) {
+            return [];
+        }
+        foreach ($groups as &$group) {
+            $group['scheduled_time'] = substr((string) $group['scheduled_time'], 0, 5);
+            $group['members'] = $this->groupMembers((int) $group['id']);
+        }
+
+        return $groups;
+    }
+
+    public function findGroup(int $id): ?array
+    {
+        try {
+            $statement = $this->db->prepare(
+                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE id = :id LIMIT 1'
+            );
+            $statement->execute(['id' => $id]);
+            $row = $statement->fetch();
+        } catch (Throwable) {
+            return null;
+        }
+        if (!is_array($row)) {
+            return null;
+        }
+        $row['scheduled_time'] = substr((string) $row['scheduled_time'], 0, 5);
+        $row['members'] = $this->groupMembers($id);
+
+        return $row;
+    }
+
+    public function createGroup(string $name, string $scheduledTime): int
+    {
+        $statement = $this->db->prepare(
+            'INSERT INTO medication_groups (name, scheduled_time) VALUES (:name, :scheduled_time)'
+        );
+        $statement->execute(['name' => $name, 'scheduled_time' => $scheduledTime]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function updateGroup(int $id, string $name, string $scheduledTime): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medication_groups SET name = :name, scheduled_time = :scheduled_time WHERE id = :id'
+        );
+        $statement->execute(['id' => $id, 'name' => $name, 'scheduled_time' => $scheduledTime]);
+    }
+
+    public function deleteGroup(int $id): void
+    {
+        $statement = $this->db->prepare('DELETE FROM medication_groups WHERE id = :id');
+        $statement->execute(['id' => $id]);
+    }
+
+    public function addMedicationToGroup(int $groupId, int $medicationId): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO medication_group_members (group_id, medication_id)
+               VALUES (:group_id, :medication_id)
+               ON CONFLICT(medication_id) DO UPDATE SET group_id = excluded.group_id'
+            : 'INSERT INTO medication_group_members (group_id, medication_id)
+               VALUES (:group_id, :medication_id)
+               ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)';
+        $statement = $this->db->prepare($sql);
+        $statement->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
+    }
+
+    public function removeMedicationFromGroup(int $medicationId): void
+    {
+        $statement = $this->db->prepare(
+            'DELETE FROM medication_group_members WHERE medication_id = :medication_id'
+        );
+        $statement->execute(['medication_id' => $medicationId]);
+    }
+
+    public function groupForMedication(int $medicationId): ?array
+    {
+        try {
+            $statement = $this->db->prepare(
+                'SELECT g.id, g.name, g.scheduled_time
+                 FROM medication_groups g
+                 INNER JOIN medication_group_members mgm ON mgm.group_id = g.id
+                 WHERE mgm.medication_id = :medication_id
+                 LIMIT 1'
+            );
+            $statement->execute(['medication_id' => $medicationId]);
+            $row = $statement->fetch();
+        } catch (Throwable) {
+            return null;
+        }
+        if (!is_array($row)) {
+            return null;
+        }
+        $row['scheduled_time'] = substr((string) $row['scheduled_time'], 0, 5);
+
+        return $row;
+    }
+
+    public function ungroupedActiveMedications(): array
+    {
+        try {
+            $statement = $this->db->query(
+                'SELECT m.id, m.name, m.dose
+                 FROM medications m
+                 LEFT JOIN medication_group_members mgm ON mgm.medication_id = m.id
+                 WHERE m.active = 1 AND mgm.medication_id IS NULL
+                 ORDER BY m.name ASC'
+            );
+
+            return $statement->fetchAll();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    private function groupMembers(int $groupId): array
+    {
+        try {
+            $statement = $this->db->prepare(
+                'SELECT m.id AS medication_id, m.name, m.dose, m.track_dose_feedback, mgm.sort_order
+                 FROM medications m
+                 INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
+                 WHERE mgm.group_id = :group_id AND m.active = 1
+                 ORDER BY mgm.sort_order ASC, m.name ASC'
+            );
+            $statement->execute(['group_id' => $groupId]);
+
+            return $statement->fetchAll();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    private function medicationGroupMap(): array
+    {
+        try {
+            $statement = $this->db->query(
+                'SELECT mgm.medication_id, g.id AS group_id, g.name AS group_name
+                 FROM medication_group_members mgm
+                 INNER JOIN medication_groups g ON g.id = mgm.group_id'
+            );
+            $map = [];
+            foreach ($statement->fetchAll() as $row) {
+                $map[(int) $row['medication_id']] = [
+                    'group_id' => (int) $row['group_id'],
+                    'group_name' => (string) $row['group_name'],
+                ];
+            }
+
+            return $map;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    private function ensureGroupTables(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_groups (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(120) NOT NULL,
+                        scheduled_time TIME NOT NULL,
+                        active TINYINT(1) NOT NULL DEFAULT 1,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_groups_active_time (active, scheduled_time)
+                    ) ENGINE=InnoDB"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_group_members (
+                        group_id INT UNSIGNED NOT NULL,
+                        medication_id INT UNSIGNED NOT NULL,
+                        sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                        PRIMARY KEY (group_id, medication_id),
+                        UNIQUE KEY uq_medication_one_group (medication_id),
+                        CONSTRAINT fk_group_members_group
+                            FOREIGN KEY (group_id) REFERENCES medication_groups (id) ON DELETE CASCADE,
+                        CONSTRAINT fk_group_members_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_groups (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        scheduled_time TEXT NOT NULL,
+                        active INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_group_members (
+                        group_id INTEGER NOT NULL,
+                        medication_id INTEGER NOT NULL,
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (group_id, medication_id),
+                        UNIQUE (medication_id)
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
         }
     }
 

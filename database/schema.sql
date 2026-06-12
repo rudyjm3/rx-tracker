@@ -103,6 +103,30 @@ ALTER TABLE medications
 ALTER TABLE dose_logs
     ADD COLUMN IF NOT EXISTS pain_level TINYINT UNSIGNED NULL;
 
+CREATE TABLE IF NOT EXISTS medication_groups (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    scheduled_time TIME NOT NULL,
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_groups_active_time (active, scheduled_time)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS medication_group_members (
+    group_id INT UNSIGNED NOT NULL,
+    medication_id INT UNSIGNED NOT NULL,
+    sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    PRIMARY KEY (group_id, medication_id),
+    UNIQUE KEY uq_medication_one_group (medication_id),
+    CONSTRAINT fk_group_members_group
+        FOREIGN KEY (group_id) REFERENCES medication_groups (id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_group_members_medication
+        FOREIGN KEY (medication_id) REFERENCES medications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS push_delivery_log (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
