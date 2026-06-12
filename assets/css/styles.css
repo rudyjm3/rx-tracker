@@ -1910,3 +1910,216 @@ select:focus,
     padding: 1rem;
   }
 }
+
+/* ── Medication groups ───────────────────────────────────────────────────────── */
+
+.groups-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.groups-create-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.groups-empty-state {
+  margin-top: 0.5rem;
+}
+
+.group-form-wrap {
+  background: #f4f7fb;
+  border: 1px solid #dce4f0;
+  border-radius: 1.1rem;
+  padding: 1rem;
+}
+
+.group-inline-form {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.group-inline-form label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.group-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+
+.group-card {
+  border: 1px solid #dce4f0;
+  border-radius: 1.1rem;
+  overflow: hidden;
+}
+
+.group-card-header {
+  align-items: center;
+  background: #f4f7fb;
+  border-bottom: 1px solid #dce4f0;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+}
+
+.group-card-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.group-time-badge {
+  background: #e9f0ff;
+  border: 1px solid #c8dafd;
+  border-radius: 999px;
+  color: #0d55d5;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+}
+
+.group-members-list {
+  display: grid;
+  gap: 0;
+  padding: 0.25rem 0;
+}
+
+.group-empty-hint {
+  color: #8a97ad;
+  font-size: 0.85rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+
+.group-member-row {
+  align-items: center;
+  border-bottom: 1px solid #f0f4fb;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+}
+
+.group-member-row:last-child {
+  border-bottom: 0;
+}
+
+.group-member-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.group-member-dose {
+  color: #647187;
+  font-size: 0.85rem;
+}
+
+.group-feedback-badge {
+  background: #fff8e8;
+  border: 1px solid #f5d68b;
+  border-radius: 999px;
+  color: #704f08;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+}
+
+.group-remove-btn {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-left: auto;
+  padding: 0.3rem 0.6rem;
+}
+
+.group-add-med-form {
+  align-items: center;
+  border-top: 1px solid #e7edf6;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+}
+
+.group-add-select {
+  flex: 1;
+  font-size: 0.85rem;
+  min-height: 2.4rem;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+}
+
+.group-add-btn {
+  font-size: 0.82rem;
+  padding: 0.45rem 0.8rem;
+  white-space: nowrap;
+}
+
+/* ── Group badge in today schedule ──────────────────────────────────────────── */
+
+.group-badge {
+  background: #e9f0ff;
+  border: 1px solid #c8dafd;
+  border-radius: 999px;
+  color: #0d55d5;
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  margin-right: 0.2rem;
+}
+
+/* ── Group alarm overlay ─────────────────────────────────────────────────────── */
+
+.alarm-group-list {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  text-align: left;
+}
+
+.alarm-group-list-item {
+  border-bottom: 1px solid #f0f4fb;
+  color: #46546c;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.45rem 0;
+}
+
+.alarm-group-list-item:last-child {
+  border-bottom: 0;
+}
+
+/* ── Feedback queue progress ─────────────────────────────────────────────────── */
+
+.feedback-queue-progress {
+  color: #1269ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 0.1rem 0 0;
+}
+
+@media (max-width: 800px) {
+  .group-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .group-card-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .group-member-row {
+    gap: 0.3rem;
+  }
+
+  .group-remove-btn {
+    margin-left: 0;
+  }
+}

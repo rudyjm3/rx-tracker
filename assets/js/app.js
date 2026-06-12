@@ -160,10 +160,18 @@ const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showP
   lockBodyScroll();
 };
 
-const closeDoseFeedbackModal = () => {
+const closeDoseFeedbackModal = (cancelQueue = false) => {
   if (!doseFeedbackModal) return;
   if (!doseFeedbackModal.classList.contains('is-open')) return;
   doseFeedbackModal.classList.remove('is-open');
+  if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
+  if (cancelQueue && feedbackQueueMode) {
+    feedbackQueue = [];
+    feedbackQueueMode = false;
+    unlockBodyScroll();
+    window.location.reload();
+    return;
+  }
   unlockBodyScroll();
 };
 
@@ -184,14 +192,21 @@ const submitFeedbackAsAlarmAction = async () => {
 };
 
 feedbackForm?.addEventListener('submit', async (event) => {
-  if (feedbackAlarmContext) {
+  if (feedbackQueueMode) {
+    event.preventDefault();
+    const note = feedbackNoteEl?.value ?? '';
+    const painLevel = feedbackPainLevelEl?.value ?? '';
+    await submitCurrentQueueItem(note, painLevel);
+  } else if (feedbackAlarmContext) {
     event.preventDefault();
     await submitFeedbackAsAlarmAction();
   }
 });
 
 skipFeedbackBtn?.addEventListener('click', async () => {
-  if (feedbackAlarmContext) {
+  if (feedbackQueueMode) {
+    await submitCurrentQueueItem('', '');
+  } else if (feedbackAlarmContext) {
     closeDoseFeedbackModal();
     await alarmAction('mark_dose', { status: 'taken', note: '' });
   } else {
@@ -208,11 +223,11 @@ feedbackNoteEl?.addEventListener('input', () => {
   if (feedbackCharCounter) feedbackCharCounter.textContent = `[${len}/250]`;
 });
 
-closeFeedbackModalButton?.addEventListener('click', closeDoseFeedbackModal);
+closeFeedbackModalButton?.addEventListener('click', () => closeDoseFeedbackModal(true));
 
 doseFeedbackModal?.addEventListener('click', (event) => {
   if (event.target === doseFeedbackModal) {
-    closeDoseFeedbackModal();
+    closeDoseFeedbackModal(true);
   }
 });
 
@@ -297,6 +312,7 @@ const planTabs = document.querySelectorAll('[data-plan-tab]');
 const planPanels = {
   active: document.querySelector('#active-medications-panel'),
   inactive: document.querySelector('#inactive-medications-panel'),
+  groups: document.querySelector('#groups-panel'),
 };
 
 const setPlanTab = (target) => {
@@ -539,10 +555,17 @@ historyToggle?.addEventListener('click', () => {
 const alarmOverlay = document.querySelector('[data-alarm-overlay]');
 const alarmMedNameEl = document.querySelector('[data-alarm-med-name]');
 const alarmMedDoseEl = document.querySelector('[data-alarm-med-dose]');
+const alarmGroupNameEl = document.querySelector('[data-alarm-group-name]');
+const alarmGroupListEl = document.querySelector('[data-alarm-group-list]');
+const alarmSingleModeEl = document.querySelector('[data-alarm-single-mode]');
+const alarmGroupModeEl = document.querySelector('[data-alarm-group-mode]');
+const alarmEyebrowEl = document.querySelector('[data-alarm-eyebrow]');
 const alarmSnoozeMinutesEl = document.querySelector('[data-alarm-snooze-minutes]');
 const alarmTakeBtn = document.querySelector('[data-alarm-take]');
 const alarmSkipBtn = document.querySelector('[data-alarm-skip]');
 const alarmSnoozeBtn = document.querySelector('[data-alarm-snooze]');
+
+let alarmGroupItems = [];
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
@@ -721,6 +744,12 @@ const stopAlarmAudio = () => {
 
 const showAlarmOverlay = (item) => {
   if (!alarmOverlay) return;
+  alarmGroupItems = [];
+  if (alarmSingleModeEl) alarmSingleModeEl.hidden = false;
+  if (alarmGroupModeEl) alarmGroupModeEl.hidden = true;
+  if (alarmEyebrowEl) alarmEyebrowEl.textContent = 'Dose Due Now';
+  if (alarmTakeBtn) alarmTakeBtn.textContent = 'Take Now';
+  if (alarmSkipBtn) alarmSkipBtn.textContent = 'Skip';
   if (alarmMedNameEl) alarmMedNameEl.textContent = item.name;
   if (alarmMedDoseEl) alarmMedDoseEl.textContent = item.dose;
   alarmOverlay.dataset.alarmMedicationId = item.medication_id;
@@ -732,10 +761,34 @@ const showAlarmOverlay = (item) => {
   if (isAlarmEnabled()) startAlarmAudio();
 };
 
+const showGroupAlarmOverlay = (groupItems) => {
+  if (!alarmOverlay || groupItems.length === 0) return;
+  alarmGroupItems = groupItems;
+  if (alarmSingleModeEl) alarmSingleModeEl.hidden = true;
+  if (alarmGroupModeEl) alarmGroupModeEl.hidden = false;
+  if (alarmEyebrowEl) alarmEyebrowEl.textContent = 'Group Dose Due Now';
+  if (alarmTakeBtn) alarmTakeBtn.textContent = 'Take All';
+  if (alarmSkipBtn) alarmSkipBtn.textContent = 'Skip All';
+  if (alarmGroupNameEl) alarmGroupNameEl.textContent = groupItems[0].group_name ?? 'Medication Group';
+  if (alarmGroupListEl) {
+    alarmGroupListEl.innerHTML = '';
+    groupItems.forEach((item) => {
+      const li = document.createElement('li');
+      li.className = 'alarm-group-list-item';
+      li.textContent = `${item.name} — ${item.dose}`;
+      alarmGroupListEl.appendChild(li);
+    });
+  }
+  alarmOverlay.classList.add('is-active');
+  lockBodyScroll();
+  if (isAlarmEnabled()) startAlarmAudio();
+};
+
 const hideAlarmOverlay = () => {
   if (!alarmOverlay) return;
   if (!alarmOverlay.classList.contains('is-active')) return;
   alarmOverlay.classList.remove('is-active');
+  alarmGroupItems = [];
   unlockBodyScroll();
   stopAlarmAudio();
 };
@@ -777,27 +830,151 @@ const alarmAction = async (action, extra = {}) => {
   if (!isMedicationModalOpen()) window.location.reload();
 };
 
-alarmTakeBtn?.addEventListener('click', () => {
-  const trackFeedback = alarmOverlay?.dataset.alarmTrackDoseFeedback === '1';
-  if (trackFeedback) {
-    const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
-    const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
-    const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+// ── Sequential feedback queue ─────────────────────────────────────────────────
+
+let feedbackQueue = [];
+let feedbackQueueMode = false;
+const feedbackQueueProgressEl = document.querySelector('[data-feedback-queue-progress]');
+
+const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '') => {
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action: 'mark_dose',
+    medication_id: medicationId,
+    scheduled_date: scheduledDate,
+    scheduled_time: scheduledTime,
+    status,
+    note,
+    pain_level: painLevel,
+  });
+  try {
+    await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+  } catch {
+    // best-effort
+  }
+};
+
+const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMinutes) => {
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action: 'postpone_dose',
+    medication_id: medicationId,
+    scheduled_date: scheduledDate,
+    scheduled_time: scheduledTime,
+    postpone_minutes: delayMinutes,
+  });
+  try {
+    await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+  } catch {
+    // best-effort
+  }
+};
+
+const processNextFeedbackQueueItem = () => {
+  if (feedbackQueue.length === 0) {
+    feedbackQueueMode = false;
+    if (!isMedicationModalOpen()) window.location.reload();
+    return;
+  }
+  const item = feedbackQueue[0];
+  const total = item.totalInBatch;
+  const pos = item.positionInBatch;
+  if (feedbackQueueProgressEl) {
+    feedbackQueueProgressEl.textContent = `${item.name} (${pos} of ${total})`;
+    feedbackQueueProgressEl.hidden = false;
+  }
+  feedbackQueueMode = true;
+  openDoseFeedbackModal(item.medication_id, item.scheduled_date, item.scheduled_time, true, false);
+};
+
+const submitCurrentQueueItem = async (note, painLevel) => {
+  const item = feedbackQueue.shift();
+  if (!item) return;
+  await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel);
+  closeDoseFeedbackModal();
+  if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
+  processNextFeedbackQueueItem();
+};
+
+// ── Alarm button handlers ─────────────────────────────────────────────────────
+
+alarmTakeBtn?.addEventListener('click', async () => {
+  if (alarmGroupItems.length > 0) {
+    // Group mode: log non-feedback meds immediately, queue feedback meds
+    const nonFeedback = alarmGroupItems.filter((i) => !i.track_dose_feedback);
+    const withFeedback = alarmGroupItems.filter((i) => i.track_dose_feedback);
+
     stopAlarmAudio();
     hideAlarmOverlay();
-    openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
+
+    for (const item of nonFeedback) {
+      await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '');
+    }
+
+    if (withFeedback.length === 0) {
+      window.location.reload();
+      return;
+    }
+
+    feedbackQueue = withFeedback.map((item, idx) => ({
+      ...item,
+      positionInBatch: idx + 1,
+      totalInBatch: withFeedback.length,
+    }));
+    processNextFeedbackQueueItem();
   } else {
-    alarmAction('mark_dose', { status: 'taken', note: '' });
+    // Single mode
+    const trackFeedback = alarmOverlay?.dataset.alarmTrackDoseFeedback === '1';
+    if (trackFeedback) {
+      const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
+      const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
+      const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+      stopAlarmAudio();
+      hideAlarmOverlay();
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
+    } else {
+      alarmAction('mark_dose', { status: 'taken', note: '' });
+    }
   }
 });
 
-alarmSkipBtn?.addEventListener('click', () => {
-  alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
+alarmSkipBtn?.addEventListener('click', async () => {
+  if (alarmGroupItems.length > 0) {
+    const items = [...alarmGroupItems];
+    hideAlarmOverlay();
+    for (const item of items) {
+      await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
+    }
+    window.location.reload();
+  } else {
+    alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
+  }
 });
 
-alarmSnoozeBtn?.addEventListener('click', () => {
+alarmSnoozeBtn?.addEventListener('click', async () => {
   const minutes = alarmSnoozeMinutesEl?.value ?? '5';
-  alarmAction('postpone_dose', { postpone_minutes: minutes });
+  if (alarmGroupItems.length > 0) {
+    const items = [...alarmGroupItems];
+    hideAlarmOverlay();
+    for (const item of items) {
+      await postPostpone(item.medication_id, item.scheduled_date, item.scheduled_time, minutes);
+    }
+    window.location.reload();
+  } else {
+    alarmAction('postpone_dose', { postpone_minutes: minutes });
+  }
 });
 
 // ── Reminders & polling ───────────────────────────────────────────────────────
@@ -814,7 +991,12 @@ const showFallbackAlert = (items) => {
     return;
   }
   const top = items[0];
-  inAppAlert.textContent = `Dose reminder: ${top.name} ${top.dose} is due now.`;
+  if (top.group_id) {
+    const groupItems = items.filter((i) => i.group_id === top.group_id);
+    inAppAlert.textContent = `Dose reminder: ${top.group_name} (${groupItems.length} medication${groupItems.length !== 1 ? 's' : ''}) is due now.`;
+  } else {
+    inAppAlert.textContent = `Dose reminder: ${top.name} ${top.dose} is due now.`;
+  }
   inAppAlert.hidden = false;
 };
 
@@ -849,13 +1031,26 @@ const notifyItems = (items) => {
   writeSeenMap(seenMap);
 
   if ('Notification' in window && Notification.permission === 'granted') {
+    const notifiedGroupIds = new Set();
     unseen.forEach((item) => {
-      const dueText = item.postponed_until ? 'Snoozed dose due now' : 'Dose due now';
-      const title = `${item.name} (${item.dose})`;
-      if (swRegistration) {
-        swRegistration.showNotification(title, { body: dueText });
+      if (item.group_id) {
+        if (notifiedGroupIds.has(item.group_id)) return;
+        notifiedGroupIds.add(item.group_id);
+        const groupItems = unseen.filter((i) => i.group_id === item.group_id);
+        const body = groupItems.map((i) => `${i.name} ${i.dose}`).join(', ');
+        if (swRegistration) {
+          swRegistration.showNotification(item.group_name ?? 'Medication Group', { body });
+        } else {
+          new Notification(item.group_name ?? 'Medication Group', { body });
+        }
       } else {
-        new Notification(title, { body: dueText });
+        const dueText = item.postponed_until ? 'Snoozed dose due now' : 'Dose due now';
+        const title = `${item.name} (${item.dose})`;
+        if (swRegistration) {
+          swRegistration.showNotification(title, { body: dueText });
+        } else {
+          new Notification(title, { body: dueText });
+        }
       }
     });
     showFallbackAlert([]);
@@ -864,7 +1059,18 @@ const notifyItems = (items) => {
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
-    showAlarmOverlay(unseen[0]);
+    // Show group alarm if first unseen item belongs to a group with 2+ members due
+    const firstGroupId = unseen[0]?.group_id;
+    if (firstGroupId) {
+      const groupItems = unseen.filter((i) => i.group_id === firstGroupId);
+      if (groupItems.length >= 2) {
+        showGroupAlarmOverlay(groupItems);
+      } else {
+        showAlarmOverlay(unseen[0]);
+      }
+    } else {
+      showAlarmOverlay(unseen[0]);
+    }
   }
 };
 
@@ -1393,5 +1599,44 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
         medDetailBody.innerHTML = `<p class="muted">Detailed information is not available for this medication.</p>`;
       }
     }
+  });
+});
+
+// ── Group management UI ───────────────────────────────────────────────────────
+
+const groupFormWrap = document.querySelector('[data-group-form-wrap]');
+const groupForm = document.querySelector('[data-group-form]');
+const groupFormAction = document.querySelector('[data-group-form-action]');
+const groupFormId = document.querySelector('[data-group-form-id]');
+const groupFormName = document.querySelector('[data-group-form-name]');
+const groupFormTime = document.querySelector('[data-group-form-time]');
+const groupFormSubmit = document.querySelector('[data-group-form-submit]');
+
+const openGroupForm = (mode, id = '', name = '', time = '') => {
+  if (!groupFormWrap) return;
+  if (groupFormAction) groupFormAction.value = mode === 'edit' ? 'update_group' : 'create_group';
+  if (groupFormId) groupFormId.value = id;
+  if (groupFormName) groupFormName.value = name;
+  if (groupFormTime) groupFormTime.value = time;
+  if (groupFormSubmit) groupFormSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Create group';
+  groupFormWrap.hidden = false;
+  groupFormName?.focus();
+};
+
+const closeGroupForm = () => {
+  if (groupFormWrap) groupFormWrap.hidden = true;
+};
+
+document.querySelector('[data-open-create-group-form]')?.addEventListener('click', () => {
+  openGroupForm('create');
+});
+
+document.querySelector('[data-cancel-group-form]')?.addEventListener('click', closeGroupForm);
+
+document.querySelectorAll('[data-edit-group]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { groupId = '', groupName = '', groupTime = '' } = btn.dataset;
+    openGroupForm('edit', groupId, groupName, groupTime);
+    btn.closest('.group-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 });
