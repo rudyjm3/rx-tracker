@@ -149,6 +149,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_trend') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history') {
+    header('Content-Type: application/json; charset=utf-8');
+    $medicationId = (int) ($_GET['medication_id'] ?? 0);
+    if ($medicationId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid medication.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    $year = max(2000, min(2099, (int) ($_GET['year'] ?? (int) date('Y'))));
+    $month = max(1, min(12, (int) ($_GET['month'] ?? (int) date('n'))));
+    $monthStart = sprintf('%04d-%02d-01', $year, $month);
+    $monthEnd = (new DateTimeImmutable($monthStart))->modify('last day of this month')->format('Y-m-d');
+    $refills = $repository->refillsForMonth($medicationId, $monthStart, $monthEnd);
+    $stats = $repository->refillSummaryStats($medicationId, $year);
+    echo json_encode([
+        'ok' => true,
+        'refills' => $refills,
+        'stats' => $stats,
+        'year' => $year,
+        'month' => $month,
+    ], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jsonResponse = post_string('json_response') === '1';
@@ -275,6 +298,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_home();
         }
 
+        if ($action === 'log_refill') {
+            $medicationId = (int) post_string('medication_id');
+            $refillDate = post_string('refill_date');
+            $amount = (int) post_string('amount');
+            $note = substr(trim(post_string('note')), 0, 255);
+            if ($medicationId <= 0) {
+                throw new RuntimeException('Invalid medication.');
+            }
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $refillDate)) {
+                throw new RuntimeException('Invalid refill date.');
+            }
+            if ($amount <= 0) {
+                throw new RuntimeException('Refill amount must be greater than 0.');
+            }
+            $repository->logRefill($medicationId, $refillDate, $amount, $note);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+                exit;
+            }
+            redirect_home();
+        }
+
         if ($action === 'postpone_dose') {
             $delayMinutes = (int) post_string('postpone_minutes');
             $repository->postponeDose(
@@ -288,7 +334,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
                 exit;
             }
-            header('Location: index.php?notice=Dose snoozed');
+            header('Location: index.php?notice=' . urlencode('Dose snoozed'));
             exit;
         }
 
@@ -519,9 +565,21 @@ foreach ($recentLogs as $log) {
                     <?php endif; ?>
                     <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
                   </p>
-                  <p class="pill-meta">Pills: <?= e((string) $medication['starting_pill_count']) ?> / <?= e((string) $medication['pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+                  <p class="pill-meta">Pills: <?= e((string) $medication['pill_count']) ?> / <?= e((string) $medication['starting_pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
+                  <?php if ((int) $medication['starting_pill_count'] > 0): ?>
+                    <?php
+                      $supplyPercent = min(100, (int) round((int) $medication['pill_count'] / (int) $medication['starting_pill_count'] * 100));
+                      $supplyBarClass = $supplyPercent <= 25 ? ' pill-supply-bar-fill--critical' : ($supplyPercent <= 50 ? ' pill-supply-bar-fill--low' : '');
+                    ?>
+                    <div class="pill-supply-bar" role="progressbar" aria-valuenow="<?= e((string) $supplyPercent) ?>" aria-valuemin="0" aria-valuemax="100" aria-label="<?= e((string) $supplyPercent) ?>% supply remaining">
+                      <div class="pill-supply-bar-fill<?= $supplyBarClass ?>" style="width:<?= e((string) $supplyPercent) ?>%"></div>
+                    </div>
+                  <?php endif; ?>
                   <?php if ($daysLeft !== null): ?>
                     <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
+                  <?php endif; ?>
+                  <?php if (!empty($medication['last_refill'])): ?>
+                    <p class="pill-meta refill-meta">Last refill: <?= e((new DateTimeImmutable((string) $medication['last_refill']['refill_date']))->format('M j, Y')) ?> &middot; <?= e((string) $medication['last_refill']['amount']) ?> pills</p>
                   <?php endif; ?>
                   <button type="button" class="view-details-link"
                           data-view-details
@@ -556,6 +614,20 @@ foreach ($recentLogs as $log) {
                       data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
                     >Log dose now</button>
                   </form>
+                  <button
+                    type="button"
+                    class="secondary"
+                    data-open-refill-modal
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                  >Log refill</button>
+                  <button
+                    type="button"
+                    class="secondary"
+                    data-open-refill-history
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                  >Refill history</button>
                   <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
                     <?= csrf_field() ?>
                     <input type="hidden" name="action" value="deactivate_medication">
@@ -698,7 +770,7 @@ foreach ($recentLogs as $log) {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
       <div class="modal-header">
         <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
-        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">X</button>
+        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">&#10005;</button>
       </div>
       <form class="medication-form" method="post" action="index.php">
         <?= csrf_field() ?>
@@ -740,7 +812,7 @@ foreach ($recentLogs as $log) {
         </label>
         <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
         <label>Low supply threshold (pills)
-          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
+          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 0)) ?>">
         </label>
         <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
         <label>Medication group <span class="field-optional">(optional)</span>
@@ -1212,7 +1284,7 @@ foreach ($recentLogs as $log) {
   <div class="modal-dialog postpone-dialog" role="dialog" aria-modal="true" aria-labelledby="postpone-modal-title">
     <div class="modal-header">
       <h2 id="postpone-modal-title">Snooze reminder</h2>
-      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">X</button>
+      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">&#10005;</button>
     </div>
     <form method="post" action="index.php" class="stacked-form">
       <?= csrf_field() ?>
@@ -1229,6 +1301,49 @@ foreach ($recentLogs as $log) {
       </label>
       <button type="submit">Snooze</button>
     </form>
+  </div>
+</div>
+
+<div class="modal-overlay" data-refill-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="refill-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="refill-modal-title">Log Refill</h2>
+        <p class="refill-modal-subtitle" data-refill-med-name></p>
+      </div>
+      <button type="button" class="icon-button" data-close-refill-modal aria-label="Close refill modal">&#10005;</button>
+    </div>
+    <form class="stacked-form" data-refill-form>
+      <input type="hidden" name="medication_id" data-refill-medication-id value="">
+      <label>Refill date
+        <input type="date" name="refill_date" data-refill-date required>
+      </label>
+      <label>Amount (pills)
+        <input type="number" min="1" name="amount" required placeholder="e.g. 30">
+      </label>
+      <label>Note <span class="field-optional">(optional)</span>
+        <input name="note" placeholder="e.g. 30-day supply" maxlength="255">
+      </label>
+      <div class="refill-form-actions">
+        <button type="submit">Log refill</button>
+        <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" data-refill-history-modal>
+  <div class="modal-dialog refill-history-dialog" role="dialog" aria-modal="true" aria-labelledby="refill-history-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="refill-history-title">Refill History</h2>
+        <p class="refill-modal-subtitle" data-refill-history-med-name></p>
+      </div>
+      <button type="button" class="icon-button" data-close-refill-history aria-label="Close refill history">&#10005;</button>
+    </div>
+    <div class="refill-history-body" data-refill-history-body>
+      <p class="pain-graph-loading">Loading&hellip;</p>
+    </div>
   </div>
 </div>
 

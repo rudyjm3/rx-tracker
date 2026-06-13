@@ -13,6 +13,7 @@ final class MedicationRepository
         $this->ensurePainLevelColumn();
         $this->ensureSetIdColumn();
         $this->ensureGroupTables();
+        $this->ensureRefillsTable();
     }
 
     public function activeMedications(): array
@@ -26,6 +27,7 @@ final class MedicationRepository
         $medications = $statement->fetchAll();
         foreach ($medications as &$medication) {
             $medication['times'] = $this->scheduleTimesForMedication((int) $medication['id']);
+            $medication['last_refill'] = $this->lastRefillForMedication((int) $medication['id']);
         }
 
         return $medications;
@@ -225,7 +227,9 @@ final class MedicationRepository
                      interval_hours = :interval_hours,
                      first_dose_time = :first_dose_time,
                      as_needed = :as_needed,
-                     starting_pill_count = :starting_pill_count,
+                     starting_pill_count = CASE WHEN NOT EXISTS (
+                         SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id
+                     ) THEN :starting_pill_count ELSE starting_pill_count END,
                      pill_count = :pill_count,
                      low_supply_threshold = :low_supply_threshold,
                      track_dose_feedback = :track_dose_feedback,
@@ -234,6 +238,8 @@ final class MedicationRepository
             );
             $statement->execute([
                 'id' => $id,
+                'refill_check_id' => $id,
+                'starting_pill_count' => $pillCount,
                 'name' => $name,
                 'dose' => $dose,
                 'instructions' => $instructions,
@@ -242,7 +248,6 @@ final class MedicationRepository
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
-                'starting_pill_count' => $pillCount,
                 'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
                 'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
@@ -748,6 +753,135 @@ final class MedicationRepository
         }
 
         return $unsent;
+    }
+
+    public function logRefill(int $medicationId, string $refillDate, int $amount, string $note): void
+    {
+        if ($amount <= 0) {
+            throw new RuntimeException('Refill amount must be greater than 0.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare('SELECT pill_count FROM medications WHERE id = :id AND active = 1');
+            $stmt->execute(['id' => $medicationId]);
+            $current = $stmt->fetchColumn();
+            if ($current === false) {
+                throw new RuntimeException('Medication not found.');
+            }
+            $newCount = (int) $current + $amount;
+
+            $update = $this->db->prepare(
+                'UPDATE medications SET pill_count = :pill_count, starting_pill_count = :starting_pill_count WHERE id = :id'
+            );
+            $update->execute([
+                'pill_count' => $newCount,
+                'starting_pill_count' => $amount,
+                'id' => $medicationId,
+            ]);
+
+            $insert = $this->db->prepare(
+                'INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note)
+                 VALUES (:medication_id, :refill_date, :amount, :pills_on_hand, :note)'
+            );
+            $insert->execute([
+                'medication_id' => $medicationId,
+                'refill_date' => $refillDate,
+                'amount' => $amount,
+                'pills_on_hand' => $newCount,
+                'note' => $note,
+            ]);
+
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            $this->db->rollBack();
+            throw $exception;
+        }
+    }
+
+    public function lastRefillForMedication(int $medicationId): ?array
+    {
+        $statement = $this->db->prepare(
+            'SELECT id, refill_date, amount, pills_on_hand, note
+             FROM medication_refills
+             WHERE medication_id = :medication_id
+             ORDER BY refill_date DESC, id DESC
+             LIMIT 1'
+        );
+        $statement->execute(['medication_id' => $medicationId]);
+        $row = $statement->fetch();
+
+        return is_array($row) ? $row : null;
+    }
+
+    public function refillsForMonth(int $medicationId, string $monthStart, string $monthEnd): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT r1.id, r1.refill_date, r1.amount, r1.pills_on_hand, r1.note,
+                    (SELECT r2.refill_date FROM medication_refills r2
+                     WHERE r2.medication_id = r1.medication_id AND r2.refill_date < r1.refill_date
+                     ORDER BY r2.refill_date DESC LIMIT 1) AS prev_refill_date
+             FROM medication_refills r1
+             WHERE r1.medication_id = :medication_id
+               AND r1.refill_date BETWEEN :month_start AND :month_end
+             ORDER BY r1.refill_date DESC, r1.id DESC'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'month_start' => $monthStart,
+            'month_end' => $monthEnd,
+        ]);
+        $rows = $statement->fetchAll();
+
+        foreach ($rows as &$row) {
+            if ($row['prev_refill_date'] !== null) {
+                $prev = new DateTimeImmutable((string) $row['prev_refill_date']);
+                $curr = new DateTimeImmutable((string) $row['refill_date']);
+                $row['days_since_prev'] = (int) $prev->diff($curr)->days;
+            } else {
+                $row['days_since_prev'] = null;
+            }
+            unset($row['prev_refill_date']);
+        }
+
+        return $rows;
+    }
+
+    public function refillSummaryStats(int $medicationId, int $year): array
+    {
+        $yearStart = sprintf('%04d-01-01', $year);
+        $yearEnd = sprintf('%04d-12-31', $year);
+
+        $stmt = $this->db->prepare(
+            'SELECT refill_date
+             FROM medication_refills
+             WHERE medication_id = :medication_id
+               AND refill_date BETWEEN :year_start AND :year_end
+             ORDER BY refill_date ASC'
+        );
+        $stmt->execute([
+            'medication_id' => $medicationId,
+            'year_start' => $yearStart,
+            'year_end' => $yearEnd,
+        ]);
+        $rows = $stmt->fetchAll();
+        $count = count($rows);
+
+        $avgDays = null;
+        if ($count >= 2) {
+            $dates = array_map(static fn(array $r): DateTimeImmutable => new DateTimeImmutable((string) $r['refill_date']), $rows);
+            $totalDays = 0;
+            for ($i = 1; $i < count($dates); $i++) {
+                $totalDays += (int) $dates[$i - 1]->diff($dates[$i])->days;
+            }
+            $avgDays = (int) round($totalDays / ($count - 1));
+        }
+
+        return [
+            'count' => $count,
+            'avg_days' => $avgDays,
+            'year' => $year,
+        ];
     }
 
     private function validateScheduleInputs(string $scheduleMode, array $doseTimes, ?int $intervalHours, ?string $firstDoseTime): void
@@ -1441,6 +1575,46 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureRefillsTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_refills (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        refill_date DATE NOT NULL,
+                        amount INT UNSIGNED NOT NULL,
+                        pills_on_hand INT UNSIGNED NOT NULL,
+                        note VARCHAR(255) NOT NULL DEFAULT '',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_refills_med_date (medication_id, refill_date),
+                        CONSTRAINT fk_refills_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_refills (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        refill_date TEXT NOT NULL,
+                        amount INTEGER NOT NULL,
+                        pills_on_hand INTEGER NOT NULL,
+                        note TEXT NOT NULL DEFAULT '',
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
         }
     }
 }
