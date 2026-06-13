@@ -1128,8 +1128,98 @@ textarea:focus,
 }
 
 .reminder-panel,
-.settings-panel {
+.settings-panel,
+.push-status-panel {
   margin-top: 1.25rem;
+}
+
+.push-status-intro {
+  color: #647187;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.push-check-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.push-check-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.push-check-icon {
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 900;
+  height: 1.6rem;
+  line-height: 1.6rem;
+  text-align: center;
+  width: 1.6rem;
+}
+
+.push-check-ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.push-check-fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.push-check-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.push-check-pending {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.push-check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.push-check-body strong {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.push-check-hint {
+  color: #647187;
+  font-size: 0.82rem;
+  margin: 0.25rem 0 0;
+}
+
+.push-check-hint code {
+  background: #f1f5f9;
+  border-radius: 0.3rem;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.push-test-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.push-test-row button {
+  flex-shrink: 0;
+}
+
+.push-test-status {
+  font-size: 0.875rem;
 }
 
 .in-app-alert {

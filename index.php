@@ -446,6 +446,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'send_test_push') {
+            header('Content-Type: application/json; charset=utf-8');
+            try {
+                $service = PushNotificationService::fromEnv($repository);
+                $sent = $service->sendTestPush();
+                echo json_encode(['ok' => true, 'count' => $sent], JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+            }
+            exit;
+        }
+
         if ($action === 'remove_push_subscription') {
             header('Content-Type: application/json; charset=utf-8');
             $endpoint = trim((string) ($_POST['endpoint'] ?? ''));
@@ -454,7 +466,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     } catch (Throwable $exception) {
-        $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription'], true);
+        $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription', 'send_test_push'], true);
         if ($jsonResponse || $isPushAction) {
             header('Content-Type: application/json; charset=utf-8');
             if ($isPushAction) {
@@ -1068,6 +1080,14 @@ foreach ($recentLogs as $log) {
   </div>
 
   <?php if ($page === 'settings'): ?>
+    <?php
+      $vapidConfigured = trim((string) getenv('PUSH_VAPID_PUBLIC_KEY')) !== ''
+          && trim((string) getenv('PUSH_VAPID_PRIVATE_KEY')) !== ''
+          && trim((string) getenv('PUSH_VAPID_SUBJECT')) !== '';
+      $webPushInstalled = is_file(__DIR__ . '/vendor/autoload.php')
+          && class_exists(\Minishlink\WebPush\WebPush::class);
+      $lastPushSentAt = $repository->lastPushSentAt();
+    ?>
     <section class="panel settings-panel">
       <div class="panel-heading"><h2>Reminder Settings</h2></div>
       <form method="post" action="index.php?page=settings" class="stacked-form">
@@ -1092,6 +1112,79 @@ foreach ($recentLogs as $log) {
       </div>
       <div class="in-app-alert" data-in-app-alert hidden></div>
     </section>
+
+    <section class="panel push-status-panel" data-push-status-panel>
+      <div class="panel-heading"><h2>Push Notification Status</h2></div>
+      <p class="push-status-intro">All checks must pass for background alarms to fire when the app is closed.</p>
+
+      <div class="push-check-list">
+
+        <div class="push-check-row">
+          <span class="push-check-icon <?= $vapidConfigured ? 'push-check-ok' : 'push-check-fail' ?>" aria-hidden="true"><?= $vapidConfigured ? '✓' : '✗' ?></span>
+          <div class="push-check-body">
+            <strong>VAPID keys configured</strong>
+            <?php if (!$vapidConfigured): ?>
+              <p class="push-check-hint">Run <code>php scripts/generate_vapid_keys.php</code>, then paste the output into your <code>.env</code> file and restart the server.</p>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="push-check-row">
+          <span class="push-check-icon <?= $webPushInstalled ? 'push-check-ok' : 'push-check-fail' ?>" aria-hidden="true"><?= $webPushInstalled ? '✓' : '✗' ?></span>
+          <div class="push-check-body">
+            <strong>PHP web-push library installed</strong>
+            <?php if (!$webPushInstalled): ?>
+              <p class="push-check-hint">Run <code>composer install</code> in the project root.</p>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-sw>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Service worker registered</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-permission>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Notification permission granted</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-subscription>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Push subscription active on this device</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row">
+          <span class="push-check-icon push-check-warn" aria-hidden="true">⚠</span>
+          <div class="push-check-body">
+            <strong>Cron job scheduled</strong>
+            <p class="push-check-hint">Cannot be verified from the browser. Schedule <code>scripts/send_due_push.php</code> to run every minute on your server (cron on Linux/macOS, Task Scheduler on Windows).
+            <?php if ($lastPushSentAt !== null): ?>
+              <br>Last push sent: <strong><?= e((new DateTimeImmutable($lastPushSentAt))->format('M j, g:i A')) ?></strong>.
+            <?php else: ?>
+              <br>No pushes sent yet &mdash; the cron may not be running, or no doses have been due since setup.
+            <?php endif; ?>
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="push-test-row">
+        <button type="button" class="secondary" data-test-push-btn disabled>Send test push</button>
+        <span class="push-test-status muted" data-test-push-status></span>
+      </div>
+    </section>
+
     <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
   </main>
   </body>

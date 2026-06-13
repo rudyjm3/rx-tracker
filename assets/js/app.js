@@ -2385,3 +2385,96 @@ window.addEventListener('appinstalled', () => {
   if (installBanner) installBanner.hidden = true;
   deferredInstallPrompt = null;
 });
+
+// ── Push notification status panel (Settings page) ────────────────────────────
+
+const pushStatusPanel = document.querySelector('[data-push-status-panel]');
+
+const applyCheckResult = (rowEl, ok, hintText) => {
+  if (!rowEl) return;
+  const icon = rowEl.querySelector('.push-check-icon');
+  const hint = rowEl.querySelector('[data-check-hint]');
+  if (icon) {
+    icon.textContent = ok ? '✓' : '✗';
+    icon.className = `push-check-icon ${ok ? 'push-check-ok' : 'push-check-fail'}`;
+  }
+  if (hint) {
+    hint.textContent = hintText || '';
+    hint.hidden = !hintText;
+  }
+};
+
+const initPushStatusPanel = async () => {
+  if (!pushStatusPanel) return;
+
+  const swRow = pushStatusPanel.querySelector('[data-check-sw]');
+  const permRow = pushStatusPanel.querySelector('[data-check-permission]');
+  const subRow = pushStatusPanel.querySelector('[data-check-subscription]');
+  const testBtn = pushStatusPanel.querySelector('[data-test-push-btn]');
+  const testStatus = pushStatusPanel.querySelector('[data-test-push-status]');
+
+  // 1. Service worker
+  const hasSW = 'serviceWorker' in navigator;
+  let swOk = false;
+  if (hasSW) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      swOk = Boolean(reg);
+    } catch { /* ignore */ }
+  }
+  applyCheckResult(swRow, swOk,
+    !hasSW ? 'Service workers are not supported in this browser.' :
+    !swOk ? 'Service worker not yet registered. Open the dashboard once over HTTPS to register it automatically.' : '');
+
+  // 2. Notification permission
+  const hasPerm = 'Notification' in window;
+  const permission = hasPerm ? Notification.permission : 'unavailable';
+  const permOk = permission === 'granted';
+  applyCheckResult(permRow, permOk,
+    !hasPerm ? 'Notifications are not supported in this browser.' :
+    permission === 'denied' ? 'Permission was blocked. Open browser site settings and reset notifications for this site, then re-enable the toggle above.' :
+    !permOk ? 'Enable the "Background reminders" toggle above to grant permission.' : '');
+
+  // 3. Push subscription
+  let subOk = false;
+  if (swOk) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      subOk = Boolean(sub);
+    } catch { /* ignore */ }
+  }
+  applyCheckResult(subRow, subOk,
+    !subOk ? 'No active subscription on this device. Enable the "Background reminders" toggle above.' : '');
+
+  // Enable test button only when there is an active subscription
+  if (testBtn) testBtn.disabled = !subOk;
+
+  testBtn?.addEventListener('click', async () => {
+    if (!testStatus) return;
+    testBtn.disabled = true;
+    testStatus.textContent = 'Sending…';
+    try {
+      const params = new URLSearchParams({
+        action: 'send_test_push',
+        csrf_token: getCsrfToken(),
+      });
+      const res = await fetch('index.php?page=settings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      testStatus.textContent = json.ok
+        ? `Test sent to ${json.count} device(s) — check your notifications now.`
+        : `Failed: ${json.error || 'Unknown error.'}`;
+    } catch {
+      testStatus.textContent = 'Request failed — check the browser console.';
+    } finally {
+      testBtn.disabled = !subOk;
+    }
+  });
+};
+
+initPushStatusPanel();

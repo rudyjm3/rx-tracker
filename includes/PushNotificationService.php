@@ -30,6 +30,63 @@ final class PushNotificationService
         return $this->vapidPublicKey;
     }
 
+    public function sendTestPush(): int
+    {
+        if (!class_exists(\Minishlink\WebPush\WebPush::class) || !class_exists(\Minishlink\WebPush\Subscription::class)) {
+            throw new RuntimeException('Web Push library missing. Run: composer require minishlink/web-push');
+        }
+
+        $subscriptions = $this->repository->pushSubscriptions();
+        if ($subscriptions === []) {
+            throw new RuntimeException('No push subscriptions found. Enable "Background reminders" in Settings first.');
+        }
+
+        $auth = [
+            'VAPID' => [
+                'subject' => $this->vapidSubject,
+                'publicKey' => $this->vapidPublicKey,
+                'privateKey' => $this->vapidPrivateKey,
+            ],
+        ];
+        $webPush = new \Minishlink\WebPush\WebPush($auth);
+        $webPush->setReuseVAPIDHeaders(true);
+
+        $payload = json_encode([
+            'title' => 'RxTracker — test notification',
+            'body' => 'Push notifications are working! Background alarms will fire when doses are due.',
+            'tag' => 'rx-test-' . time(),
+            'url' => 'index.php',
+        ], JSON_THROW_ON_ERROR);
+
+        foreach ($subscriptions as $sub) {
+            $subscription = \Minishlink\WebPush\Subscription::create([
+                'endpoint' => (string) $sub['endpoint'],
+                'publicKey' => (string) $sub['p256dh_key'],
+                'authToken' => (string) $sub['auth_key'],
+            ]);
+            $webPush->queueNotification($subscription, $payload);
+        }
+
+        $sent = 0;
+        foreach ($webPush->flush() as $report) {
+            if ($report->isSuccess()) {
+                $sent++;
+                continue;
+            }
+            $endpoint = $report->getRequest()->getUri()->__toString();
+            $statusCode = $report->getResponse()?->getStatusCode();
+            if (in_array($statusCode, [404, 410], true)) {
+                $this->repository->removePushSubscriptionByEndpoint($endpoint);
+            }
+        }
+
+        if ($sent === 0) {
+            throw new RuntimeException('Push delivery failed. Check your VAPID keys and that the subscription is still valid.');
+        }
+
+        return $sent;
+    }
+
     public function sendDueReminders(DateTimeImmutable $now): int
     {
         if (!class_exists(\Minishlink\WebPush\WebPush::class) || !class_exists(\Minishlink\WebPush\Subscription::class)) {

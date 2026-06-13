@@ -727,6 +727,17 @@ final class MedicationRepository
         }
     }
 
+    public function lastPushSentAt(): ?string
+    {
+        try {
+            $stmt = $this->db->query('SELECT MAX(sent_at) FROM push_delivery_log');
+            $result = $stmt ? $stmt->fetchColumn() : false;
+            return (is_string($result) && $result !== '') ? $result : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
     public function findAndConsumePushNonce(string $nonce): ?array
     {
         if ($nonce === '') {
