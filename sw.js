@@ -76,9 +76,18 @@ self.addEventListener('push', (event) => {
     body: payload.body || 'A dose is due now.',
     tag: payload.tag || 'rx-reminder',
     renotify: true,
+    requireInteraction: true,
+    silent: false,
     vibrate: [400, 200, 400, 200, 400],
+    icon: 'assets/icons/icon-192.png',
+    badge: 'assets/icons/icon-192.png',
+    actions: [
+      { action: 'take', title: 'Take Now' },
+      { action: 'snooze', title: 'Snooze 15 min' },
+    ],
     data: {
-      url: payload.url || '/index.php',
+      url: payload.url || 'index.php',
+      nonce: payload.nonce || null,
     },
   };
 
@@ -87,10 +96,35 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data && event.notification.data.url
-    ? event.notification.data.url
-    : '/index.php';
+  const data = event.notification.data || {};
+  const action = event.action;
+  const nonce = data.nonce;
+  const targetUrl = data.url || 'index.php';
 
+  // Handle quick-action buttons (Take Now / Snooze) via background fetch
+  if ((action === 'take' || action === 'snooze') && nonce) {
+    const act = action === 'take' ? 'take' : 'snooze';
+    const apiUrl = `index.php?action=push_action&act=${act}&nonce=${encodeURIComponent(nonce)}&minutes=15`;
+    event.waitUntil(
+      fetch(apiUrl, { credentials: 'same-origin' })
+        .then((r) => r.json())
+        .then((json) => {
+          const confirmBody = json.ok
+            ? (action === 'take' ? 'Dose marked as taken ✓' : 'Reminder snoozed 15 min ✓')
+            : (json.error || 'Action failed.');
+          return self.registration.showNotification('RxTracker', {
+            body: confirmBody,
+            tag: 'rx-action-confirm',
+            icon: 'assets/icons/icon-192.png',
+            requireInteraction: false,
+          });
+        })
+        .catch(() => {})
+    );
+    return;
+  }
+
+  // Default: focus existing window or open app
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {

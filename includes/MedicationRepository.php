@@ -14,6 +14,7 @@ final class MedicationRepository
         $this->ensureSetIdColumn();
         $this->ensureGroupTables();
         $this->ensureRefillsTable();
+        $this->ensurePushActionNonceColumn();
     }
 
     public function activeMedications(): array
@@ -709,11 +710,11 @@ final class MedicationRepository
         }
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at)
-               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at)
+            ? 'INSERT INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce)
                ON CONFLICT(medication_id, scheduled_for_date, scheduled_time) DO NOTHING'
-            : 'INSERT IGNORE INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at)
-               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at)';
+            : 'INSERT IGNORE INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce)';
         $statement = $this->db->prepare($sql);
         foreach ($items as $item) {
             $statement->execute([
@@ -721,7 +722,39 @@ final class MedicationRepository
                 'scheduled_for_date' => (string) ($item['scheduled_date'] ?? ''),
                 'scheduled_time' => (string) ($item['scheduled_time'] ?? ''),
                 'sent_at' => $sentAt->format('Y-m-d H:i:s'),
+                'action_nonce' => (string) ($item['_nonce'] ?? ''),
             ]);
+        }
+    }
+
+    public function findAndConsumePushNonce(string $nonce): ?array
+    {
+        if ($nonce === '') {
+            return null;
+        }
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT medication_id, scheduled_for_date, scheduled_time
+                 FROM push_delivery_log
+                 WHERE action_nonce = :nonce
+                 LIMIT 1'
+            );
+            $stmt->execute(['nonce' => $nonce]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!is_array($row)) {
+                $this->db->rollBack();
+                return null;
+            }
+            $clear = $this->db->prepare(
+                "UPDATE push_delivery_log SET action_nonce = '' WHERE action_nonce = :nonce"
+            );
+            $clear->execute(['nonce' => $nonce]);
+            $this->db->commit();
+            return $row;
+        } catch (Throwable $exception) {
+            $this->db->rollBack();
+            throw $exception;
         }
     }
 
@@ -1420,7 +1453,9 @@ final class MedicationRepository
                         scheduled_for_date DATE NOT NULL,
                         scheduled_time TIME NOT NULL,
                         sent_at DATETIME NOT NULL,
+                        action_nonce VARCHAR(64) NOT NULL DEFAULT '',
                         UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time),
+                        INDEX idx_push_nonce (action_nonce(32)),
                         CONSTRAINT fk_push_delivery_medication
                             FOREIGN KEY (medication_id) REFERENCES medications (id)
                             ON DELETE CASCADE
@@ -1473,6 +1508,7 @@ final class MedicationRepository
                         scheduled_for_date TEXT NOT NULL,
                         scheduled_time TEXT NOT NULL,
                         sent_at TEXT NOT NULL,
+                        action_nonce TEXT NOT NULL DEFAULT '',
                         UNIQUE (medication_id, scheduled_for_date, scheduled_time)
                     )"
                 );
@@ -1615,6 +1651,39 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensurePushActionNonceColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM push_delivery_log LIKE 'action_nonce'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE push_delivery_log ADD COLUMN action_nonce VARCHAR(64) NOT NULL DEFAULT ''");
+                    $this->db->exec("ALTER TABLE push_delivery_log ADD INDEX idx_push_nonce (action_nonce(32))");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(push_delivery_log)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'action_nonce') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE push_delivery_log ADD COLUMN action_nonce TEXT NOT NULL DEFAULT ''");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; runtime errors will surface if unresolved.
         }
     }
 }

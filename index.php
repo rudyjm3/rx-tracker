@@ -172,6 +172,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history')
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_action') {
+    header('Content-Type: application/json; charset=utf-8');
+    $nonce = trim((string) ($_GET['nonce'] ?? ''));
+    $act   = (string) ($_GET['act'] ?? '');
+    if ($nonce === '' || !in_array($act, ['take', 'snooze'], true)) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid request.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    try {
+        $item = $repository->findAndConsumePushNonce($nonce);
+        if ($item === null) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid or expired token.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $medId   = (int) $item['medication_id'];
+        $pDate   = (string) $item['scheduled_for_date'];
+        $pTime   = (string) $item['scheduled_time'];
+        if ($act === 'take') {
+            $repository->recordDoseStatus($medId, $pDate, $pTime, 'taken', 'Taken via notification');
+            echo json_encode(['ok' => true, 'message' => 'Dose marked as taken.'], JSON_THROW_ON_ERROR);
+        } else {
+            $minutes = (int) ($_GET['minutes'] ?? 15);
+            if (!in_array($minutes, [5, 15, 30], true)) {
+                $minutes = 15;
+            }
+            $repository->postponeDose($medId, $pDate, $pTime, $minutes);
+            echo json_encode(['ok' => true, 'message' => "Snoozed {$minutes} minutes."], JSON_THROW_ON_ERROR);
+        }
+    } catch (Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+    }
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jsonResponse = post_string('json_response') === '1';

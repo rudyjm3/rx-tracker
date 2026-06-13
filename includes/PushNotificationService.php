@@ -57,11 +57,16 @@ final class PushNotificationService
         $sentReminders = [];
 
         foreach ($due as $item) {
+            $nonce = bin2hex(random_bytes(16));
             $payload = json_encode([
                 'title' => (string) $item['name'] . ' (' . (string) $item['dose'] . ')',
                 'body' => (string) ($item['postponed_until'] ? 'Snoozed dose due now' : 'Dose due now'),
                 'tag' => 'dose|' . (int) $item['medication_id'] . '|' . (string) $item['scheduled_date'] . '|' . (string) $item['scheduled_time'],
                 'url' => 'index.php',
+                'nonce' => $nonce,
+                'medication_id' => (int) $item['medication_id'],
+                'scheduled_date' => (string) $item['scheduled_date'],
+                'scheduled_time' => (string) $item['scheduled_time'],
             ], JSON_THROW_ON_ERROR);
 
             foreach ($subscriptions as $subscriptionRow) {
@@ -72,7 +77,7 @@ final class PushNotificationService
                 ]);
                 $webPush->queueNotification($subscription, $payload);
             }
-            $sentReminders[] = $item;
+            $sentReminders[] = array_merge($item, ['_nonce' => $nonce]);
         }
 
         $hasSuccessfulDelivery = false;
