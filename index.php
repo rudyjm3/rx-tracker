@@ -232,7 +232,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($groupName === '') {
                 throw new RuntimeException('Group name is required.');
             }
-            $repository->createGroup($groupName, parseTimeValue($groupTime));
+            $parsedTime = parseTimeValue($groupTime);
+            $newGroupId = $repository->createGroup($groupName, $parsedTime);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'group_id' => $newGroupId,
+                    'group_name' => $groupName,
+                    'group_time_display' => to12h($parsedTime),
+                    'ungrouped' => $repository->ungroupedActiveMedications(),
+                ], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
@@ -243,22 +255,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($groupName === '') {
                 throw new RuntimeException('Group name is required.');
             }
-            $repository->updateGroup($groupId, $groupName, parseTimeValue($groupTime));
+            $parsedTime = parseTimeValue($groupTime);
+            $repository->updateGroup($groupId, $groupName, $parsedTime);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'group_id' => $groupId,
+                    'group_name' => $groupName,
+                    'group_time_display' => to12h($parsedTime),
+                ], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
         if ($action === 'delete_group') {
             $repository->deleteGroup((int) post_string('group_id'));
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
         if ($action === 'add_medication_to_group') {
             $repository->addMedicationToGroup((int) post_string('group_id'), (int) post_string('medication_id'));
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'ungrouped' => $repository->ungroupedActiveMedications(),
+                ], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
         if ($action === 'remove_medication_from_group') {
-            $repository->removeMedicationFromGroup((int) post_string('medication_id'));
+            $medId = (int) post_string('medication_id');
+            $repository->removeMedicationFromGroup($medId);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'ok' => true,
+                    'medication_id' => $medId,
+                    'ungrouped' => $repository->ungroupedActiveMedications(),
+                ], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
@@ -289,12 +335,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'deactivate_medication') {
-            $repository->deactivateMedication((int) post_string('medication_id'));
+            $medId = (int) post_string('medication_id');
+            $repository->deactivateMedication($medId);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'medication_id' => $medId], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
         if ($action === 'activate_medication') {
-            $repository->activateMedication((int) post_string('medication_id'));
+            $medId = (int) post_string('medication_id');
+            $repository->activateMedication($medId);
+            if ($jsonResponse) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => true, 'medication_id' => $medId], JSON_THROW_ON_ERROR);
+                exit;
+            }
             redirect_home();
         }
 
@@ -506,7 +564,8 @@ foreach ($recentLogs as $log) {
           <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
         </div>
         <div class="medication-plan-actions">
-          <button type="button" data-open-medication-modal>Add medication</button>
+          <button type="button" data-open-medication-modal data-med-plan-action="medication">Add medication</button>
+          <button type="button" data-open-create-group-form-header data-med-plan-action="groups" hidden>+ Create group</button>
           <button type="button" class="secondary med-plan-close-btn" data-close-med-plan-modal aria-label="Close">&times;</button>
         </div>
       </div>
@@ -601,8 +660,9 @@ foreach ($recentLogs as $log) {
                   <?php endif; ?>
                 </div>
                 <div class="row-actions medication-actions-bottom">
-                  <form method="post" action="index.php">
+                  <form method="post" action="index.php" data-log-dose-now-form>
                     <?= csrf_field() ?>
+                    <input type="hidden" name="json_response" value="1">
                     <input type="hidden" name="action" value="log_dose_now">
                     <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
                     <input type="hidden" name="note" value="Logged now">
@@ -694,12 +754,12 @@ foreach ($recentLogs as $log) {
             <?php endif; ?>
 
             <?php foreach ($groups as $group): ?>
-              <div class="group-card">
+              <div class="group-card" data-group-card-id="<?= e((string) $group['id']) ?>">
                 <div class="group-card-header">
                   <div class="group-card-title">
-                    <strong><?= e($group['name']) ?></strong>
-                    <span class="group-time-badge"><?= e(to12h($group['scheduled_time'])) ?></span>
-                    <span class="count-badge"><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
+                    <strong data-group-card-name><?= e($group['name']) ?></strong>
+                    <span class="group-time-badge" data-group-card-time><?= e(to12h($group['scheduled_time'])) ?></span>
+                    <span class="count-badge" data-group-card-count><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
                   </div>
                   <div class="row-actions">
                     <button
@@ -730,8 +790,9 @@ foreach ($recentLogs as $log) {
                       <?php if ((int) $member['track_dose_feedback'] === 1): ?>
                         <span class="group-feedback-badge">tracks feedback</span>
                       <?php endif; ?>
-                      <form method="post" action="index.php">
+                      <form method="post" action="index.php" data-ajax-remove>
                         <?= csrf_field() ?>
+                        <input type="hidden" name="json_response" value="1">
                         <input type="hidden" name="action" value="remove_medication_from_group">
                         <input type="hidden" name="medication_id" value="<?= e((string) $member['medication_id']) ?>">
                         <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
@@ -746,14 +807,15 @@ foreach ($recentLogs as $log) {
                   ));
                 ?>
                 <?php if ($eligibleToAdd !== []): ?>
-                  <form class="group-add-med-form" method="post" action="index.php">
+                  <form class="group-add-med-form" method="post" action="index.php" data-ajax-add>
                     <?= csrf_field() ?>
+                    <input type="hidden" name="json_response" value="1">
                     <input type="hidden" name="action" value="add_medication_to_group">
                     <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
                     <select name="medication_id" class="group-add-select">
                       <option value="">Add a medication&hellip;</option>
                       <?php foreach ($eligibleToAdd as $ungrouped): ?>
-                        <option value="<?= e((string) $ungrouped['id']) ?>"><?= e((string) $ungrouped['name']) ?> &mdash; <?= e((string) $ungrouped['dose']) ?></option>
+                        <option value="<?= e((string) $ungrouped['id']) ?>" data-name="<?= e((string) $ungrouped['name']) ?>" data-dose="<?= e((string) $ungrouped['dose']) ?>"><?= e((string) $ungrouped['name']) ?> &mdash; <?= e((string) $ungrouped['dose']) ?></option>
                       <?php endforeach; ?>
                     </select>
                     <button type="submit" class="secondary group-add-btn">Add</button>
@@ -772,6 +834,7 @@ foreach ($recentLogs as $log) {
         <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
         <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">&#10005;</button>
       </div>
+      <div class="modal-scroll">
       <form class="medication-form" method="post" action="index.php">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
@@ -825,6 +888,7 @@ foreach ($recentLogs as $log) {
         </label>
         <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
       </form>
+      </div>
     </div>
   </div>
 
@@ -834,14 +898,16 @@ foreach ($recentLogs as $log) {
         <h2 id="pain-graph-title" data-pain-graph-title>Pain Level Trend</h2>
         <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
       </div>
-      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-        <button class="range-tab" data-range="0">Today</button>
-        <button class="range-tab is-active" data-range="7">7 days</button>
-        <button class="range-tab" data-range="30">30 days</button>
-        <button class="range-tab" data-range="90">90 days</button>
+      <div class="modal-scroll">
+        <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+          <button class="range-tab" data-range="0">Today</button>
+          <button class="range-tab is-active" data-range="7">7 days</button>
+          <button class="range-tab" data-range="30">30 days</button>
+          <button class="range-tab" data-range="90">90 days</button>
+        </div>
+        <div class="pain-graph-body" data-pain-graph-body></div>
+        <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
       </div>
-      <div class="pain-graph-body" data-pain-graph-body></div>
-      <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
     </div>
   </div>
 
@@ -854,6 +920,7 @@ foreach ($recentLogs as $log) {
         </div>
         <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
       </div>
+      <div class="modal-scroll">
       <form method="post" action="index.php" class="stacked-form" data-feedback-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="mark_dose">
@@ -882,6 +949,7 @@ foreach ($recentLogs as $log) {
           <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
         </div>
       </form>
+      </div>
     </div>
   </div>
 
@@ -892,8 +960,10 @@ foreach ($recentLogs as $log) {
         <h2 id="med-detail-title" data-med-detail-title></h2>
         <button type="button" class="icon-button" data-close-med-detail aria-label="Close">&#10005;</button>
       </div>
-      <div data-med-detail-body>
-        <p class="pain-graph-loading">Loading&hellip;</p>
+      <div class="modal-scroll">
+        <div data-med-detail-body>
+          <p class="pain-graph-loading">Loading&hellip;</p>
+        </div>
       </div>
     </div>
   </div>
@@ -1091,22 +1161,22 @@ foreach ($recentLogs as $log) {
   </section>
 
   <?php $exportLogs = $repository->logsForDateRange($filterStart, $filterEnd); ?>
-  <section class="panel export-section export-history-section">
+  <section class="panel export-section export-history-section" id="dose-history">
     <div class="panel-heading export-history-heading">
       <h2>Dose History</h2>
       <div class="export-month-nav no-print">
-        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($prevMonth) ?>">&lsaquo;</a>
+        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($prevMonth) ?>#dose-history">&lsaquo;</a>
         <span class="export-month-label"><?= e($monthLabel) ?></span>
-        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($nextMonth) ?>">&rsaquo;</a>
+        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($nextMonth) ?>#dose-history">&rsaquo;</a>
       </div>
     </div>
-    <form method="get" action="index.php" class="export-date-filter no-print">
+    <form method="get" action="index.php" class="export-date-filter no-print" data-history-filter>
       <input type="hidden" name="page" value="export">
       <label>From <input type="date" name="start_date" value="<?= e($filterStart) ?>"></label>
       <label>To <input type="date" name="end_date" value="<?= e($filterEnd) ?>"></label>
       <button type="submit" class="secondary">Filter</button>
       <?php if ($isCustomRange): ?>
-        <a href="?page=export&m=<?= e($exportMonth) ?>" class="secondary">Clear</a>
+        <a href="?page=export&m=<?= e($exportMonth) ?>#dose-history" class="secondary">Clear</a>
       <?php endif; ?>
     </form>
     <p class="export-date-range-label">
@@ -1286,6 +1356,7 @@ foreach ($recentLogs as $log) {
       <h2 id="postpone-modal-title">Snooze reminder</h2>
       <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">&#10005;</button>
     </div>
+    <div class="modal-scroll">
     <form method="post" action="index.php" class="stacked-form">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="postpone_dose">
@@ -1301,6 +1372,7 @@ foreach ($recentLogs as $log) {
       </label>
       <button type="submit">Snooze</button>
     </form>
+    </div>
   </div>
 </div>
 
@@ -1313,6 +1385,7 @@ foreach ($recentLogs as $log) {
       </div>
       <button type="button" class="icon-button" data-close-refill-modal aria-label="Close refill modal">&#10005;</button>
     </div>
+    <div class="modal-scroll">
     <form class="stacked-form" data-refill-form>
       <input type="hidden" name="medication_id" data-refill-medication-id value="">
       <label>Refill date
@@ -1329,6 +1402,7 @@ foreach ($recentLogs as $log) {
         <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
       </div>
     </form>
+    </div>
   </div>
 </div>
 
@@ -1341,8 +1415,10 @@ foreach ($recentLogs as $log) {
       </div>
       <button type="button" class="icon-button" data-close-refill-history aria-label="Close refill history">&#10005;</button>
     </div>
-    <div class="refill-history-body" data-refill-history-body>
-      <p class="pain-graph-loading">Loading&hellip;</p>
+    <div class="modal-scroll">
+      <div class="refill-history-body" data-refill-history-body>
+        <p class="pain-graph-loading">Loading&hellip;</p>
+      </div>
     </div>
   </div>
 </div>

@@ -244,11 +244,14 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
   });
 });
 
-document.querySelectorAll('[data-log-dose-now]').forEach((btn) => {
-  btn.addEventListener('click', (event) => {
-    if (btn.dataset.trackDoseFeedback === '1') {
-      event.preventDefault();
-      const medicationId = btn.dataset.medicationId ?? '';
+document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const btn = form.querySelector('[data-log-dose-now]');
+    const trackFeedback = btn?.dataset.trackDoseFeedback === '1';
+    const medicationId = btn?.dataset.medicationId ?? '';
+
+    if (trackFeedback) {
       if (!medicationId) return;
       const now = new Date();
       const pad = (n) => String(n).padStart(2, '0');
@@ -256,6 +259,28 @@ document.querySelectorAll('[data-log-dose-now]').forEach((btn) => {
       const scheduledTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       closeMedPlanModal();
       openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+    try {
+      const params = new URLSearchParams(new FormData(form));
+      params.set('json_response', '1');
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to log dose.');
+      if (btn) {
+        const orig = btn.textContent;
+        btn.textContent = 'Logged ✓';
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+      }
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      if (btn) btn.disabled = false;
     }
   });
 });
@@ -296,6 +321,125 @@ medPlanModal?.addEventListener('click', (event) => {
   if (event.target === medPlanModal) closeMedPlanModal();
 });
 
+// ── Med plan modal: deactivate / activate AJAX ────────────────────────────────
+
+medPlanModal?.addEventListener('submit', async (e) => {
+  const form = e.target.closest('form');
+  if (!form) return;
+  const action = form.querySelector('input[name="action"]')?.value;
+
+  // ── Deactivate ──────────────────────────────────────────────────────────────
+  if (action === 'deactivate_medication') {
+    if (e.defaultPrevented) return; // cancelled confirm
+    e.preventDefault();
+    const medId = form.querySelector('input[name="medication_id"]')?.value ?? '';
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'deactivate_medication');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('medication_id', medId);
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to deactivate medication.');
+
+      const activeCard = form.closest('.medication-row-plan');
+      const name = activeCard?.querySelector('.medication-content strong')?.textContent ?? '';
+      const dose = activeCard?.querySelector('.medication-content p')?.textContent ?? '';
+      activeCard?.remove();
+
+      // Update active tab count
+      const activeTab = document.querySelector('[data-plan-tab="active"]');
+      if (activeTab) {
+        const n = document.querySelectorAll('#active-medications-panel .medication-row-plan').length;
+        activeTab.textContent = `Active (${n})`;
+      }
+
+      // Add a row to inactive panel
+      const inactiveList = document.querySelector('.inactive-list');
+      inactiveList?.querySelector('.empty-state')?.remove();
+      if (inactiveList) {
+        const row = document.createElement('div');
+        row.className = 'medication-row';
+        row.dataset.inactiveMedId = medId;
+        row.innerHTML = `<div><strong>${escHtml(name)}</strong><p>${escHtml(dose)}</p></div>
+          <div class="row-actions">
+            <form method="post" action="index.php" data-activate-form>
+              <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
+              <input type="hidden" name="json_response" value="1">
+              <input type="hidden" name="action" value="activate_medication">
+              <input type="hidden" name="medication_id" value="${escHtml(medId)}">
+              <button type="submit">Activate</button>
+            </form>
+          </div>`;
+        inactiveList.appendChild(row);
+      }
+
+      const inactiveTab = document.querySelector('[data-plan-tab="inactive"]');
+      if (inactiveTab) {
+        const n = document.querySelectorAll('#inactive-medications-panel .medication-row').length;
+        inactiveTab.textContent = `Inactive (${n})`;
+      }
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  // ── Activate ────────────────────────────────────────────────────────────────
+  if (action === 'activate_medication') {
+    e.preventDefault();
+    const medId = form.querySelector('input[name="medication_id"]')?.value ?? '';
+    const inactiveRow = form.closest('.medication-row');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'activate_medication');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('medication_id', medId);
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to activate medication.');
+
+      inactiveRow?.remove();
+
+      const inactiveTab = document.querySelector('[data-plan-tab="inactive"]');
+      if (inactiveTab) {
+        const n = document.querySelectorAll('#inactive-medications-panel .medication-row').length;
+        inactiveTab.textContent = `Inactive (${n})`;
+        if (n === 0) {
+          document.querySelector('.inactive-list')?.insertAdjacentHTML('afterbegin', '<div class="empty-state"><p>No inactive medications.</p></div>');
+        }
+      }
+
+      // Reload to show the full active card, and reopen the modal on the active tab
+      sessionStorage.setItem('medPlanReopen', 'active');
+      window.location.reload();
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+});
+
+
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   // Priority cascade: lightbox > refill history > refill modal > detail modal > plan modal
@@ -319,6 +463,8 @@ const planPanels = {
   groups: document.querySelector('#groups-panel'),
 };
 
+const medPlanHeaderActions = document.querySelectorAll('[data-med-plan-action]');
+
 const setPlanTab = (target) => {
   planTabs.forEach((tab) => {
     const isSelected = tab.getAttribute('data-plan-tab') === target;
@@ -328,6 +474,11 @@ const setPlanTab = (target) => {
   Object.entries(planPanels).forEach(([key, panel]) => {
     if (!panel) return;
     panel.hidden = key !== target;
+  });
+  medPlanHeaderActions.forEach((btn) => {
+    const action = btn.dataset.medPlanAction;
+    if (action === 'groups') btn.hidden = target !== 'groups';
+    else if (action === 'medication') btn.hidden = target === 'groups';
   });
 };
 
@@ -339,7 +490,14 @@ planTabs.forEach((tab) => {
   });
 });
 
-setPlanTab('active');
+const medPlanReopenTab = sessionStorage.getItem('medPlanReopen');
+if (medPlanReopenTab) {
+  sessionStorage.removeItem('medPlanReopen');
+  openMedPlanModal();
+  setPlanTab(medPlanReopenTab);
+} else {
+  setPlanTab('active');
+}
 
 // ── Pain level trend graph ────────────────────────────────────────────────────
 
@@ -1626,11 +1784,75 @@ const closeGroupForm = () => {
   if (groupFormWrap) groupFormWrap.hidden = true;
 };
 
-document.querySelector('[data-open-create-group-form]')?.addEventListener('click', () => {
-  openGroupForm('create');
+document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    setPlanTab('groups');
+    openGroupForm('create');
+  });
 });
 
 document.querySelector('[data-cancel-group-form]')?.addEventListener('click', closeGroupForm);
+
+groupForm?.addEventListener('submit', async (e) => {
+  const action = groupFormAction?.value;
+  if (action !== 'create_group' && action !== 'update_group') return;
+  e.preventDefault();
+
+  const params = new URLSearchParams();
+  params.set('action', action);
+  params.set('csrf_token', getCsrfToken());
+  params.set('json_response', '1');
+  params.set('group_name', groupFormName?.value ?? '');
+  params.set('group_time', groupFormTime?.value ?? '');
+  if (action === 'update_group') params.set('group_id', groupFormId?.value ?? '');
+
+  if (groupFormSubmit) groupFormSubmit.disabled = true;
+
+  try {
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error ?? 'Something went wrong.');
+
+    closeGroupForm();
+
+    const groupsList = document.querySelector('.groups-list');
+
+    if (action === 'create_group') {
+      groupsList?.querySelector('.groups-empty-state')?.remove();
+      const card = buildGroupCard(json.group_id, json.group_name, json.group_time_display, json.ungrouped);
+      const createRow = groupsList?.querySelector('.groups-create-row');
+      createRow ? createRow.after(card) : groupsList?.appendChild(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      const groupsTab = document.querySelector('[data-plan-tab="groups"]');
+      if (groupsTab) {
+        const n = document.querySelectorAll('.group-card').length;
+        groupsTab.textContent = `Groups (${n})`;
+      }
+    } else {
+      const card = groupsList?.querySelector(`[data-group-card-id="${json.group_id}"]`);
+      if (card) {
+        const nameEl = card.querySelector('[data-group-card-name]');
+        const timeEl = card.querySelector('[data-group-card-time]');
+        const editBtn = card.querySelector('[data-edit-group]');
+        if (nameEl) nameEl.textContent = json.group_name;
+        if (timeEl) timeEl.textContent = json.group_time_display;
+        if (editBtn) {
+          editBtn.dataset.groupName = json.group_name;
+          editBtn.dataset.groupTime = json.group_time_display;
+        }
+      }
+    }
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+  } finally {
+    if (groupFormSubmit) groupFormSubmit.disabled = false;
+  }
+});
 
 document.querySelectorAll('[data-edit-group]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -1640,10 +1862,255 @@ document.querySelectorAll('[data-edit-group]').forEach((btn) => {
   });
 });
 
-// ── Refill modal ──────────────────────────────────────────────────────────────
-
 const escHtml = (str) =>
   String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const buildMedOptions = (ungrouped) =>
+  ungrouped.map((m) =>
+    `<option value="${escHtml(String(m.id))}" data-name="${escHtml(m.name)}" data-dose="${escHtml(m.dose)}">${escHtml(m.name)} &mdash; ${escHtml(m.dose)}</option>`
+  ).join('');
+
+const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
+  const card = document.createElement('div');
+  card.className = 'group-card';
+  card.dataset.groupCardId = String(groupId);
+
+  const addMedFormHtml = ungrouped.length > 0
+    ? `<form class="group-add-med-form" method="post" action="index.php" data-ajax-add>
+        <input type="hidden" name="action" value="add_medication_to_group">
+        <input type="hidden" name="group_id" value="${groupId}">
+        <select name="medication_id" class="group-add-select">
+          <option value="">Add a medication&hellip;</option>
+          ${buildMedOptions(ungrouped)}
+        </select>
+        <button type="submit" class="secondary group-add-btn">Add</button>
+      </form>`
+    : '';
+
+  card.innerHTML = `
+    <div class="group-card-header">
+      <div class="group-card-title">
+        <strong data-group-card-name>${escHtml(groupName)}</strong>
+        <span class="group-time-badge" data-group-card-time>${escHtml(groupTimeDisplay)}</span>
+        <span class="count-badge" data-group-card-count>0 meds</span>
+      </div>
+      <div class="row-actions">
+        <button type="button" class="secondary" data-edit-group
+          data-group-id="${groupId}"
+          data-group-name="${escHtml(groupName)}"
+          data-group-time="${escHtml(groupTimeDisplay)}">Edit</button>
+        <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
+          <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
+          <input type="hidden" name="action" value="delete_group">
+          <input type="hidden" name="group_id" value="${groupId}">
+          <button type="submit" class="secondary">Delete</button>
+        </form>
+      </div>
+    </div>
+    <div class="group-members-list" data-group-members>
+      <p class="group-empty-hint">No medications in this group yet.</p>
+    </div>
+    ${addMedFormHtml}`;
+
+  card.querySelector('[data-confirm]')?.addEventListener('submit', (e) => {
+    if (!window.confirm(e.currentTarget.getAttribute('data-confirm') ?? '')) e.preventDefault();
+  });
+
+  card.querySelector('[data-edit-group]')?.addEventListener('click', () => {
+    openGroupForm('edit', String(groupId), groupName, groupTimeDisplay);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  return card;
+};
+
+// ── Group panel delegated AJAX (add-med + delete) ─────────────────────────────
+
+planPanels.groups?.addEventListener('submit', async (e) => {
+  // ── Add medication to group ───────────────────────────────────────────────
+  const addForm = e.target.closest('.group-add-med-form[data-ajax-add]');
+  if (addForm) {
+    e.preventDefault();
+    const select = addForm.querySelector('.group-add-select');
+    if (!select?.value) return;
+
+    const selectedOption = select.options[select.selectedIndex];
+    const medId = select.value;
+    const medName = selectedOption.dataset.name ?? selectedOption.textContent.split('—')[0].trim();
+    const medDose = selectedOption.dataset.dose ?? selectedOption.textContent.split('—')[1]?.trim() ?? '';
+    const groupId = addForm.querySelector('input[name="group_id"]')?.value ?? '';
+
+    const submitBtn = addForm.querySelector('.group-add-btn');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'add_medication_to_group');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('group_id', groupId);
+      params.set('medication_id', medId);
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to add medication.');
+
+      const card = addForm.closest('.group-card');
+      const membersList = card?.querySelector('[data-group-members]');
+      if (membersList) {
+        membersList.querySelector('.group-empty-hint')?.remove();
+        const row = document.createElement('div');
+        row.className = 'group-member-row';
+        row.innerHTML = `
+          <span class="group-member-name">${escHtml(medName)}</span>
+          <span class="group-member-dose">${escHtml(medDose)}</span>
+          <form method="post" action="index.php" data-ajax-remove>
+            <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
+            <input type="hidden" name="json_response" value="1">
+            <input type="hidden" name="action" value="remove_medication_from_group">
+            <input type="hidden" name="medication_id" value="${escHtml(medId)}">
+            <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
+          </form>`;
+        membersList.appendChild(row);
+      }
+
+      const countBadge = card?.querySelector('[data-group-card-count]');
+      if (countBadge) {
+        const n = card?.querySelectorAll('.group-member-row').length ?? 0;
+        countBadge.textContent = `${n} med${n !== 1 ? 's' : ''}`;
+      }
+
+      if (json.ungrouped.length === 0) {
+        addForm.remove();
+      } else {
+        select.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
+      }
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  // ── Remove medication from group ──────────────────────────────────────────────
+  const removeForm = e.target.closest('form[data-ajax-remove]');
+  if (removeForm) {
+    e.preventDefault();
+    const medId = removeForm.querySelector('input[name="medication_id"]')?.value ?? '';
+    const card = removeForm.closest('.group-card');
+    const memberRow = removeForm.closest('.group-member-row');
+    const submitBtn = removeForm.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'remove_medication_from_group');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('medication_id', medId);
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to remove medication.');
+
+      memberRow?.remove();
+
+      const membersList = card?.querySelector('[data-group-members]');
+      if (membersList && (card?.querySelectorAll('.group-member-row').length ?? 0) === 0) {
+        const hint = document.createElement('p');
+        hint.className = 'group-empty-hint';
+        hint.textContent = 'No medications in this group yet.';
+        membersList.appendChild(hint);
+      }
+
+      const countBadge = card?.querySelector('[data-group-card-count]');
+      if (countBadge) {
+        const n = card?.querySelectorAll('.group-member-row').length ?? 0;
+        countBadge.textContent = `${n} med${n !== 1 ? 's' : ''}`;
+      }
+
+      const existingAddForm = card?.querySelector('.group-add-med-form[data-ajax-add]');
+      if (existingAddForm && json.ungrouped.length > 0) {
+        const select = existingAddForm.querySelector('.group-add-select');
+        if (select) select.innerHTML = `<option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}`;
+        existingAddForm.hidden = false;
+      } else if (!existingAddForm && json.ungrouped.length > 0 && card) {
+        const groupId = card.dataset.groupCardId ?? '';
+        const newForm = document.createElement('form');
+        newForm.className = 'group-add-med-form';
+        newForm.setAttribute('method', 'post');
+        newForm.setAttribute('action', 'index.php');
+        newForm.dataset.ajaxAdd = '';
+        newForm.innerHTML = `<input type="hidden" name="action" value="add_medication_to_group">
+          <input type="hidden" name="group_id" value="${escHtml(groupId)}">
+          <select name="medication_id" class="group-add-select">
+            <option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}
+          </select>
+          <button type="submit" class="secondary group-add-btn">Add</button>`;
+        card.appendChild(newForm);
+      }
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  // ── Delete group ──────────────────────────────────────────────────────────
+  const deleteForm = e.target.closest('form');
+  if (deleteForm?.querySelector('input[name="action"]')?.value !== 'delete_group') return;
+  if (e.defaultPrevented) return; // user cancelled confirm dialog
+
+  e.preventDefault();
+  const groupId = deleteForm.querySelector('input[name="group_id"]')?.value;
+  if (!groupId) return;
+
+  try {
+    const params = new URLSearchParams();
+    params.set('action', 'delete_group');
+    params.set('csrf_token', getCsrfToken());
+    params.set('json_response', '1');
+    params.set('group_id', groupId);
+
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error('Failed to delete group.');
+
+    const card = deleteForm.closest('.group-card');
+    card?.remove();
+
+    const groupsTab = document.querySelector('[data-plan-tab="groups"]');
+    if (groupsTab) {
+      const n = document.querySelectorAll('.group-card').length;
+      groupsTab.textContent = `Groups (${n})`;
+    }
+
+    if (document.querySelectorAll('.group-card').length === 0) {
+      const groupsList = document.querySelector('.groups-list');
+      const emptyState = document.createElement('div');
+      emptyState.className = 'empty-state groups-empty-state';
+      emptyState.innerHTML = '<p>No groups yet. Create a group to bundle medications taken at the same time.</p>';
+      groupsList?.appendChild(emptyState);
+    }
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+  }
+});
+
+// ── Refill modal ──────────────────────────────────────────────────────────────
 
 const refillModal = document.querySelector('[data-refill-modal]');
 const refillMedNameEl = document.querySelector('[data-refill-med-name]');
@@ -1845,3 +2312,11 @@ const loadRefillHistory = async () => {
     }
   }
 };
+
+// ── Dose history: preserve scroll position on filter/pagination ───────────────
+
+document.querySelector('[data-history-filter]')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const params = new URLSearchParams(new FormData(e.currentTarget));
+  window.location.href = `index.php?${params.toString()}#dose-history`;
+});
