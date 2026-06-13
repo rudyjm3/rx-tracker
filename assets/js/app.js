@@ -915,6 +915,10 @@ const startAlarmVibration = () => {
   if (!isVibrationEnabled()) return;
   navigator.vibrate(VIBRATE_PATTERN);
   alarmVibrateTimer = window.setInterval(() => {
+    if (!isVibrationEnabled()) {
+      stopAlarmVibration();
+      return;
+    }
     navigator.vibrate(VIBRATE_PATTERN);
   }, 3000);
 };
@@ -1353,6 +1357,7 @@ soundToggle?.addEventListener('change', () => {
     window.localStorage.removeItem('rxtracker_sound_enabled');
   } else {
     window.localStorage.setItem('rxtracker_sound_enabled', '0');
+    stopAlarmAudio();
   }
 });
 

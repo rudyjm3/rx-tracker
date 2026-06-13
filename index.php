@@ -434,10 +434,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_settings') {
             $graceMinutes = (int) post_string('missed_grace_minutes');
             $repository->setMissedGraceMinutes($graceMinutes);
-            $snoozePost = (int) post_string('snooze_minutes');
-            if (in_array($snoozePost, [5, 10, 15, 30], true)) {
-                $repository->setSnoozeMinutes($snoozePost);
-            }
+            $repository->setSnoozeMinutes((int) post_string('snooze_minutes'));
             header('Location: index.php?page=settings&notice=Settings saved');
             exit;
         }
@@ -1571,6 +1568,7 @@ foreach ($recentLogs as $log) {
       <label>Snooze for
         <select name="postpone_minutes" required>
           <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
           <option value="15">15 minutes</option>
           <option value="30">30 minutes</option>
         </select>
