@@ -731,6 +731,7 @@ let alarmGroupItems = [];
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
+let alarmVibrateTimer = null;
 let swRegistration = null;
 
 const getCsrfToken = () =>
@@ -904,6 +905,24 @@ const stopAlarmAudio = () => {
   }
 };
 
+const VIBRATE_PATTERN = [400, 200, 400, 200, 400];
+
+const startAlarmVibration = () => {
+  if (!('vibrate' in navigator)) return;
+  navigator.vibrate(VIBRATE_PATTERN);
+  alarmVibrateTimer = window.setInterval(() => {
+    navigator.vibrate(VIBRATE_PATTERN);
+  }, 3000);
+};
+
+const stopAlarmVibration = () => {
+  if (alarmVibrateTimer) {
+    window.clearInterval(alarmVibrateTimer);
+    alarmVibrateTimer = null;
+  }
+  if ('vibrate' in navigator) navigator.vibrate(0);
+};
+
 const showAlarmOverlay = (item) => {
   if (!alarmOverlay) return;
   alarmGroupItems = [];
@@ -921,6 +940,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
   if (isAlarmEnabled()) startAlarmAudio();
+  startAlarmVibration();
 };
 
 const showGroupAlarmOverlay = (groupItems) => {
@@ -944,6 +964,7 @@ const showGroupAlarmOverlay = (groupItems) => {
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
   if (isAlarmEnabled()) startAlarmAudio();
+  startAlarmVibration();
 };
 
 const hideAlarmOverlay = () => {
@@ -953,6 +974,7 @@ const hideAlarmOverlay = () => {
   alarmGroupItems = [];
   unlockBodyScroll();
   stopAlarmAudio();
+  stopAlarmVibration();
 };
 
 const isMedicationModalOpen = () => medicationModal?.classList.contains('is-open') ?? false;
@@ -2319,4 +2341,47 @@ document.querySelector('[data-history-filter]')?.addEventListener('submit', (e) 
   e.preventDefault();
   const params = new URLSearchParams(new FormData(e.currentTarget));
   window.location.href = `index.php?${params.toString()}#dose-history`;
+});
+
+// ── Hero next dose: group meds toggle ─────────────────────────────────────────
+
+document.querySelectorAll('[data-group-meds-toggle]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const list = btn.nextElementSibling;
+    if (!list) return;
+    const isHidden = list.hidden;
+    list.hidden = !isHidden;
+    btn.textContent = isHidden ? 'hide group meds' : 'view group meds';
+  });
+});
+
+// ── PWA install prompt ─────────────────────────────────────────────────────────
+
+let deferredInstallPrompt = null;
+const installBanner = document.getElementById('pwa-install-banner');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (installBanner && !sessionStorage.getItem('rxtracker_install_dismissed')) {
+    installBanner.hidden = false;
+  }
+});
+
+document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  const { outcome } = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  if (installBanner) installBanner.hidden = true;
+});
+
+document.getElementById('pwa-install-dismiss')?.addEventListener('click', () => {
+  if (installBanner) installBanner.hidden = true;
+  sessionStorage.setItem('rxtracker_install_dismissed', '1');
+});
+
+window.addEventListener('appinstalled', () => {
+  if (installBanner) installBanner.hidden = true;
+  deferredInstallPrompt = null;
 });

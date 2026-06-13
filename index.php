@@ -471,6 +471,28 @@ if ($nextDose !== null) {
     }
 }
 
+// Hero next dose: up to 2 slots, collapsing grouped meds into one slot each
+$heroNextDoseItems = [];
+$seenGroupIds = [];
+foreach ($nextDoseWindow as $heroRow) {
+    if (count($heroNextDoseItems) >= 2) {
+        break;
+    }
+    $heroGid = $heroRow['group_id'];
+    if ($heroGid !== null && in_array($heroGid, $seenGroupIds, true)) {
+        continue;
+    }
+    if ($heroGid !== null) {
+        $seenGroupIds[] = $heroGid;
+        $heroRow['_group_members'] = array_values(
+            array_filter($nextDoseWindow, static fn(array $r): bool => $r['group_id'] === $heroGid)
+        );
+    } else {
+        $heroRow['_group_members'] = [];
+    }
+    $heroNextDoseItems[] = $heroRow;
+}
+
 $editId = (int) ($_GET['edit'] ?? 0);
 $editing = $editId > 0 ? $repository->findMedication($editId) : null;
 $editingGroupId = $editing ? (($repository->groupForMedication((int) $editing['id']))['id'] ?? 0) : 0;
@@ -530,18 +552,53 @@ foreach ($recentLogs as $log) {
   </nav>
 
   <section class="hero">
-    <div class="hero-card hero-med-card">
-      <div class="hero-med-card-header">
-        <div class="hero-med-card-title">
-          <span class="stat-label">Medication plan</span>
-          <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
+    <div class="hero-left">
+      <div class="hero-card hero-med-card">
+        <div class="hero-med-card-header">
+          <div class="hero-med-card-title">
+            <span class="stat-label">Medication plan</span>
+            <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
+          </div>
+        </div>
+        <div class="hero-med-card-actions">
+          <button type="button" data-open-medication-modal>Add</button>
+          <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
         </div>
       </div>
-      <div class="hero-med-card-actions">
-        <button type="button" data-open-medication-modal>Add</button>
-        <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
+
+      <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
+        <span class="stat-label">Next dose</span>
+        <?php if ($heroNextDoseItems !== []): ?>
+          <?php foreach ($heroNextDoseItems as $ndIndex => $ndItem): ?>
+            <div class="hero-next-dose-entry<?= $ndIndex > 0 ? ' hero-next-dose-entry--subtle' : '' ?>">
+              <span class="hero-next-dose-time"><?= e(to12h((string) $ndItem['reminder_time'])) ?></span>
+              <?php if ($ndItem['group_id'] !== null): ?>
+                <p class="hero-next-dose-name"><?= e((string) $ndItem['group_name']) ?></p>
+                <p class="hero-next-dose-meta"><?= e((string) count($ndItem['_group_members'])) ?> medication<?= count($ndItem['_group_members']) !== 1 ? 's' : '' ?> in group</p>
+                <button type="button" class="group-meds-toggle" data-group-meds-toggle>view group meds</button>
+                <div class="group-meds-list" hidden>
+                  <?php foreach ($ndItem['_group_members'] as $ndMember): ?>
+                    <div class="group-meds-member">
+                      <span class="hero-med-name"><?= e((string) $ndMember['name']) ?></span>
+                      <span class="hero-med-dose"><?= e((string) $ndMember['dose']) ?></span>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              <?php else: ?>
+                <p class="hero-next-dose-name"><?= e((string) $ndItem['name']) ?></p>
+                <p class="hero-next-dose-meta"><?= e((string) $ndItem['dose']) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></p>
+                <?php if ((string) ($ndItem['instructions'] ?? '') !== ''): ?>
+                  <small class="hero-next-dose-instructions"><?= e((string) $ndItem['instructions']) ?></small>
+                <?php endif; ?>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <p class="hero-copy">All scheduled doses complete for today.</p>
+        <?php endif; ?>
       </div>
     </div>
+
     <div class="hero-card" aria-label="Today's adherence summary">
       <span class="stat-label">Today's adherence</span>
       <strong><?= e((string) $adherence) ?>%</strong>
@@ -1233,29 +1290,15 @@ foreach ($recentLogs as $log) {
 
   <div class="in-app-alert" data-in-app-alert hidden></div>
 
-  <section class="dashboard-grid" aria-label="Medication dashboard">
-    <article class="panel next-dose">
-      <div class="panel-heading"><h2>Next dose</h2></div>
-      <?php if ($nextDose !== null): ?>
-        <div class="next-dose-list">
-          <?php foreach ($nextDoseWindow as $index => $doseItem): ?>
-            <div class="next-dose-card<?= $index > 0 ? ' next-dose-card-subtle' : '' ?>">
-              <span><?= e(to12h((string) $doseItem['reminder_time'])) ?></span>
-              <?php if ($index === 0): ?>
-                <h3><?= e((string) $doseItem['name']) ?></h3>
-              <?php else: ?>
-                <h4><?= e((string) $doseItem['name']) ?></h4>
-              <?php endif; ?>
-              <p><?= e((string) $doseItem['dose']) ?> <?= $doseItem['as_needed'] ? '(PRN)' : '' ?></p>
-              <small><?= e((string) ($doseItem['instructions'] ?: 'No special instructions')) ?></small>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php else: ?>
-        <div class="empty-state"><p>All scheduled doses are complete.</p></div>
-      <?php endif; ?>
-    </article>
+  <div id="pwa-install-banner" class="pwa-install-banner" hidden>
+    <span class="pwa-install-text">Add RxTracker to your home screen for the best experience</span>
+    <div class="pwa-install-actions">
+      <button type="button" id="pwa-install-btn">Install</button>
+      <button type="button" class="secondary icon-button" id="pwa-install-dismiss" aria-label="Dismiss install prompt">&#10005;</button>
+    </div>
+  </div>
 
+  <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel">
       <div class="panel-heading"><h2>Today schedule <span class="panel-heading-date"><?= date('D, M j') ?></span></h2></div>
       <div class="schedule-list">

@@ -192,6 +192,104 @@ h1 {
   line-height: 1;
 }
 
+.hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hero-left .hero-card {
+  align-self: stretch;
+}
+
+.hero-next-dose-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hero-next-dose-entry {
+  margin-top: 0.4rem;
+}
+
+.hero-next-dose-entry + .hero-next-dose-entry {
+  border-top: 1px solid rgb(255 255 255 / 15%);
+  margin-top: 0.75rem;
+  opacity: 0.75;
+  padding-top: 0.75rem;
+}
+
+.hero-next-dose-time {
+  color: #b8dcff;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hero-next-dose-name {
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  margin: 0.2rem 0 0.1rem;
+}
+
+.hero-next-dose-meta {
+  color: #b8dcff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+}
+
+.hero-next-dose-instructions {
+  color: #93b8e0;
+  font-size: 0.8rem;
+}
+
+.group-meds-toggle {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: #b8dcff;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transform: none;
+}
+
+.group-meds-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  transform: none;
+}
+
+.group-meds-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.group-meds-list[hidden] {
+  display: none;
+}
+
+.group-meds-member {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.group-meds-member .hero-med-dose {
+  font-weight: 400;
+}
+
 .hero-med-card {
   display: flex;
   flex-direction: column;
@@ -334,7 +432,13 @@ h1 {
   padding: 1rem;
 }
 
-.dashboard-grid,
+.dashboard-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+  margin-top: 1.25rem;
+}
+
 .content-grid {
   display: grid;
   gap: 1.25rem;
@@ -350,6 +454,45 @@ h1 {
   font-weight: 800;
   margin-top: 1.25rem;
   padding: 1rem;
+}
+
+.pwa-install-banner {
+  align-items: center;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
+  border-radius: 1rem;
+  color: white;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.pwa-install-banner[hidden] {
+  display: none;
+}
+
+.pwa-install-text {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.pwa-install-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.pwa-install-actions button {
+  font-size: 0.85rem;
+  padding: 0.55rem 1rem;
+}
+
+.pwa-install-actions .secondary {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 25%);
+  color: white;
 }
 
 .content-grid {
@@ -1242,10 +1385,15 @@ textarea:focus,
   }
 
   .hero,
-  .dashboard-grid,
   .content-grid,
   .medication-form {
     grid-template-columns: 1fr;
+  }
+
+  .pwa-install-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
   }
 
   .calendar-grid {
