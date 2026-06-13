@@ -102,6 +102,8 @@ final class PushNotificationService
             return 0;
         }
 
+        $snoozeMins = $this->repository->getSnoozeMinutes();
+
         $auth = [
             'VAPID' => [
                 'subject' => $this->vapidSubject,
@@ -121,6 +123,7 @@ final class PushNotificationService
                 'tag' => 'dose|' . (int) $item['medication_id'] . '|' . (string) $item['scheduled_date'] . '|' . (string) $item['scheduled_time'],
                 'url' => 'index.php',
                 'nonce' => $nonce,
+                'snoozeMins' => $snoozeMins,
                 'medication_id' => (int) $item['medication_id'],
                 'scheduled_date' => (string) $item['scheduled_date'],
                 'scheduled_time' => (string) $item['scheduled_time'],

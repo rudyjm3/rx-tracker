@@ -79,6 +79,7 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'Medication reminder';
+  const snoozeMins = payload.snoozeMins || 15;
   const options = {
     body: payload.body || 'A dose is due now.',
     tag: payload.tag || 'rx-reminder',
@@ -90,11 +91,12 @@ self.addEventListener('push', (event) => {
     badge: 'assets/icons/icon-192.png',
     actions: [
       { action: 'take', title: 'Take Now' },
-      { action: 'snooze', title: 'Snooze 15 min' },
+      { action: 'snooze', title: `Snooze ${snoozeMins} min` },
     ],
     data: {
       url: payload.url || 'index.php',
       nonce: payload.nonce || null,
+      snoozeMins,
     },
   };
 
@@ -111,13 +113,14 @@ self.addEventListener('notificationclick', (event) => {
   // Handle quick-action buttons (Take Now / Snooze) via background fetch
   if ((action === 'take' || action === 'snooze') && nonce) {
     const act = action === 'take' ? 'take' : 'snooze';
-    const apiUrl = `index.php?action=push_action&act=${act}&nonce=${encodeURIComponent(nonce)}&minutes=15`;
+    const snoozeMins = data.snoozeMins || 15;
+    const apiUrl = `index.php?action=push_action&act=${act}&nonce=${encodeURIComponent(nonce)}&minutes=${snoozeMins}`;
     event.waitUntil(
       fetch(apiUrl, { credentials: 'same-origin' })
         .then((r) => r.json())
         .then((json) => {
           const confirmBody = json.ok
-            ? (action === 'take' ? 'Dose marked as taken ✓' : 'Reminder snoozed 15 min ✓')
+            ? (action === 'take' ? 'Dose marked as taken ✓' : `Reminder snoozed ${snoozeMins} min ✓`)
             : (json.error || 'Action failed.');
           return self.registration.showNotification('RxTracker', {
             body: confirmBody,

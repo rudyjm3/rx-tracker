@@ -490,6 +490,42 @@ final class MedicationRepository
         return in_array($minutes, [30, 60], true) ? $minutes : 60;
     }
 
+    public function getSnoozeMinutes(): int
+    {
+        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key LIMIT 1');
+        $statement->execute(['key' => 'snooze_minutes']);
+        $value = (string) ($statement->fetchColumn() ?: '15');
+        $minutes = (int) $value;
+
+        return in_array($minutes, [5, 10, 15, 30], true) ? $minutes : 15;
+    }
+
+    public function setSnoozeMinutes(int $minutes): void
+    {
+        if (!in_array($minutes, [5, 10, 15, 30], true)) {
+            throw new RuntimeException('Snooze duration must be 5, 10, 15, or 30 minutes.');
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO app_settings (setting_key, setting_value)
+               VALUES (:key, :value)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+            : 'INSERT INTO app_settings (setting_key, setting_value)
+               VALUES (:key, :insert_value)
+               ON DUPLICATE KEY UPDATE setting_value = :update_value';
+        $statement = $this->db->prepare($sql);
+        if ($driver === 'sqlite') {
+            $statement->execute(['key' => 'snooze_minutes', 'value' => (string) $minutes]);
+            return;
+        }
+        $statement->execute([
+            'key'          => 'snooze_minutes',
+            'insert_value' => (string) $minutes,
+            'update_value' => (string) $minutes,
+        ]);
+    }
+
     public function setMissedGraceMinutes(int $minutes): void
     {
         if (!in_array($minutes, [30, 60], true)) {
@@ -518,8 +554,8 @@ final class MedicationRepository
 
     public function postponeDose(int $medicationId, string $scheduledDate, string $scheduledTime, int $delayMinutes): void
     {
-        if (!in_array($delayMinutes, [5, 15, 30], true)) {
-            throw new RuntimeException('Postpone must be 5, 15, or 30 minutes.');
+        if (!in_array($delayMinutes, [5, 10, 15, 30], true)) {
+            throw new RuntimeException('Postpone must be 5, 10, 15, or 30 minutes.');
         }
 
         if (!DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $scheduledDate . ' ' . $scheduledTime) instanceof DateTimeImmutable) {

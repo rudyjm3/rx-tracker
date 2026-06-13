@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_action') {
             echo json_encode(['ok' => true, 'message' => 'Dose marked as taken.'], JSON_THROW_ON_ERROR);
         } else {
             $minutes = (int) ($_GET['minutes'] ?? 15);
-            if (!in_array($minutes, [5, 15, 30], true)) {
+            if (!in_array($minutes, [5, 10, 15, 30], true)) {
                 $minutes = 15;
             }
             $repository->postponeDose($medId, $pDate, $pTime, $minutes);
@@ -434,6 +434,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_settings') {
             $graceMinutes = (int) post_string('missed_grace_minutes');
             $repository->setMissedGraceMinutes($graceMinutes);
+            $snoozePost = (int) post_string('snooze_minutes');
+            if (in_array($snoozePost, [5, 10, 15, 30], true)) {
+                $repository->setSnoozeMinutes($snoozePost);
+            }
             header('Location: index.php?page=settings&notice=Settings saved');
             exit;
         }
@@ -482,6 +486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $graceMinutes = $repository->getMissedGraceMinutes();
+$snoozeMinutes = $repository->getSnoozeMinutes();
 $repository->finalizeMissedDoses(new DateTimeImmutable('now'), $graceMinutes);
 $notice = trim((string) ($_GET['notice'] ?? '')) ?: null;
 
@@ -1101,6 +1106,14 @@ foreach ($recentLogs as $log) {
             <option value="60"<?= $graceMinutes === 60 ? ' selected' : '' ?>>60 minutes</option>
           </select>
         </label>
+        <label>Default snooze duration
+          <select name="snooze_minutes">
+            <option value="5"<?= $snoozeMinutes === 5 ? ' selected' : '' ?>>5 minutes</option>
+            <option value="10"<?= $snoozeMinutes === 10 ? ' selected' : '' ?>>10 minutes</option>
+            <option value="15"<?= $snoozeMinutes === 15 ? ' selected' : '' ?>>15 minutes</option>
+            <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
+          </select>
+        </label>
         <button type="submit">Save settings</button>
       </form>
       <hr>
@@ -1108,12 +1121,20 @@ foreach ($recentLogs as $log) {
       <p class="settings-subsection-hint">Enable both toggles below for full coverage — sound while the app is open, push alerts when it&rsquo;s closed.</p>
       <div class="notification-toggles">
         <div class="notification-toggle-row">
-          <label class="toggle-control" for="alarm-sound-toggle">
-            <input type="checkbox" id="alarm-sound-toggle" data-alarm-sound-toggle>
+          <label class="toggle-control" for="sound-toggle">
+            <input type="checkbox" id="sound-toggle" data-sound-toggle>
             <span class="toggle-slider" aria-hidden="true"></span>
-            <span class="toggle-label">In-app alarm sound &amp; vibration</span>
+            <span class="toggle-label">Alarm sound</span>
           </label>
-          <p class="toggle-description">Audible beep and vibration when a dose is due <strong>while the app is open</strong>. Works fully offline — no internet or notification permission required.</p>
+          <p class="toggle-description">Audible alarm when a dose is due <strong>while the app is open</strong>. Works offline — no permission required. On by default.</p>
+        </div>
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="vibration-toggle">
+            <input type="checkbox" id="vibration-toggle" data-vibration-toggle>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Vibration</span>
+          </label>
+          <p class="toggle-description">Device vibration for in-app alarms. On by default. Turn off if you only want sound (e.g. when your phone is on a surface in a meeting).</p>
         </div>
         <div class="notification-toggle-row">
           <label class="toggle-control" for="reminders-toggle">
@@ -1629,9 +1650,10 @@ foreach ($recentLogs as $log) {
       <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip</button>
       <div class="alarm-snooze-row">
         <select data-alarm-snooze-minutes class="alarm-snooze-select">
-          <option value="5">5 min</option>
-          <option value="15">15 min</option>
-          <option value="30">30 min</option>
+          <option value="5"<?= $snoozeMinutes === 5 ? ' selected' : '' ?>>5 min</option>
+          <option value="10"<?= $snoozeMinutes === 10 ? ' selected' : '' ?>>10 min</option>
+          <option value="15"<?= $snoozeMinutes === 15 ? ' selected' : '' ?>>15 min</option>
+          <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 min</option>
         </select>
         <button type="button" class="secondary" data-alarm-snooze>Snooze</button>
       </div>

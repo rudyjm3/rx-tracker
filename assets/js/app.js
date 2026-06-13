@@ -847,8 +847,11 @@ const writeSeenMap = (map) => {
   window.localStorage.setItem('rxtracker_reminder_seen', JSON.stringify(map));
 };
 
-const isAlarmEnabled = () =>
-  window.localStorage.getItem('rxtracker_alarm_enabled') === '1';
+const isSoundEnabled = () =>
+  window.localStorage.getItem('rxtracker_sound_enabled') !== '0';
+
+const isVibrationEnabled = () =>
+  window.localStorage.getItem('rxtracker_vibration_enabled') !== '0';
 
 const scheduleBeep = (ctx, startTime, freq, duration) => {
   const osc = ctx.createOscillator();
@@ -909,6 +912,7 @@ const VIBRATE_PATTERN = [400, 200, 400, 200, 400];
 
 const startAlarmVibration = () => {
   if (!('vibrate' in navigator)) return;
+  if (!isVibrationEnabled()) return;
   navigator.vibrate(VIBRATE_PATTERN);
   alarmVibrateTimer = window.setInterval(() => {
     navigator.vibrate(VIBRATE_PATTERN);
@@ -939,7 +943,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
-  if (isAlarmEnabled()) startAlarmAudio();
+  if (isSoundEnabled()) startAlarmAudio();
   startAlarmVibration();
 };
 
@@ -963,7 +967,7 @@ const showGroupAlarmOverlay = (groupItems) => {
   }
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
-  if (isAlarmEnabled()) startAlarmAudio();
+  if (isSoundEnabled()) startAlarmAudio();
   startAlarmVibration();
 };
 
@@ -1164,7 +1168,8 @@ alarmSnoozeBtn?.addEventListener('click', async () => {
 // ── Reminders & polling ───────────────────────────────────────────────────────
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
-const alarmSoundToggle = document.querySelector('[data-alarm-sound-toggle]');
+const soundToggle = document.querySelector('[data-sound-toggle]');
+const vibrationToggle = document.querySelector('[data-vibration-toggle]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
 const reminderStatus = document.querySelector('[data-reminder-status]');
 
@@ -1338,21 +1343,24 @@ enableRemindersButton?.addEventListener('change', async () => {
   pollDueReminders();
 });
 
-const initAlarmSoundToggle = () => {
-  // Default to enabled so new users get in-app alarms without touching settings
-  if (window.localStorage.getItem('rxtracker_alarm_enabled') === null) {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
-  }
-  if (alarmSoundToggle) {
-    alarmSoundToggle.checked = isAlarmEnabled();
-  }
+const initAlarmToggles = () => {
+  if (soundToggle) soundToggle.checked = isSoundEnabled();
+  if (vibrationToggle) vibrationToggle.checked = isVibrationEnabled();
 };
 
-alarmSoundToggle?.addEventListener('change', () => {
-  if (alarmSoundToggle.checked) {
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+soundToggle?.addEventListener('change', () => {
+  if (soundToggle.checked) {
+    window.localStorage.removeItem('rxtracker_sound_enabled');
   } else {
-    window.localStorage.removeItem('rxtracker_alarm_enabled');
+    window.localStorage.setItem('rxtracker_sound_enabled', '0');
+  }
+});
+
+vibrationToggle?.addEventListener('change', () => {
+  if (vibrationToggle.checked) {
+    window.localStorage.removeItem('rxtracker_vibration_enabled');
+  } else {
+    window.localStorage.setItem('rxtracker_vibration_enabled', '0');
   }
 });
 
@@ -1366,7 +1374,7 @@ const initializeReminderToggle = async () => {
   }
 };
 
-initAlarmSoundToggle();
+initAlarmToggles();
 initializeReminderToggle();
 
 registerServiceWorker().catch(() => {
