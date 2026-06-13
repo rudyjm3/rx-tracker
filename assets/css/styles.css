@@ -192,6 +192,104 @@ h1 {
   line-height: 1;
 }
 
+.hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hero-left .hero-card {
+  align-self: stretch;
+}
+
+.hero-next-dose-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hero-next-dose-entry {
+  margin-top: 0.4rem;
+}
+
+.hero-next-dose-entry + .hero-next-dose-entry {
+  border-top: 1px solid rgb(255 255 255 / 15%);
+  margin-top: 0.75rem;
+  opacity: 0.75;
+  padding-top: 0.75rem;
+}
+
+.hero-next-dose-time {
+  color: #b8dcff;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hero-next-dose-name {
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  margin: 0.2rem 0 0.1rem;
+}
+
+.hero-next-dose-meta {
+  color: #b8dcff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+}
+
+.hero-next-dose-instructions {
+  color: #93b8e0;
+  font-size: 0.8rem;
+}
+
+.group-meds-toggle {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: #b8dcff;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transform: none;
+}
+
+.group-meds-toggle:hover {
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  transform: none;
+}
+
+.group-meds-list {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.group-meds-list[hidden] {
+  display: none;
+}
+
+.group-meds-member {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.group-meds-member .hero-med-dose {
+  font-weight: 400;
+}
+
 .hero-med-card {
   display: flex;
   flex-direction: column;
@@ -334,7 +432,13 @@ h1 {
   padding: 1rem;
 }
 
-.dashboard-grid,
+.dashboard-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: 1fr;
+  margin-top: 1.25rem;
+}
+
 .content-grid {
   display: grid;
   gap: 1.25rem;
@@ -350,6 +454,45 @@ h1 {
   font-weight: 800;
   margin-top: 1.25rem;
   padding: 1rem;
+}
+
+.pwa-install-banner {
+  align-items: center;
+  background: linear-gradient(135deg, #11213f 0%, #2557a8 100%);
+  border-radius: 1rem;
+  color: white;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.pwa-install-banner[hidden] {
+  display: none;
+}
+
+.pwa-install-text {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.pwa-install-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.pwa-install-actions button {
+  font-size: 0.85rem;
+  padding: 0.55rem 1rem;
+}
+
+.pwa-install-actions .secondary {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 25%);
+  color: white;
 }
 
 .content-grid {
@@ -985,8 +1128,98 @@ textarea:focus,
 }
 
 .reminder-panel,
-.settings-panel {
+.settings-panel,
+.push-status-panel {
   margin-top: 1.25rem;
+}
+
+.push-status-intro {
+  color: #647187;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.push-check-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.push-check-row {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.85rem;
+}
+
+.push-check-icon {
+  border-radius: 999px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 900;
+  height: 1.6rem;
+  line-height: 1.6rem;
+  text-align: center;
+  width: 1.6rem;
+}
+
+.push-check-ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.push-check-fail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.push-check-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.push-check-pending {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.push-check-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.push-check-body strong {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.push-check-hint {
+  color: #647187;
+  font-size: 0.82rem;
+  margin: 0.25rem 0 0;
+}
+
+.push-check-hint code {
+  background: #f1f5f9;
+  border-radius: 0.3rem;
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+  font-size: 0.78rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.push-test-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.push-test-row button {
+  flex-shrink: 0;
+}
+
+.push-test-status {
+  font-size: 0.875rem;
 }
 
 .in-app-alert {
@@ -1052,6 +1285,38 @@ textarea:focus,
 
 .toggle-label {
   user-select: none;
+}
+
+.settings-subsection-heading {
+  color: #21304a;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 1rem 0 0.3rem;
+}
+
+.settings-subsection-hint {
+  color: #5a6a82;
+  font-size: 0.875rem;
+  margin: 0 0 0.9rem;
+}
+
+.notification-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.notification-toggle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.toggle-description {
+  color: #5a6a82;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 0 3.35rem;
 }
 
 .inactive-list {
@@ -1242,10 +1507,15 @@ textarea:focus,
   }
 
   .hero,
-  .dashboard-grid,
   .content-grid,
   .medication-form {
     grid-template-columns: 1fr;
+  }
+
+  .pwa-install-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
   }
 
   .calendar-grid {

@@ -731,6 +731,7 @@ let alarmGroupItems = [];
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
+let alarmVibrateTimer = null;
 let swRegistration = null;
 
 const getCsrfToken = () =>
@@ -846,8 +847,11 @@ const writeSeenMap = (map) => {
   window.localStorage.setItem('rxtracker_reminder_seen', JSON.stringify(map));
 };
 
-const isAlarmEnabled = () =>
-  window.localStorage.getItem('rxtracker_alarm_enabled') === '1';
+const isSoundEnabled = () =>
+  window.localStorage.getItem('rxtracker_sound_enabled') !== '0';
+
+const isVibrationEnabled = () =>
+  window.localStorage.getItem('rxtracker_vibration_enabled') !== '0';
 
 const scheduleBeep = (ctx, startTime, freq, duration) => {
   const osc = ctx.createOscillator();
@@ -904,6 +908,29 @@ const stopAlarmAudio = () => {
   }
 };
 
+const VIBRATE_PATTERN = [400, 200, 400, 200, 400];
+
+const startAlarmVibration = () => {
+  if (!('vibrate' in navigator)) return;
+  if (!isVibrationEnabled()) return;
+  navigator.vibrate(VIBRATE_PATTERN);
+  alarmVibrateTimer = window.setInterval(() => {
+    if (!isVibrationEnabled()) {
+      stopAlarmVibration();
+      return;
+    }
+    navigator.vibrate(VIBRATE_PATTERN);
+  }, 3000);
+};
+
+const stopAlarmVibration = () => {
+  if (alarmVibrateTimer) {
+    window.clearInterval(alarmVibrateTimer);
+    alarmVibrateTimer = null;
+  }
+  if ('vibrate' in navigator) navigator.vibrate(0);
+};
+
 const showAlarmOverlay = (item) => {
   if (!alarmOverlay) return;
   alarmGroupItems = [];
@@ -920,7 +947,8 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
-  if (isAlarmEnabled()) startAlarmAudio();
+  if (isSoundEnabled()) startAlarmAudio();
+  startAlarmVibration();
 };
 
 const showGroupAlarmOverlay = (groupItems) => {
@@ -943,7 +971,8 @@ const showGroupAlarmOverlay = (groupItems) => {
   }
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
-  if (isAlarmEnabled()) startAlarmAudio();
+  if (isSoundEnabled()) startAlarmAudio();
+  startAlarmVibration();
 };
 
 const hideAlarmOverlay = () => {
@@ -953,6 +982,7 @@ const hideAlarmOverlay = () => {
   alarmGroupItems = [];
   unlockBodyScroll();
   stopAlarmAudio();
+  stopAlarmVibration();
 };
 
 const isMedicationModalOpen = () => medicationModal?.classList.contains('is-open') ?? false;
@@ -1142,6 +1172,8 @@ alarmSnoozeBtn?.addEventListener('click', async () => {
 // ── Reminders & polling ───────────────────────────────────────────────────────
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
+const soundToggle = document.querySelector('[data-sound-toggle]');
+const vibrationToggle = document.querySelector('[data-vibration-toggle]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
 const reminderStatus = document.querySelector('[data-reminder-status]');
 
@@ -1260,7 +1292,6 @@ enableRemindersButton?.addEventListener('change', async () => {
       const endpoint = existing.endpoint;
       await existing.unsubscribe();
       await removePushSubscription(endpoint);
-      window.localStorage.removeItem('rxtracker_alarm_enabled');
       setReminderToggleState(false);
       window.alert('Background reminders disabled for this device and browser profile.');
       return;
@@ -1272,14 +1303,12 @@ enableRemindersButton?.addEventListener('change', async () => {
 
     if (!('Notification' in window)) {
       window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
-      window.localStorage.setItem('rxtracker_alarm_enabled', '1');
       pollDueReminders();
       return;
     }
     const permission = Notification.permission === 'default'
       ? await Notification.requestPermission()
       : Notification.permission;
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
     if (permission !== 'granted') {
       if (permission === 'denied') {
         window.alert('Notifications are blocked for this site. Enable browser/site notification permission first.');
@@ -1318,6 +1347,28 @@ enableRemindersButton?.addEventListener('change', async () => {
   pollDueReminders();
 });
 
+const initAlarmToggles = () => {
+  if (soundToggle) soundToggle.checked = isSoundEnabled();
+  if (vibrationToggle) vibrationToggle.checked = isVibrationEnabled();
+};
+
+soundToggle?.addEventListener('change', () => {
+  if (soundToggle.checked) {
+    window.localStorage.removeItem('rxtracker_sound_enabled');
+  } else {
+    window.localStorage.setItem('rxtracker_sound_enabled', '0');
+    stopAlarmAudio();
+  }
+});
+
+vibrationToggle?.addEventListener('change', () => {
+  if (vibrationToggle.checked) {
+    window.localStorage.removeItem('rxtracker_vibration_enabled');
+  } else {
+    window.localStorage.setItem('rxtracker_vibration_enabled', '0');
+  }
+});
+
 const initializeReminderToggle = async () => {
   if (!enableRemindersButton) return;
   try {
@@ -1328,6 +1379,7 @@ const initializeReminderToggle = async () => {
   }
 };
 
+initAlarmToggles();
 initializeReminderToggle();
 
 registerServiceWorker().catch(() => {
@@ -2320,3 +2372,139 @@ document.querySelector('[data-history-filter]')?.addEventListener('submit', (e) 
   const params = new URLSearchParams(new FormData(e.currentTarget));
   window.location.href = `index.php?${params.toString()}#dose-history`;
 });
+
+// ── Hero next dose: group meds toggle ─────────────────────────────────────────
+
+document.querySelectorAll('[data-group-meds-toggle]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const list = btn.nextElementSibling;
+    if (!list) return;
+    const isHidden = list.hidden;
+    list.hidden = !isHidden;
+    btn.textContent = isHidden ? 'hide group meds' : 'view group meds';
+  });
+});
+
+// ── PWA install prompt ─────────────────────────────────────────────────────────
+
+let deferredInstallPrompt = null;
+const installBanner = document.getElementById('pwa-install-banner');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (installBanner && !sessionStorage.getItem('rxtracker_install_dismissed')) {
+    installBanner.hidden = false;
+  }
+});
+
+document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  const { outcome } = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  if (installBanner) installBanner.hidden = true;
+});
+
+document.getElementById('pwa-install-dismiss')?.addEventListener('click', () => {
+  if (installBanner) installBanner.hidden = true;
+  sessionStorage.setItem('rxtracker_install_dismissed', '1');
+});
+
+window.addEventListener('appinstalled', () => {
+  if (installBanner) installBanner.hidden = true;
+  deferredInstallPrompt = null;
+});
+
+// ── Push notification status panel (Settings page) ────────────────────────────
+
+const pushStatusPanel = document.querySelector('[data-push-status-panel]');
+
+const applyCheckResult = (rowEl, ok, hintText) => {
+  if (!rowEl) return;
+  const icon = rowEl.querySelector('.push-check-icon');
+  const hint = rowEl.querySelector('[data-check-hint]');
+  if (icon) {
+    icon.textContent = ok ? '✓' : '✗';
+    icon.className = `push-check-icon ${ok ? 'push-check-ok' : 'push-check-fail'}`;
+  }
+  if (hint) {
+    hint.textContent = hintText || '';
+    hint.hidden = !hintText;
+  }
+};
+
+const initPushStatusPanel = async () => {
+  if (!pushStatusPanel) return;
+
+  const swRow = pushStatusPanel.querySelector('[data-check-sw]');
+  const permRow = pushStatusPanel.querySelector('[data-check-permission]');
+  const subRow = pushStatusPanel.querySelector('[data-check-subscription]');
+  const testBtn = pushStatusPanel.querySelector('[data-test-push-btn]');
+  const testStatus = pushStatusPanel.querySelector('[data-test-push-status]');
+
+  // 1. Service worker
+  const hasSW = 'serviceWorker' in navigator;
+  let swOk = false;
+  if (hasSW) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      swOk = Boolean(reg);
+    } catch { /* ignore */ }
+  }
+  applyCheckResult(swRow, swOk,
+    !hasSW ? 'Service workers are not supported in this browser.' :
+    !swOk ? 'Service worker not yet registered. Open the dashboard once over HTTPS to register it automatically.' : '');
+
+  // 2. Notification permission
+  const hasPerm = 'Notification' in window;
+  const permission = hasPerm ? Notification.permission : 'unavailable';
+  const permOk = permission === 'granted';
+  applyCheckResult(permRow, permOk,
+    !hasPerm ? 'Notifications are not supported in this browser.' :
+    permission === 'denied' ? 'Permission was blocked. Open browser site settings and reset notifications for this site, then re-enable the toggle above.' :
+    !permOk ? 'Enable the "Background reminders" toggle above to grant permission.' : '');
+
+  // 3. Push subscription
+  let subOk = false;
+  if (swOk) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      subOk = Boolean(sub);
+    } catch { /* ignore */ }
+  }
+  applyCheckResult(subRow, subOk,
+    !subOk ? 'No active subscription on this device. Enable the "Background reminders" toggle above.' : '');
+
+  // Enable test button only when there is an active subscription
+  if (testBtn) testBtn.disabled = !subOk;
+
+  testBtn?.addEventListener('click', async () => {
+    if (!testStatus) return;
+    testBtn.disabled = true;
+    testStatus.textContent = 'Sending…';
+    try {
+      const params = new URLSearchParams({
+        action: 'send_test_push',
+        csrf_token: getCsrfToken(),
+      });
+      const res = await fetch('index.php?page=settings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      testStatus.textContent = json.ok
+        ? `Test sent to ${json.count} device(s) — check your notifications now.`
+        : `Failed: ${json.error || 'Unknown error.'}`;
+    } catch {
+      testStatus.textContent = 'Request failed — check the browser console.';
+    } finally {
+      testBtn.disabled = !subOk;
+    }
+  });
+};
+
+initPushStatusPanel();

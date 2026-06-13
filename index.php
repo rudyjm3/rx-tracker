@@ -172,6 +172,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history')
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_action') {
+    header('Content-Type: application/json; charset=utf-8');
+    $nonce = trim((string) ($_GET['nonce'] ?? ''));
+    $act   = (string) ($_GET['act'] ?? '');
+    if ($nonce === '' || !in_array($act, ['take', 'snooze'], true)) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid request.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    try {
+        $item = $repository->findAndConsumePushNonce($nonce);
+        if ($item === null) {
+            echo json_encode(['ok' => false, 'error' => 'Invalid or expired token.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $medId   = (int) $item['medication_id'];
+        $pDate   = (string) $item['scheduled_for_date'];
+        $pTime   = (string) $item['scheduled_time'];
+        if ($act === 'take') {
+            $repository->recordDoseStatus($medId, $pDate, $pTime, 'taken', 'Taken via notification');
+            echo json_encode(['ok' => true, 'message' => 'Dose marked as taken.'], JSON_THROW_ON_ERROR);
+        } else {
+            $minutes = (int) ($_GET['minutes'] ?? 15);
+            if (!in_array($minutes, [5, 10, 15, 30], true)) {
+                $minutes = 15;
+            }
+            $repository->postponeDose($medId, $pDate, $pTime, $minutes);
+            // Remove the delivery log so the cron re-pushes when postponed_until arrives
+            $repository->clearPushDeliveryLog($medId, $pDate, $pTime);
+            echo json_encode(['ok' => true, 'message' => "Snoozed {$minutes} minutes."], JSON_THROW_ON_ERROR);
+        }
+    } catch (Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+    }
+    exit;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jsonResponse = post_string('json_response') === '1';
@@ -399,6 +434,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_settings') {
             $graceMinutes = (int) post_string('missed_grace_minutes');
             $repository->setMissedGraceMinutes($graceMinutes);
+            $repository->setSnoozeMinutes((int) post_string('snooze_minutes'));
             header('Location: index.php?page=settings&notice=Settings saved');
             exit;
         }
@@ -413,6 +449,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        if ($action === 'send_test_push') {
+            header('Content-Type: application/json; charset=utf-8');
+            try {
+                $service = PushNotificationService::fromEnv($repository);
+                $sent = $service->sendTestPush();
+                echo json_encode(['ok' => true, 'count' => $sent], JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+            }
+            exit;
+        }
+
         if ($action === 'remove_push_subscription') {
             header('Content-Type: application/json; charset=utf-8');
             $endpoint = trim((string) ($_POST['endpoint'] ?? ''));
@@ -421,7 +469,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     } catch (Throwable $exception) {
-        $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription'], true);
+        $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription', 'send_test_push'], true);
         if ($jsonResponse || $isPushAction) {
             header('Content-Type: application/json; charset=utf-8');
             if ($isPushAction) {
@@ -435,6 +483,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $graceMinutes = $repository->getMissedGraceMinutes();
+$snoozeMinutes = $repository->getSnoozeMinutes();
 $repository->finalizeMissedDoses(new DateTimeImmutable('now'), $graceMinutes);
 $notice = trim((string) ($_GET['notice'] ?? '')) ?: null;
 
@@ -469,6 +518,28 @@ if ($nextDose !== null) {
             $nextDoseWindow[] = $row;
         }
     }
+}
+
+// Hero next dose: up to 2 slots, collapsing grouped meds into one slot each
+$heroNextDoseItems = [];
+$seenGroupIds = [];
+foreach ($nextDoseWindow as $heroRow) {
+    if (count($heroNextDoseItems) >= 2) {
+        break;
+    }
+    $heroGid = $heroRow['group_id'];
+    if ($heroGid !== null && in_array($heroGid, $seenGroupIds, true)) {
+        continue;
+    }
+    if ($heroGid !== null) {
+        $seenGroupIds[] = $heroGid;
+        $heroRow['_group_members'] = array_values(
+            array_filter($nextDoseWindow, static fn(array $r): bool => $r['group_id'] === $heroGid)
+        );
+    } else {
+        $heroRow['_group_members'] = [];
+    }
+    $heroNextDoseItems[] = $heroRow;
 }
 
 $editId = (int) ($_GET['edit'] ?? 0);
@@ -530,18 +601,53 @@ foreach ($recentLogs as $log) {
   </nav>
 
   <section class="hero">
-    <div class="hero-card hero-med-card">
-      <div class="hero-med-card-header">
-        <div class="hero-med-card-title">
-          <span class="stat-label">Medication plan</span>
-          <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
+    <div class="hero-left">
+      <div class="hero-card hero-med-card">
+        <div class="hero-med-card-header">
+          <div class="hero-med-card-title">
+            <span class="stat-label">Medication plan</span>
+            <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
+          </div>
+        </div>
+        <div class="hero-med-card-actions">
+          <button type="button" data-open-medication-modal>Add</button>
+          <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
         </div>
       </div>
-      <div class="hero-med-card-actions">
-        <button type="button" data-open-medication-modal>Add</button>
-        <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
+
+      <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
+        <span class="stat-label">Next dose</span>
+        <?php if ($heroNextDoseItems !== []): ?>
+          <?php foreach ($heroNextDoseItems as $ndIndex => $ndItem): ?>
+            <div class="hero-next-dose-entry<?= $ndIndex > 0 ? ' hero-next-dose-entry--subtle' : '' ?>">
+              <span class="hero-next-dose-time"><?= e(to12h((string) $ndItem['reminder_time'])) ?></span>
+              <?php if ($ndItem['group_id'] !== null): ?>
+                <p class="hero-next-dose-name"><?= e((string) $ndItem['group_name']) ?></p>
+                <p class="hero-next-dose-meta"><?= e((string) count($ndItem['_group_members'])) ?> medication<?= count($ndItem['_group_members']) !== 1 ? 's' : '' ?> in group</p>
+                <button type="button" class="group-meds-toggle" data-group-meds-toggle>view group meds</button>
+                <div class="group-meds-list" hidden>
+                  <?php foreach ($ndItem['_group_members'] as $ndMember): ?>
+                    <div class="group-meds-member">
+                      <span class="hero-med-name"><?= e((string) $ndMember['name']) ?></span>
+                      <span class="hero-med-dose"><?= e((string) $ndMember['dose']) ?></span>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              <?php else: ?>
+                <p class="hero-next-dose-name"><?= e((string) $ndItem['name']) ?></p>
+                <p class="hero-next-dose-meta"><?= e((string) $ndItem['dose']) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></p>
+                <?php if ((string) ($ndItem['instructions'] ?? '') !== ''): ?>
+                  <small class="hero-next-dose-instructions"><?= e((string) $ndItem['instructions']) ?></small>
+                <?php endif; ?>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+        <?php else: ?>
+          <p class="hero-copy">All scheduled doses complete for today.</p>
+        <?php endif; ?>
       </div>
     </div>
+
     <div class="hero-card" aria-label="Today's adherence summary">
       <span class="stat-label">Today's adherence</span>
       <strong><?= e((string) $adherence) ?>%</strong>
@@ -978,6 +1084,14 @@ foreach ($recentLogs as $log) {
   </div>
 
   <?php if ($page === 'settings'): ?>
+    <?php
+      $vapidConfigured = trim((string) getenv('PUSH_VAPID_PUBLIC_KEY')) !== ''
+          && trim((string) getenv('PUSH_VAPID_PRIVATE_KEY')) !== ''
+          && trim((string) getenv('PUSH_VAPID_SUBJECT')) !== '';
+      $webPushInstalled = is_file(__DIR__ . '/vendor/autoload.php')
+          && class_exists(\Minishlink\WebPush\WebPush::class);
+      $lastPushSentAt = $repository->lastPushSentAt();
+    ?>
     <section class="panel settings-panel">
       <div class="panel-heading"><h2>Reminder Settings</h2></div>
       <form method="post" action="index.php?page=settings" class="stacked-form">
@@ -989,19 +1103,121 @@ foreach ($recentLogs as $log) {
             <option value="60"<?= $graceMinutes === 60 ? ' selected' : '' ?>>60 minutes</option>
           </select>
         </label>
+        <label>Default snooze duration
+          <select name="snooze_minutes">
+            <option value="5"<?= $snoozeMinutes === 5 ? ' selected' : '' ?>>5 minutes</option>
+            <option value="10"<?= $snoozeMinutes === 10 ? ' selected' : '' ?>>10 minutes</option>
+            <option value="15"<?= $snoozeMinutes === 15 ? ' selected' : '' ?>>15 minutes</option>
+            <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
+          </select>
+        </label>
         <button type="submit">Save settings</button>
       </form>
       <hr>
-      <div class="row-actions">
-        <label class="toggle-control" for="reminders-toggle">
-          <input type="checkbox" id="reminders-toggle" data-enable-reminders>
-          <span class="toggle-slider" aria-hidden="true"></span>
-          <span class="toggle-label">Background reminders</span>
-        </label>
-        <span class="muted" data-reminder-status>Background push reminders are currently disabled on this device.</span>
+      <h3 class="settings-subsection-heading">Alarm &amp; Notification Settings</h3>
+      <p class="settings-subsection-hint">Enable both toggles below for full coverage — sound while the app is open, push alerts when it&rsquo;s closed.</p>
+      <div class="notification-toggles">
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="sound-toggle">
+            <input type="checkbox" id="sound-toggle" data-sound-toggle>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Alarm sound</span>
+          </label>
+          <p class="toggle-description">Audible alarm when a dose is due <strong>while the app is open</strong>. Works offline — no permission required. On by default.</p>
+        </div>
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="vibration-toggle">
+            <input type="checkbox" id="vibration-toggle" data-vibration-toggle>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Vibration</span>
+          </label>
+          <p class="toggle-description">Device vibration for in-app alarms. On by default. Turn off if you only want sound (e.g. when your phone is on a surface in a meeting).</p>
+        </div>
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="reminders-toggle">
+            <input type="checkbox" id="reminders-toggle" data-enable-reminders>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Background reminders</span>
+          </label>
+          <p class="toggle-description">Push notification delivered to your device <strong>even when the app is closed</strong>. Requires internet, notification permission, and a service worker. Tap "Take Now" or "Snooze" directly from the notification tray.</p>
+          <span class="muted" data-reminder-status>Background push reminders are currently disabled on this device.</span>
+        </div>
       </div>
       <div class="in-app-alert" data-in-app-alert hidden></div>
     </section>
+
+    <section class="panel push-status-panel" data-push-status-panel>
+      <div class="panel-heading"><h2>Push Notification Status</h2></div>
+      <p class="push-status-intro">All checks must pass for background alarms to fire when the app is closed.</p>
+
+      <div class="push-check-list">
+
+        <div class="push-check-row">
+          <span class="push-check-icon <?= $vapidConfigured ? 'push-check-ok' : 'push-check-fail' ?>" aria-hidden="true"><?= $vapidConfigured ? '✓' : '✗' ?></span>
+          <div class="push-check-body">
+            <strong>VAPID keys configured</strong>
+            <?php if (!$vapidConfigured): ?>
+              <p class="push-check-hint">Run <code>php scripts/generate_vapid_keys.php</code>, then paste the output into your <code>.env</code> file and restart the server.</p>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="push-check-row">
+          <span class="push-check-icon <?= $webPushInstalled ? 'push-check-ok' : 'push-check-fail' ?>" aria-hidden="true"><?= $webPushInstalled ? '✓' : '✗' ?></span>
+          <div class="push-check-body">
+            <strong>PHP web-push library installed</strong>
+            <?php if (!$webPushInstalled): ?>
+              <p class="push-check-hint">Run <code>composer install</code> in the project root.</p>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-sw>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Service worker registered</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-permission>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Notification permission granted</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row" data-check-subscription>
+          <span class="push-check-icon push-check-pending" aria-hidden="true">…</span>
+          <div class="push-check-body">
+            <strong>Push subscription active on this device</strong>
+            <p class="push-check-hint" data-check-hint hidden></p>
+          </div>
+        </div>
+
+        <div class="push-check-row">
+          <span class="push-check-icon push-check-warn" aria-hidden="true">⚠</span>
+          <div class="push-check-body">
+            <strong>Cron job scheduled</strong>
+            <p class="push-check-hint">Cannot be verified from the browser. Schedule <code>scripts/send_due_push.php</code> to run every minute on your server (cron on Linux/macOS, Task Scheduler on Windows).
+            <?php if ($lastPushSentAt !== null): ?>
+              <br>Last push sent: <strong><?= e((new DateTimeImmutable($lastPushSentAt))->format('M j, g:i A')) ?></strong>.
+            <?php else: ?>
+              <br>No pushes sent yet &mdash; the cron may not be running, or no doses have been due since setup.
+            <?php endif; ?>
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="push-test-row">
+        <button type="button" class="secondary" data-test-push-btn disabled>Send test push</button>
+        <span class="push-test-status muted" data-test-push-status></span>
+      </div>
+    </section>
+
     <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
   </main>
   </body>
@@ -1233,29 +1449,15 @@ foreach ($recentLogs as $log) {
 
   <div class="in-app-alert" data-in-app-alert hidden></div>
 
-  <section class="dashboard-grid" aria-label="Medication dashboard">
-    <article class="panel next-dose">
-      <div class="panel-heading"><h2>Next dose</h2></div>
-      <?php if ($nextDose !== null): ?>
-        <div class="next-dose-list">
-          <?php foreach ($nextDoseWindow as $index => $doseItem): ?>
-            <div class="next-dose-card<?= $index > 0 ? ' next-dose-card-subtle' : '' ?>">
-              <span><?= e(to12h((string) $doseItem['reminder_time'])) ?></span>
-              <?php if ($index === 0): ?>
-                <h3><?= e((string) $doseItem['name']) ?></h3>
-              <?php else: ?>
-                <h4><?= e((string) $doseItem['name']) ?></h4>
-              <?php endif; ?>
-              <p><?= e((string) $doseItem['dose']) ?> <?= $doseItem['as_needed'] ? '(PRN)' : '' ?></p>
-              <small><?= e((string) ($doseItem['instructions'] ?: 'No special instructions')) ?></small>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php else: ?>
-        <div class="empty-state"><p>All scheduled doses are complete.</p></div>
-      <?php endif; ?>
-    </article>
+  <div id="pwa-install-banner" class="pwa-install-banner" hidden>
+    <span class="pwa-install-text">Add RxTracker to your home screen for the best experience</span>
+    <div class="pwa-install-actions">
+      <button type="button" id="pwa-install-btn">Install</button>
+      <button type="button" class="secondary icon-button" id="pwa-install-dismiss" aria-label="Dismiss install prompt">&#10005;</button>
+    </div>
+  </div>
 
+  <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel">
       <div class="panel-heading"><h2>Today schedule <span class="panel-heading-date"><?= date('D, M j') ?></span></h2></div>
       <div class="schedule-list">
@@ -1366,6 +1568,7 @@ foreach ($recentLogs as $log) {
       <label>Snooze for
         <select name="postpone_minutes" required>
           <option value="5">5 minutes</option>
+          <option value="10">10 minutes</option>
           <option value="15">15 minutes</option>
           <option value="30">30 minutes</option>
         </select>
@@ -1445,9 +1648,10 @@ foreach ($recentLogs as $log) {
       <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip</button>
       <div class="alarm-snooze-row">
         <select data-alarm-snooze-minutes class="alarm-snooze-select">
-          <option value="5">5 min</option>
-          <option value="15">15 min</option>
-          <option value="30">30 min</option>
+          <option value="5"<?= $snoozeMinutes === 5 ? ' selected' : '' ?>>5 min</option>
+          <option value="10"<?= $snoozeMinutes === 10 ? ' selected' : '' ?>>10 min</option>
+          <option value="15"<?= $snoozeMinutes === 15 ? ' selected' : '' ?>>15 min</option>
+          <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 min</option>
         </select>
         <button type="button" class="secondary" data-alarm-snooze>Snooze</button>
       </div>
