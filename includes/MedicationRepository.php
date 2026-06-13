@@ -227,6 +227,9 @@ final class MedicationRepository
                      interval_hours = :interval_hours,
                      first_dose_time = :first_dose_time,
                      as_needed = :as_needed,
+                     starting_pill_count = CASE WHEN NOT EXISTS (
+                         SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id
+                     ) THEN :starting_pill_count ELSE starting_pill_count END,
                      pill_count = :pill_count,
                      low_supply_threshold = :low_supply_threshold,
                      track_dose_feedback = :track_dose_feedback,
@@ -235,6 +238,8 @@ final class MedicationRepository
             );
             $statement->execute([
                 'id' => $id,
+                'refill_check_id' => $id,
+                'starting_pill_count' => $pillCount,
                 'name' => $name,
                 'dose' => $dose,
                 'instructions' => $instructions,
