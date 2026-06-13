@@ -2133,3 +2133,162 @@ textarea:focus,
     margin-left: 0;
   }
 }
+
+/* ── Pill supply progress bar ────────────────────────────────────────────────── */
+
+.pill-supply-bar {
+  background: #e3e9f3;
+  border-radius: 999px;
+  height: 6px;
+  margin: 0.35rem 0 0.2rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.pill-supply-bar-fill {
+  background: #207640;
+  border-radius: 999px;
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.pill-supply-bar-fill--low {
+  background: #956500;
+}
+
+.pill-supply-bar-fill--critical {
+  background: #9f1e1e;
+}
+
+/* ── Refill meta line ────────────────────────────────────────────────────────── */
+
+.refill-meta {
+  color: #647187;
+  font-size: 0.78rem;
+}
+
+/* ── Refill modal ────────────────────────────────────────────────────────────── */
+
+.refill-modal-subtitle {
+  color: #647187;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.15rem 0 0;
+}
+
+.refill-form-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+/* ── Refill history modal ────────────────────────────────────────────────────── */
+
+.refill-history-dialog {
+  max-width: 520px;
+}
+
+.refill-history-body {
+  padding: 0 0.25rem;
+}
+
+.refill-stats-banner {
+  background: #f0f4fb;
+  border: 1px solid #e3e9f3;
+  border-radius: 8px;
+  color: #3d5270;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.55rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.refill-month-nav {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.refill-month-label {
+  color: #172033;
+  font-size: 0.92rem;
+  text-align: center;
+  flex: 1;
+}
+
+.refill-nav-btn {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  white-space: nowrap;
+}
+
+.refill-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.refill-history-entry {
+  border-bottom: 1px solid #e3e9f3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.65rem 0;
+}
+
+.refill-history-entry:last-child {
+  border-bottom: 0;
+}
+
+.refill-entry-date {
+  color: #172033;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.refill-entry-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.refill-entry-amount {
+  background: #e9f5ee;
+  border-radius: 999px;
+  color: #207640;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+}
+
+.refill-entry-hand {
+  color: #647187;
+}
+
+.refill-days-between {
+  background: #f4f7fb;
+  border-radius: 999px;
+  color: #647187;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.refill-note {
+  color: #647187;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .refill-month-nav {
+    gap: 0.3rem;
+  }
+
+  .refill-nav-btn {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+  }
+}

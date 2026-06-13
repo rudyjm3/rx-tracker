@@ -298,9 +298,13 @@ medPlanModal?.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  // Priority cascade: lightbox > detail modal > plan modal
+  // Priority cascade: lightbox > refill history > refill modal > detail modal > plan modal
   if (pillLightbox?.classList.contains('is-open')) {
     closePillLightbox();
+  } else if (refillHistoryModal?.classList.contains('is-open')) {
+    closeRefillHistoryModal();
+  } else if (refillModal?.classList.contains('is-open')) {
+    closeRefillModal();
   } else if (medDetailModal?.classList.contains('is-open')) {
     closeMedDetailModal();
   } else if (medPlanModal && !medPlanModal.hidden) {
@@ -1635,3 +1639,209 @@ document.querySelectorAll('[data-edit-group]').forEach((btn) => {
     btn.closest('.group-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 });
+
+// ── Refill modal ──────────────────────────────────────────────────────────────
+
+const escHtml = (str) =>
+  String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+const refillModal = document.querySelector('[data-refill-modal]');
+const refillMedNameEl = document.querySelector('[data-refill-med-name]');
+const refillMedicationIdEl = document.querySelector('[data-refill-medication-id]');
+const refillDateInput = document.querySelector('[data-refill-date]');
+const refillForm = document.querySelector('[data-refill-form]');
+
+const openRefillModal = (medicationId, medicationName) => {
+  if (!refillModal) return;
+  if (refillForm) refillForm.reset();
+  if (refillMedNameEl) refillMedNameEl.textContent = medicationName;
+  if (refillMedicationIdEl) refillMedicationIdEl.value = medicationId;
+  if (refillDateInput) {
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    refillDateInput.value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  }
+  closeMedPlanModal();
+  refillModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeRefillModal = () => {
+  if (!refillModal) return;
+  if (!refillModal.classList.contains('is-open')) return;
+  refillModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-open-refill-modal]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { medicationId = '', medicationName = '' } = btn.dataset;
+    if (!medicationId) return;
+    openRefillModal(medicationId, medicationName);
+  });
+});
+
+document.querySelectorAll('[data-close-refill-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeRefillModal);
+});
+
+refillModal?.addEventListener('click', (event) => {
+  if (event.target === refillModal) closeRefillModal();
+});
+
+refillForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitBtn = refillForm.querySelector('[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'log_refill',
+      medication_id: refillMedicationIdEl?.value ?? '',
+      refill_date: refillDateInput?.value ?? '',
+      amount: refillForm.querySelector('[name="amount"]')?.value ?? '',
+      note: refillForm.querySelector('[name="note"]')?.value ?? '',
+    });
+    const resp = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to log refill.');
+    closeRefillModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message || 'Failed to log refill. Please try again.');
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
+// ── Refill history modal ──────────────────────────────────────────────────────
+
+const refillHistoryModal = document.querySelector('[data-refill-history-modal]');
+const refillHistoryMedNameEl = document.querySelector('[data-refill-history-med-name]');
+const refillHistoryBody = document.querySelector('[data-refill-history-body]');
+
+let refillHistoryMedId = 0;
+let refillHistoryYear = new Date().getFullYear();
+let refillHistoryMonth = new Date().getMonth() + 1;
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const openRefillHistoryModal = (medicationId, medicationName) => {
+  if (!refillHistoryModal) return;
+  refillHistoryMedId = parseInt(medicationId, 10);
+  refillHistoryYear = new Date().getFullYear();
+  refillHistoryMonth = new Date().getMonth() + 1;
+  if (refillHistoryMedNameEl) refillHistoryMedNameEl.textContent = medicationName;
+  closeMedPlanModal();
+  refillHistoryModal.classList.add('is-open');
+  lockBodyScroll();
+  loadRefillHistory();
+};
+
+const closeRefillHistoryModal = () => {
+  if (!refillHistoryModal) return;
+  if (!refillHistoryModal.classList.contains('is-open')) return;
+  refillHistoryModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-open-refill-history]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { medicationId = '', medicationName = '' } = btn.dataset;
+    if (!medicationId) return;
+    openRefillHistoryModal(medicationId, medicationName);
+  });
+});
+
+document.querySelectorAll('[data-close-refill-history]').forEach((btn) => {
+  btn.addEventListener('click', closeRefillHistoryModal);
+});
+
+refillHistoryModal?.addEventListener('click', (event) => {
+  if (event.target === refillHistoryModal) closeRefillHistoryModal();
+});
+
+const loadRefillHistory = async () => {
+  if (!refillHistoryBody) return;
+  refillHistoryBody.innerHTML = '<p class="pain-graph-loading">Loading&hellip;</p>';
+  try {
+    const url = `index.php?action=refill_history&medication_id=${refillHistoryMedId}&year=${refillHistoryYear}&month=${refillHistoryMonth}`;
+    const resp = await window.fetch(url, { credentials: 'same-origin' });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to load refill history.');
+
+    const { refills, stats, year, month } = data;
+    const monthName = MONTH_NAMES[month - 1];
+
+    let prevYear = year, prevMonth = month - 1;
+    if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+    let nextYear = year, nextMonth = month + 1;
+    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+
+    const statText = stats.count === 0
+      ? `No refills recorded in ${year}`
+      : stats.avg_days !== null
+        ? `${stats.count} refill${stats.count !== 1 ? 's' : ''} in ${year} · avg every ${stats.avg_days} days`
+        : `${stats.count} refill${stats.count !== 1 ? 's' : ''} in ${year}`;
+
+    let listHtml = '';
+    if (refills.length === 0) {
+      listHtml = '<p class="empty-state-text">No refills recorded this month.</p>';
+    } else {
+      listHtml = '<ol class="refill-history-list">';
+      for (const r of refills) {
+        const dateObj = new Date(r.refill_date + 'T00:00:00');
+        const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const daysBetweenHtml = r.days_since_prev !== null
+          ? `<span class="refill-days-between">${r.days_since_prev} days since prev</span>`
+          : '';
+        const noteHtml = r.note
+          ? `<span class="refill-note">${escHtml(r.note)}</span>`
+          : '';
+        listHtml += `<li class="refill-history-entry">
+          <span class="refill-entry-date">${escHtml(dateStr)}</span>
+          <div class="refill-entry-meta">
+            <span class="refill-entry-amount">+${escHtml(String(r.amount))} pills</span>
+            <span class="refill-entry-hand">${escHtml(String(r.pills_on_hand))} on hand after</span>
+            ${daysBetweenHtml}
+            ${noteHtml}
+          </div>
+        </li>`;
+      }
+      listHtml += '</ol>';
+    }
+
+    refillHistoryBody.innerHTML = `
+      <div class="refill-stats-banner">${escHtml(statText)}</div>
+      <div class="refill-month-nav">
+        <button type="button" class="secondary refill-nav-btn" data-refill-prev-month data-year="${prevYear}" data-month="${prevMonth}">&lsaquo; ${escHtml(MONTH_NAMES[prevMonth - 1])}</button>
+        <strong class="refill-month-label">${escHtml(monthName)} ${escHtml(String(year))}</strong>
+        <button type="button" class="secondary refill-nav-btn" data-refill-next-month data-year="${nextYear}" data-month="${nextMonth}">${escHtml(MONTH_NAMES[nextMonth - 1])} &rsaquo;</button>
+      </div>
+      ${listHtml}
+    `;
+
+    refillHistoryBody.querySelector('[data-refill-prev-month]')?.addEventListener('click', (e) => {
+      refillHistoryYear = parseInt(e.currentTarget.dataset.year, 10);
+      refillHistoryMonth = parseInt(e.currentTarget.dataset.month, 10);
+      loadRefillHistory();
+    });
+    refillHistoryBody.querySelector('[data-refill-next-month]')?.addEventListener('click', (e) => {
+      refillHistoryYear = parseInt(e.currentTarget.dataset.year, 10);
+      refillHistoryMonth = parseInt(e.currentTarget.dataset.month, 10);
+      loadRefillHistory();
+    });
+  } catch (err) {
+    if (refillHistoryBody) {
+      refillHistoryBody.innerHTML = `<p class="alert">${escHtml(err.message || 'Failed to load refill history.')}</p>`;
+    }
+  }
+};
