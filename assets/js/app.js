@@ -1407,11 +1407,6 @@ const fetchPillImageUrl = async (setId, medicationName) => {
       }
     } catch {}
   }
-  try {
-    await fetch(
-      apiProxy(`https://api.fda.gov/drug/label.json?search=openfda.brand_name:"${encodeURIComponent(medicationName)}"&limit=1`)
-    );
-  } catch {}
   return null;
 };
 

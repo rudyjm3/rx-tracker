@@ -288,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
                 exit;
             }
-            header('Location: index.php?notice=Dose snoozed');
+            header('Location: index.php?notice=' . urlencode('Dose snoozed'));
             exit;
         }
 
@@ -698,7 +698,7 @@ foreach ($recentLogs as $log) {
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
       <div class="modal-header">
         <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
-        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">X</button>
+        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">&#10005;</button>
       </div>
       <form class="medication-form" method="post" action="index.php">
         <?= csrf_field() ?>
@@ -740,7 +740,7 @@ foreach ($recentLogs as $log) {
         </label>
         <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
         <label>Low supply threshold (pills)
-          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 5)) ?>">
+          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 0)) ?>">
         </label>
         <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
         <label>Medication group <span class="field-optional">(optional)</span>
@@ -1212,7 +1212,7 @@ foreach ($recentLogs as $log) {
   <div class="modal-dialog postpone-dialog" role="dialog" aria-modal="true" aria-labelledby="postpone-modal-title">
     <div class="modal-header">
       <h2 id="postpone-modal-title">Snooze reminder</h2>
-      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">X</button>
+      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">&#10005;</button>
     </div>
     <form method="post" action="index.php" class="stacked-form">
       <?= csrf_field() ?>

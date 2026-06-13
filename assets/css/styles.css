@@ -19,7 +19,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -528,7 +529,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   background: #f8fafc;
   border: 1px solid #dce4f0;
   border-radius: 0.95rem;
@@ -538,8 +540,15 @@ select {
   padding: 0.75rem 0.9rem;
 }
 
+textarea {
+  min-height: unset;
+  resize: vertical;
+  width: 100%;
+}
+
 input:focus,
 select:focus,
+textarea:focus,
 .field-error {
   border-color: #1269ff;
   box-shadow: 0 0 0 4px rgb(18 105 255 / 12%);
@@ -1066,7 +1075,6 @@ select:focus,
   display: block;
   font-weight: 800;
   margin: 0.75rem auto 0;
-  margin-top: 0.75rem;
   padding: 0;
   text-align: center;
 }
@@ -1320,7 +1328,7 @@ select:focus,
   .alarm-dialog {
     max-height: calc(100dvh - 2rem);
     overflow-y: auto;
-    width: calc(100% - 0px);
+    width: 100%;
   }
 
   .nav-hamburger {
@@ -1357,10 +1365,12 @@ select:focus,
 /* ── Pain level trend graph ──────────────────────────────────────────────── */
 
 .pain-graph-btn {
+  background: #f3f6fb;
   color: #6b7a96;
 }
 
 .pain-graph-btn:hover {
+  background: #e8eef8;
   color: #2563eb;
 }
 
@@ -1542,7 +1552,7 @@ select:focus,
 }
 
 .history-pain-label {
-  color: grey !important;
+  color: #647187;
   font-size: 0.72rem;
   font-weight: 500;
   margin-left: 0.3rem;
@@ -1582,7 +1592,7 @@ select:focus,
 }
 
 .history-note .history-note-label {
-  color: grey;
+  color: #647187;
   font-style: normal;
   font-weight: 600;
 }
