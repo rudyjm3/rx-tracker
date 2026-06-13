@@ -1104,13 +1104,26 @@ foreach ($recentLogs as $log) {
         <button type="submit">Save settings</button>
       </form>
       <hr>
-      <div class="row-actions">
-        <label class="toggle-control" for="reminders-toggle">
-          <input type="checkbox" id="reminders-toggle" data-enable-reminders>
-          <span class="toggle-slider" aria-hidden="true"></span>
-          <span class="toggle-label">Background reminders</span>
-        </label>
-        <span class="muted" data-reminder-status>Background push reminders are currently disabled on this device.</span>
+      <h3 class="settings-subsection-heading">Alarm &amp; Notification Settings</h3>
+      <p class="settings-subsection-hint">Enable both toggles below for full coverage — sound while the app is open, push alerts when it&rsquo;s closed.</p>
+      <div class="notification-toggles">
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="alarm-sound-toggle">
+            <input type="checkbox" id="alarm-sound-toggle" data-alarm-sound-toggle>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">In-app alarm sound &amp; vibration</span>
+          </label>
+          <p class="toggle-description">Audible beep and vibration when a dose is due <strong>while the app is open</strong>. Works fully offline — no internet or notification permission required.</p>
+        </div>
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="reminders-toggle">
+            <input type="checkbox" id="reminders-toggle" data-enable-reminders>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Background reminders</span>
+          </label>
+          <p class="toggle-description">Push notification delivered to your device <strong>even when the app is closed</strong>. Requires internet, notification permission, and a service worker. Tap "Take Now" or "Snooze" directly from the notification tray.</p>
+          <span class="muted" data-reminder-status>Background push reminders are currently disabled on this device.</span>
+        </div>
       </div>
       <div class="in-app-alert" data-in-app-alert hidden></div>
     </section>

@@ -1287,6 +1287,38 @@ textarea:focus,
   user-select: none;
 }
 
+.settings-subsection-heading {
+  color: #21304a;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 1rem 0 0.3rem;
+}
+
+.settings-subsection-hint {
+  color: #5a6a82;
+  font-size: 0.875rem;
+  margin: 0 0 0.9rem;
+}
+
+.notification-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.notification-toggle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.toggle-description {
+  color: #5a6a82;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 0 3.35rem;
+}
+
 .inactive-list {
   display: grid;
   gap: 0.75rem;

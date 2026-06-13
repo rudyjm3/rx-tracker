@@ -1164,6 +1164,7 @@ alarmSnoozeBtn?.addEventListener('click', async () => {
 // ── Reminders & polling ───────────────────────────────────────────────────────
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
+const alarmSoundToggle = document.querySelector('[data-alarm-sound-toggle]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
 const reminderStatus = document.querySelector('[data-reminder-status]');
 
@@ -1282,7 +1283,6 @@ enableRemindersButton?.addEventListener('change', async () => {
       const endpoint = existing.endpoint;
       await existing.unsubscribe();
       await removePushSubscription(endpoint);
-      window.localStorage.removeItem('rxtracker_alarm_enabled');
       setReminderToggleState(false);
       window.alert('Background reminders disabled for this device and browser profile.');
       return;
@@ -1294,14 +1294,12 @@ enableRemindersButton?.addEventListener('change', async () => {
 
     if (!('Notification' in window)) {
       window.alert('Notifications are not supported in this browser. In-app reminders will still appear.');
-      window.localStorage.setItem('rxtracker_alarm_enabled', '1');
       pollDueReminders();
       return;
     }
     const permission = Notification.permission === 'default'
       ? await Notification.requestPermission()
       : Notification.permission;
-    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
     if (permission !== 'granted') {
       if (permission === 'denied') {
         window.alert('Notifications are blocked for this site. Enable browser/site notification permission first.');
@@ -1340,6 +1338,24 @@ enableRemindersButton?.addEventListener('change', async () => {
   pollDueReminders();
 });
 
+const initAlarmSoundToggle = () => {
+  // Default to enabled so new users get in-app alarms without touching settings
+  if (window.localStorage.getItem('rxtracker_alarm_enabled') === null) {
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+  }
+  if (alarmSoundToggle) {
+    alarmSoundToggle.checked = isAlarmEnabled();
+  }
+};
+
+alarmSoundToggle?.addEventListener('change', () => {
+  if (alarmSoundToggle.checked) {
+    window.localStorage.setItem('rxtracker_alarm_enabled', '1');
+  } else {
+    window.localStorage.removeItem('rxtracker_alarm_enabled');
+  }
+});
+
 const initializeReminderToggle = async () => {
   if (!enableRemindersButton) return;
   try {
@@ -1350,6 +1366,7 @@ const initializeReminderToggle = async () => {
   }
 };
 
+initAlarmSoundToggle();
 initializeReminderToggle();
 
 registerServiceWorker().catch(() => {
