@@ -52,7 +52,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML pages (including index.php): network-first, fall back to cached shell
+  // Non-GET requests (POST form submissions): always network-only —
+  // never serve a cached response for mutations; let failures surface to the caller.
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request).catch(() => Response.error()));
+    return;
+  }
+
+  // GET HTML pages (including index.php): network-first, fall back to cached shell
   event.respondWith(
     fetch(request).then((response) => {
       if (response.ok) {

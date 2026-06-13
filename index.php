@@ -198,6 +198,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'push_action') {
                 $minutes = 15;
             }
             $repository->postponeDose($medId, $pDate, $pTime, $minutes);
+            // Remove the delivery log so the cron re-pushes when postponed_until arrives
+            $repository->clearPushDeliveryLog($medId, $pDate, $pTime);
             echo json_encode(['ok' => true, 'message' => "Snoozed {$minutes} minutes."], JSON_THROW_ON_ERROR);
         }
     } catch (Throwable $e) {

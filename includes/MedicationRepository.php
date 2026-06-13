@@ -727,6 +727,21 @@ final class MedicationRepository
         }
     }
 
+    public function clearPushDeliveryLog(int $medicationId, string $scheduledDate, string $scheduledTime): void
+    {
+        $stmt = $this->db->prepare(
+            'DELETE FROM push_delivery_log
+             WHERE medication_id = :medication_id
+               AND scheduled_for_date = :scheduled_for_date
+               AND scheduled_time = :scheduled_time'
+        );
+        $stmt->execute([
+            'medication_id' => $medicationId,
+            'scheduled_for_date' => $scheduledDate,
+            'scheduled_time' => $scheduledTime,
+        ]);
+    }
+
     public function lastPushSentAt(): ?string
     {
         try {
