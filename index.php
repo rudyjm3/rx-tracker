@@ -618,19 +618,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications'], true)): ?>
   <section class="hero">
     <div class="hero-left">
-      <div class="hero-card hero-med-card" hidden>
-        <div class="hero-med-card-header">
-          <div class="hero-med-card-title">
-            <span class="stat-label">Medication plan</span>
-            <span class="count-badge hero-count-badge"><?= e((string) $medicationPlanCount) ?></span>
-          </div>
-        </div>
-        <div class="hero-med-card-actions">
-          <button type="button" data-open-medication-modal>Add</button>
-          <button type="button" class="hero-ellipsis-btn" data-open-med-plan-modal aria-label="View medication plan">&#8943;</button>
-        </div>
-      </div>
-
       <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
         <span class="stat-label">Next dose</span>
         <?php if ($heroNextDoseItems !== []): ?>
@@ -685,31 +672,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <?php if ($notice !== null): ?><div class="notice"><?= e($notice) ?></div><?php endif; ?>
   <?php if ($error !== null): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
-
-  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications'], true)): ?>
-  <div class="med-plan-modal-overlay" id="med-plan-modal" role="dialog" aria-modal="true" aria-label="Medication plan" hidden>
-    <div class="med-plan-modal-inner">
-      <div class="med-plan-modal-header">
-        <div class="medication-plan-title-wrap">
-          <h2>Medication plan</h2>
-          <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
-        </div>
-        <div class="medication-plan-actions">
-          <button type="button" data-open-medication-modal data-med-plan-action="medication">Add medication</button>
-          <button type="button" data-open-create-group-form-header data-med-plan-action="groups" hidden>+ Create group</button>
-          <button type="button" class="secondary med-plan-close-btn" data-close-med-plan-modal aria-label="Close">&times;</button>
-        </div>
-      </div>
-      <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
-        <button type="button" class="secondary plan-tab is-active" data-plan-tab="active" role="tab" aria-selected="true" aria-controls="active-medications-panel" id="active-medications-tab">Active (<?= e((string) $medicationPlanCount) ?>)</button>
-        <button type="button" class="secondary plan-tab" data-plan-tab="inactive" role="tab" aria-selected="false" aria-controls="inactive-medications-panel" id="inactive-medications-tab">Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
-        <button type="button" class="secondary plan-tab" data-plan-tab="groups" role="tab" aria-selected="false" aria-controls="groups-panel" id="groups-tab">Groups (<?= e((string) count($groups)) ?>)</button>
-      </div>
-      <?php include __DIR__ . '/includes/medication-plan-tabs.php'; ?>
-
-    </div>
-  </div>
-  <?php endif; ?>
 
   <div class="modal-overlay<?= $editing ? ' is-open' : '' ?>" data-medication-modal>
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">

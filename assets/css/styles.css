@@ -2454,10 +2454,15 @@ details.med-detail-section[open] .med-detail-section-title::after {
 }
 
 .group-form-wrap {
+  display: none;
   background: #f4f7fb;
   border: 1px solid #dce4f0;
   border-radius: 1.1rem;
   padding: 1rem;
+}
+
+.group-form-wrap.is-open {
+  display: block;
 }
 
 .group-inline-form {

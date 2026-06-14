@@ -1088,7 +1088,7 @@ const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal]
     .some((m) => m?.classList.contains('is-open')) ||
-  (groupFormWrap != null && !groupFormWrap.hidden);
+  (groupFormWrap != null && groupFormWrap.classList.contains('is-open'));
 
 const alarmAction = async (action, extra = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
@@ -2034,12 +2034,12 @@ const openGroupForm = (mode, id = '', name = '', time = '') => {
   if (groupFormName) groupFormName.value = name;
   if (groupFormTime) groupFormTime.value = time;
   if (groupFormSubmit) groupFormSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Create group';
-  groupFormWrap.hidden = false;
+  groupFormWrap.classList.add('is-open');
   groupFormName?.focus();
 };
 
 const closeGroupForm = () => {
-  if (groupFormWrap) groupFormWrap.hidden = true;
+  if (groupFormWrap) groupFormWrap.classList.remove('is-open');
 };
 
 document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {

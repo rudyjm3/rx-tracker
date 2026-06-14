@@ -137,7 +137,7 @@
     </div>
 
     <!-- Create/edit group inline form -->
-    <div class="group-form-wrap" data-group-form-wrap hidden>
+    <div class="group-form-wrap" data-group-form-wrap>
       <form class="group-inline-form" method="post" action="index.php" data-group-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="create_group" data-group-form-action>
