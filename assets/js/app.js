@@ -2681,6 +2681,17 @@ const autoInsertTimeColon = (token) => {
   if (!match) return token;
   const digits = match[1];
   const tail   = match[2];
+
+  // Bare hour + AM/PM with no minutes (e.g. "8am", "12pm") → expand to "8:00 AM"
+  const ampmOnly = tail.match(/^\s*([ap]m)$/i);
+  if (ampmOnly) {
+    const ampm = /pm/i.test(ampmOnly[1]) ? 'PM' : 'AM';
+    const firstTwo = parseInt(digits.slice(0, 2), 10);
+    const isTwoDigitHour = digits.length >= 2 && firstTwo >= 10 && firstTwo <= 12;
+    const hour = isTwoDigitHour ? digits.slice(0, 2) : digits.slice(0, 1);
+    return hour + ':00 ' + ampm;
+  }
+
   if (digits.length < 2) return token;
   const firstTwo = parseInt(digits.slice(0, 2), 10);
   const isTwoDigitHour = firstTwo >= 10 && firstTwo <= 12;
