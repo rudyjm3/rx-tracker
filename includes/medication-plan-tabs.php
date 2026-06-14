@@ -52,7 +52,7 @@
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
         </div>
         <div class="row-actions medication-actions-top">
-          <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
+          <a class="secondary modal-edit-link" href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>">Edit</a>
           <?php if ((int) $medication['track_dose_feedback'] === 1): ?>
           <button
             type="button"
@@ -137,7 +137,7 @@
     </div>
 
     <!-- Create/edit group inline form -->
-    <div class="group-form-wrap" data-group-form-wrap hidden>
+    <div class="group-form-wrap" data-group-form-wrap>
       <form class="group-inline-form" method="post" action="index.php" data-group-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="create_group" data-group-form-action>

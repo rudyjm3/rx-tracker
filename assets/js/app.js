@@ -220,6 +220,10 @@ const openMedicationModal = () => {
 const closeMedicationModal = () => {
   if (!medicationModal) return;
   if (!medicationModal.classList.contains('is-open')) return;
+  if (window.location.search.includes('edit=')) {
+    window.location.href = 'index.php?page=medications';
+    return;
+  }
   medicationModal.classList.remove('is-open');
   unlockBodyScroll();
   if (window.location.search.includes('edit=')) {
@@ -604,10 +608,10 @@ let painGraphDays = 7;
 const openPainGraphModal = (medicationId, medicationName) => {
   if (!painGraphModal) return;
   painGraphMedId = medicationId;
-  painGraphDays = 7;
+  painGraphDays = 0;
   if (painGraphTitle) painGraphTitle.textContent = medicationName + ' — Pain Trend';
   painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
-    t.classList.toggle('is-active', t.dataset.range === '7');
+    t.classList.toggle('is-active', t.dataset.range === '0');
   });
   closeMedPlanModal();
   painGraphModal.classList.add('is-open');
@@ -1008,10 +1012,9 @@ const VIBRATE_PATTERN = [400, 200, 400, 200, 400];
 const startAlarmVibration = () => {
   if (!('vibrate' in navigator)) return;
   if (!isVibrationEnabled()) return;
-  if (!userHasGestured) return;
   navigator.vibrate(VIBRATE_PATTERN);
   alarmVibrateTimer = window.setInterval(() => {
-    if (!isVibrationEnabled() || !userHasGestured) {
+    if (!isVibrationEnabled()) {
       stopAlarmVibration();
       return;
     }
@@ -1085,7 +1088,7 @@ const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal]
     .some((m) => m?.classList.contains('is-open')) ||
-  (groupFormWrap != null && !groupFormWrap.hidden);
+  (groupFormWrap != null && groupFormWrap.classList.contains('is-open'));
 
 const alarmAction = async (action, extra = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
@@ -1935,27 +1938,27 @@ const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
 
   const tabletInfo = howSupplied || dosageStrength || description;
   if (tabletInfo) {
-    sections.push(`<div class="med-detail-section"><h3>Tablet / Product Info</h3>${textBlock(tabletInfo)}</div>`);
+    sections.push(`<details class="med-detail-section" open><summary class="med-detail-section-title">Tablet / Product Info</summary><div class="med-detail-section-body">${textBlock(tabletInfo)}</div></details>`);
   }
 
   if (indications) {
-    sections.push(`<div class="med-detail-section"><h3>What it&rsquo;s used for</h3>${textBlock(indications)}</div>`);
+    sections.push(`<details class="med-detail-section"><summary class="med-detail-section-title">What it&rsquo;s used for</summary><div class="med-detail-section-body">${textBlock(indications)}</div></details>`);
   }
 
   if (activeIng || inactiveIng) {
     let ing = '';
     if (activeIng) ing += `<p><strong>Active:</strong></p>${textBlock(activeIng)}`;
     if (inactiveIng) ing += `<p><strong>Inactive:</strong></p>${textBlock(inactiveIng)}`;
-    sections.push(`<div class="med-detail-section"><h3>Ingredients</h3>${ing}</div>`);
+    sections.push(`<details class="med-detail-section"><summary class="med-detail-section-title">Ingredients</summary><div class="med-detail-section-body">${ing}</div></details>`);
   }
 
   const sideEffects = adverseRx || warnCautions;
   if (sideEffects) {
-    sections.push(`<div class="med-detail-section"><h3>Side Effects</h3>${textBlock(sideEffects)}</div>`);
+    sections.push(`<details class="med-detail-section"><summary class="med-detail-section-title">Side Effects</summary><div class="med-detail-section-body">${textBlock(sideEffects)}</div></details>`);
   }
 
   if (dosageAdmin) {
-    sections.push(`<div class="med-detail-section"><h3>How to Take This Medication</h3>${textBlock(dosageAdmin)}<p class="muted" style="font-size:0.82rem;margin-top:0.35rem">Always follow your prescriber&rsquo;s specific instructions.</p></div>`);
+    sections.push(`<details class="med-detail-section"><summary class="med-detail-section-title">How to Take This Medication</summary><div class="med-detail-section-body">${textBlock(dosageAdmin)}<p class="muted" style="font-size:0.82rem;margin-top:0.35rem">Always follow your prescriber&rsquo;s specific instructions.</p></div></details>`);
   }
 
   if (boxedWarning || warnings || contraind) {
@@ -1963,7 +1966,7 @@ const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
     if (boxedWarning) warnHtml += `<div class="boxed-warning-banner"><strong>&#9888; Boxed Warning</strong>${textBlock(boxedWarning)}</div>`;
     if (warnings) warnHtml += textBlock(warnings);
     if (contraind) warnHtml += `<p><strong>Contraindications:</strong></p>${textBlock(contraind)}`;
-    sections.push(`<div class="med-detail-section"><h3>Warnings</h3>${warnHtml}</div>`);
+    sections.push(`<details class="med-detail-section"><summary class="med-detail-section-title">Warnings</summary><div class="med-detail-section-body">${warnHtml}</div></details>`);
   }
 
   const dailyMedLink = setId
@@ -2031,12 +2034,12 @@ const openGroupForm = (mode, id = '', name = '', time = '') => {
   if (groupFormName) groupFormName.value = name;
   if (groupFormTime) groupFormTime.value = time;
   if (groupFormSubmit) groupFormSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Create group';
-  groupFormWrap.hidden = false;
+  groupFormWrap.classList.add('is-open');
   groupFormName?.focus();
 };
 
 const closeGroupForm = () => {
-  if (groupFormWrap) groupFormWrap.hidden = true;
+  if (groupFormWrap) groupFormWrap.classList.remove('is-open');
 };
 
 document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {
