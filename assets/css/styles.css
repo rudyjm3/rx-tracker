@@ -1525,6 +1525,94 @@ textarea:focus,
   max-width: 420px;
 }
 
+/* ── Slot picker modal ──────────────────────────────────────────────────────── */
+
+.slot-picker-dialog {
+  max-width: 440px;
+}
+
+.slot-picker-body {
+  padding: 1rem;
+}
+
+.slot-picker-hint {
+  color: #555;
+  font-size: 0.9rem;
+  margin: 0 0 0.75rem;
+}
+
+.slot-picker-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.slot-picker-row {
+  align-items: center;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 0.25rem;
+}
+
+.slot-picker-row:last-child {
+  border-bottom: none;
+}
+
+.slot-picker-row--logged {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.slot-time {
+  font-weight: 600;
+  min-width: 5.5rem;
+}
+
+.slot-badge {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.2em 0.6em;
+  text-transform: uppercase;
+}
+
+.slot-badge--taken   { background: #d1fae5; color: #065f46; }
+.slot-badge--skipped { background: #e5e7eb; color: #374151; }
+.slot-badge--missed  { background: #fef3c7; color: #92400e; }
+.slot-badge--overdue { background: #fee2e2; color: #991b1b; }
+.slot-badge--upcoming { background: #dbeafe; color: #1e40af; }
+
+.slot-late-question {
+  background: #f8f9fb;
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.slot-late-question p {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.slot-late-option {
+  cursor: pointer;
+  display: flex;
+  font-size: 0.9rem;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.slot-picker-footer {
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 0.75rem 1rem;
+}
+
 .modal-header {
   align-items: center;
   display: flex;

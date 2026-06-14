@@ -83,6 +83,133 @@ const feedbackCharCounter = document.querySelector('[data-feedback-char-counter]
 const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
 const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
 
+// ── Slot picker modal ─────────────────────────────────────────────────────────
+
+const slotPickerModal   = document.querySelector('[data-slot-picker-modal]');
+const slotPickerTitle   = document.querySelector('[data-slot-picker-title]');
+const slotPickerList    = document.querySelector('[data-slot-picker-list]');
+const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
+const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
+
+let slotPickerState = { medicationId: null, selectedSlot: null, graceMinutes: 30, trackFeedback: false, sourceForm: null, today: '' };
+
+const slotTo12h = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+};
+
+const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMinutes, trackFeedback }) => {
+  if (!slotPickerModal) return;
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+  slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, sourceForm, today };
+
+  if (slotPickerTitle) slotPickerTitle.textContent = `Log dose for ${medName}`;
+  if (slotPickerConfirm) slotPickerConfirm.disabled = true;
+  if (slotLateQuestion) slotLateQuestion.hidden = true;
+
+  if (slotPickerList) {
+    slotPickerList.innerHTML = '';
+    slots.forEach((slot) => {
+      const [h, m] = slot.time.split(':').map(Number);
+      const slotMinutes = h * 60 + m;
+      const isLogged   = slot.status === 'taken' || slot.status === 'skipped' || slot.status === 'missed';
+      const isOverdue  = !isLogged && slotMinutes < nowMinutes && (nowMinutes - slotMinutes) > graceMinutes;
+      const isUpcoming = slotMinutes > nowMinutes;
+
+      const row = document.createElement('label');
+      row.className = 'slot-picker-row' + (isLogged ? ' slot-picker-row--logged' : '');
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'slot_pick';
+      radio.value = slot.time;
+      radio.disabled = isLogged;
+
+      radio.addEventListener('change', () => {
+        slotPickerState.selectedSlot = slot.time;
+        if (slotPickerConfirm) slotPickerConfirm.disabled = false;
+        if (slotLateQuestion) {
+          slotLateQuestion.hidden = !isOverdue || trackFeedback;
+          const onTimeRadio = slotLateQuestion.querySelector('input[value="on_time"]');
+          if (onTimeRadio) onTimeRadio.checked = true;
+        }
+      });
+
+      let badgeClass, badgeText;
+      if      (slot.status === 'taken')   { badgeClass = 'taken';    badgeText = '✓ Taken'; }
+      else if (slot.status === 'skipped') { badgeClass = 'skipped';  badgeText = 'Skipped'; }
+      else if (slot.status === 'missed')  { badgeClass = 'missed';   badgeText = 'Missed'; }
+      else if (isOverdue)                 { badgeClass = 'overdue';  badgeText = 'Overdue'; }
+      else if (isUpcoming)                { badgeClass = 'upcoming'; badgeText = 'Upcoming'; }
+      else                                { badgeClass = 'upcoming'; badgeText = 'Due now'; }
+
+      const timeSpan  = document.createElement('span');
+      timeSpan.className = 'slot-time';
+      timeSpan.textContent = slotTo12h(slot.time);
+
+      const badge = document.createElement('span');
+      badge.className = `slot-badge slot-badge--${badgeClass}`;
+      badge.textContent = badgeText;
+
+      row.append(radio, timeSpan, badge);
+      slotPickerList.appendChild(row);
+    });
+  }
+
+  slotPickerModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeSlotPickerModal = () => {
+  if (!slotPickerModal) return;
+  slotPickerModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-close-slot-picker]').forEach((btn) =>
+  btn.addEventListener('click', closeSlotPickerModal)
+);
+slotPickerModal?.addEventListener('click', (e) => {
+  if (e.target === slotPickerModal) closeSlotPickerModal();
+});
+
+slotPickerConfirm?.addEventListener('click', async () => {
+  const { medicationId, selectedSlot, trackFeedback, sourceForm, today } = slotPickerState;
+  if (!selectedSlot) return;
+
+  if (trackFeedback) {
+    closeSlotPickerModal();
+    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', true, false);
+    return;
+  }
+
+  const isOverdueSlot = slotLateQuestion && !slotLateQuestion.hidden;
+  const takenOnTime   = isOverdueSlot
+    ? (slotLateQuestion.querySelector('input[name="slot_timing"]:checked')?.value === 'on_time')
+    : true;
+
+  if (slotPickerConfirm) { slotPickerConfirm.disabled = true; slotPickerConfirm.textContent = 'Logging…'; }
+
+  try {
+    const fd = new FormData(sourceForm);
+    fd.set('scheduled_time', selectedSlot);
+    fd.set('taken_on_time', takenOnTime ? '1' : '0');
+    const res  = await fetch('index.php', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error('Failed to log dose.');
+    closeSlotPickerModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+    if (slotPickerConfirm) { slotPickerConfirm.disabled = false; slotPickerConfirm.textContent = 'Log dose'; }
+  }
+});
+
 const openMedicationModal = () => {
   if (!medicationModal) return;
   closeMedPlanModal();
@@ -245,43 +372,20 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
 });
 
 document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
-  form.addEventListener('submit', async (event) => {
+  form.addEventListener('submit', (event) => {
     event.preventDefault();
     const btn = form.querySelector('[data-log-dose-now]');
-    const trackFeedback = btn?.dataset.trackDoseFeedback === '1';
-    const medicationId = btn?.dataset.medicationId ?? '';
-
-    if (trackFeedback) {
-      if (!medicationId) return;
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const scheduledDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      const scheduledTime = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-      closeMedPlanModal();
-      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
-      return;
-    }
-
-    if (btn) btn.disabled = true;
-    try {
-      const params = new URLSearchParams(new FormData(form));
-      params.set('json_response', '1');
-      const res = await fetch('index.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error('Failed to log dose.');
-      if (btn) {
-        const orig = btn.textContent;
-        btn.textContent = 'Logged ✓';
-        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
-      }
-    } catch (err) {
-      alert(err.message ?? 'Something went wrong.');
-      if (btn) btn.disabled = false;
-    }
+    if (!btn) return;
+    const slots = JSON.parse(btn.dataset.slots || '[]');
+    if (slots.length === 0) return;
+    openSlotPickerModal({
+      medicationId:  btn.dataset.medicationId ?? '',
+      medName:       btn.dataset.medicationName ?? 'medication',
+      sourceForm:    form,
+      slots,
+      graceMinutes:  parseInt(btn.dataset.graceMinutes || '30', 10),
+      trackFeedback: btn.dataset.trackDoseFeedback === '1',
+    });
   });
 });
 
@@ -2568,5 +2672,53 @@ const initPushStatusPanel = async () => {
     }
   });
 };
+
+// ── Time input: auto-insert colon as user types ───────────────────────────────
+
+const autoInsertTimeColon = (token) => {
+  if (token.includes(':')) return token;
+  const match = token.match(/^(\d+)([\s\S]*)$/);
+  if (!match) return token;
+  const digits = match[1];
+  const tail   = match[2];
+  if (digits.length < 2) return token;
+  const firstTwo = parseInt(digits.slice(0, 2), 10);
+  const isTwoDigitHour = firstTwo >= 10 && firstTwo <= 12;
+  if (isTwoDigitHour) {
+    if (digits.length < 3) return token; // e.g. "10" alone — wait for minute digit
+    return digits.slice(0, 2) + ':' + digits.slice(2) + tail;
+  }
+  return digits.slice(0, 1) + ':' + digits.slice(1) + tail;
+};
+
+const setupTimeAutoColon = (input, isMulti = false) => {
+  input.addEventListener('input', (e) => {
+    if (e.inputType?.startsWith('delete')) return;
+    if (isMulti) {
+      const val = input.value;
+      const lastCommaIdx = val.lastIndexOf(',');
+      if (lastCommaIdx === -1) {
+        const formatted = autoInsertTimeColon(val);
+        if (formatted !== val) input.value = formatted;
+      } else {
+        const prefix      = val.slice(0, lastCommaIdx + 1);
+        const afterComma  = val.slice(lastCommaIdx + 1);
+        const leadSpace   = afterComma.match(/^(\s*)/)[1];
+        const lastToken   = afterComma.trimStart();
+        const formatted   = autoInsertTimeColon(lastToken);
+        if (formatted !== lastToken) input.value = prefix + leadSpace + formatted;
+      }
+    } else {
+      const formatted = autoInsertTimeColon(input.value);
+      if (formatted !== input.value) input.value = formatted;
+    }
+  });
+};
+
+document.querySelectorAll('[name="first_dose_time"], [data-group-form-time]').forEach((el) => {
+  setupTimeAutoColon(el, false);
+});
+const doseTimesInput = document.querySelector('[name="dose_times"]');
+if (doseTimesInput) setupTimeAutoColon(doseTimesInput, true);
 
 initPushStatusPanel();

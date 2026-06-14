@@ -70,12 +70,24 @@
             <input type="hidden" name="action" value="log_dose_now">
             <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
             <input type="hidden" name="note" value="Logged now">
+            <?php
+              $medSlots = array_map(
+                  static fn(string $t): array => [
+                      'time'   => $t,
+                      'status' => $todaySlotStatusMap[(int) $medication['id']][$t] ?? '',
+                  ],
+                  $medication['times']
+              );
+            ?>
             <button
               type="submit"
               class="secondary"
               data-log-dose-now
               data-medication-id="<?= e((string) $medication['id']) ?>"
+              data-medication-name="<?= e((string) $medication['name']) ?>"
               data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
+              data-slots="<?= e(json_encode($medSlots)) ?>"
+              data-grace-minutes="<?= e((string) $graceMinutes) ?>"
             >Log dose now</button>
           </form>
           <button type="button" class="secondary" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">Log refill</button>

@@ -356,11 +356,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'log_dose_now') {
-            $medicationId = (int) post_string('medication_id');
+            $medicationId  = (int) post_string('medication_id');
+            $scheduledTime = post_string('scheduled_time') ?: null;
+            $takenOnTime   = post_string('taken_on_time') === '1';
             if ($medicationId <= 0) {
                 throw new RuntimeException('Choose a medication first.');
             }
-            $repository->logDoseNow($medicationId, post_string('note'));
+            $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime);
             if ($jsonResponse) {
                 header('Content-Type: application/json; charset=utf-8');
                 echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
@@ -492,6 +494,10 @@ $inactiveMedications = $repository->inactiveMedications();
 $medicationPlanCount = count($medications);
 $inactiveMedicationCount = count($inactiveMedications);
 $todaySchedule = $repository->todaySchedule($today);
+$todaySlotStatusMap = [];
+foreach ($todaySchedule as $slot) {
+    $todaySlotStatusMap[(int) $slot['medication_id']][$slot['reminder_time']] = (string) ($slot['status'] ?? '');
+}
 $recentLogs = $repository->recentLogs(null, 50);
 $missedCount = $repository->missedDoseCount($today, $currentTime);
 
@@ -1403,6 +1409,28 @@ foreach ($recentLogs as $log) {
       <div class="refill-history-body" data-refill-history-body>
         <p class="pain-graph-loading">Loading&hellip;</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-slot-picker-modal>
+  <div class="modal-dialog slot-picker-dialog">
+    <div class="modal-header">
+      <h2 class="modal-title" data-slot-picker-title>Log dose</h2>
+      <button type="button" class="modal-close" data-close-slot-picker aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body slot-picker-body">
+      <p class="slot-picker-hint">Select which scheduled dose you are logging:</p>
+      <div class="slot-picker-list" data-slot-picker-list></div>
+      <div class="slot-late-question" data-slot-late-question hidden>
+        <p>This dose time has already passed. When you actually took it:</p>
+        <label class="slot-late-option"><input type="radio" name="slot_timing" value="on_time" checked> I took it on time &mdash; just logging it now</label>
+        <label class="slot-late-option"><input type="radio" name="slot_timing" value="late"> I took it late (after the scheduled window)</label>
+      </div>
+    </div>
+    <div class="modal-footer slot-picker-footer">
+      <button type="button" class="secondary" data-close-slot-picker>Cancel</button>
+      <button type="button" data-slot-picker-confirm disabled>Log dose</button>
     </div>
   </div>
 </div>

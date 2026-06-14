@@ -340,16 +340,24 @@ final class MedicationRepository
         }
     }
 
-    public function logDoseNow(int $medicationId, string $note = ''): void
+    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false): void
     {
         $now = new DateTimeImmutable('now');
         $this->assertIntervalAllowed($medicationId, $now);
 
         $date = $now->format('Y-m-d');
 
-        // Map to the closest unlogged scheduled slot so todaySchedule can match it.
-        $medication = $this->medicationById($medicationId);
-        $time = $this->bestUnloggedSlotTime($medication, $date, $now);
+        if ($scheduledTime !== null) {
+            $time   = $scheduledTime . ':00';
+            $takenAt = $takenOnTime
+                ? new DateTimeImmutable($date . ' ' . $scheduledTime)
+                : $now;
+        } else {
+            // Map to the closest unlogged scheduled slot so todaySchedule can match it.
+            $medication = $this->medicationById($medicationId);
+            $time    = $this->bestUnloggedSlotTime($medication, $date, $now);
+            $takenAt = $now;
+        }
 
         $this->db->beginTransaction();
         try {
@@ -372,8 +380,8 @@ final class MedicationRepository
             }
 
             $insert = $this->db->prepare(
-                'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note)
-                 VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note)'
+                'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
+                 VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
             );
             $insert->execute([
                 'medication_id' => $medicationId,
@@ -381,6 +389,7 @@ final class MedicationRepository
                 'scheduled_time' => $time,
                 'status' => 'taken',
                 'note' => $note !== '' ? $note : 'Logged now',
+                'taken_at' => $takenAt->format('Y-m-d H:i:s'),
             ]);
 
             $this->deductPillCount($medicationId);
