@@ -634,11 +634,10 @@ foreach ($recentLogs as $log) {
                   <?php endforeach; ?>
                 </div>
               <?php else: ?>
-                <p class="hero-next-dose-name"><?= e((string) $ndItem['name']) ?></p>
-                <p class="hero-next-dose-meta"><?= e((string) $ndItem['dose']) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></p>
-                <?php if ((string) ($ndItem['instructions'] ?? '') !== ''): ?>
-                  <small class="hero-next-dose-instructions"><?= e((string) $ndItem['instructions']) ?></small>
-                <?php endif; ?>
+                <p class="hero-next-dose-name">
+                  <?= e((string) $ndItem['name']) ?>
+                  <span class="hero-next-dose-dose"><?= e((string) $ndItem['dose']) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
+                </p>
               <?php endif; ?>
             </div>
           <?php endforeach; ?>
@@ -713,8 +712,8 @@ foreach ($recentLogs as $log) {
             <?php foreach ($medications as $medication): ?>
               <?php $daysLeft = daysUntilRunout($medication); ?>
               <div class="medication-row medication-row-plan">
-                <div class="pill-img-wrap"
-                     data-pill-img-wrap
+                <div class="product-label-wrap"
+                     data-product-label-wrap
                      data-medication-id="<?= e((string) $medication['id']) ?>"
                      data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>"
                      data-medication-name="<?= e((string) $medication['name']) ?>">
@@ -1074,12 +1073,12 @@ foreach ($recentLogs as $log) {
     </div>
   </div>
 
-  <!-- Pill image lightbox -->
-  <div class="pill-lightbox-overlay" data-pill-lightbox>
-    <div class="pill-lightbox-dialog" data-pill-lightbox-dialog>
-      <button type="button" class="icon-button pill-lightbox-close" data-close-lightbox aria-label="Close image">&#10005;</button>
-      <img class="pill-lightbox-img" data-lightbox-img src="" alt="">
-      <p class="pill-lightbox-caption" data-lightbox-caption></p>
+  <!-- Image lightbox -->
+  <div class="image-lightbox-overlay" data-image-lightbox>
+    <div class="image-lightbox-dialog" data-image-lightbox-dialog>
+      <button type="button" class="icon-button image-lightbox-close" data-close-lightbox aria-label="Close image">&#10005;</button>
+      <img class="image-lightbox-img" data-lightbox-img src="" alt="">
+      <p class="image-lightbox-caption" data-lightbox-caption></p>
     </div>
   </div>
 

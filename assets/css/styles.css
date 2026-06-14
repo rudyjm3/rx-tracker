@@ -228,11 +228,23 @@ h1 {
 }
 
 .hero-next-dose-name {
+  align-items: baseline;
   color: #fff;
+  display: flex;
   font-size: 1.25rem;
   font-weight: 900;
+  gap: 0.5rem;
+  justify-content: space-between;
   letter-spacing: -0.03em;
   margin: 0.2rem 0 0.1rem;
+}
+
+.hero-next-dose-dose {
+  color: #b8dcff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .hero-next-dose-meta {
@@ -240,11 +252,6 @@ h1 {
   font-size: 0.88rem;
   font-weight: 700;
   margin: 0 0 0.35rem;
-}
-
-.hero-next-dose-instructions {
-  color: #93b8e0;
-  font-size: 0.8rem;
 }
 
 .group-meds-toggle {
@@ -1952,9 +1959,9 @@ textarea:focus,
   }
 }
 
-/* ── Pill image in medication plan ───────────────────────────────────────── */
+/* ── Product label image in medication plan ──────────────────────────────── */
 
-.pill-img-wrap {
+.product-label-wrap {
   align-items: center;
   display: flex;
   grid-column: 1;
@@ -1963,7 +1970,7 @@ textarea:focus,
   padding-top: 0.1rem;
 }
 
-.pill-img-wrap img {
+.product-label-wrap img {
   border-radius: 0.5rem;
   cursor: pointer;
   display: block;
@@ -1973,12 +1980,12 @@ textarea:focus,
   width: 48px;
 }
 
-.pill-img-wrap img:hover {
+.product-label-wrap img:hover {
   box-shadow: 0 4px 12px rgb(10 18 33 / 18%);
   transform: scale(1.08);
 }
 
-.pill-img-placeholder {
+.product-label-placeholder {
   align-items: center;
   background: #f0f4fb;
   border: 1px solid #dce4f0;
@@ -2051,9 +2058,9 @@ textarea:focus,
   color: #1269ff;
 }
 
-/* ── Pill image lightbox ─────────────────────────────────────────────────── */
+/* ── Image lightbox ──────────────────────────────────────────────────────── */
 
-.pill-lightbox-overlay {
+.image-lightbox-overlay {
   align-items: center;
   background: rgb(10 18 33 / 80%);
   cursor: pointer;
@@ -2068,12 +2075,12 @@ textarea:focus,
   z-index: 1200;
 }
 
-.pill-lightbox-overlay.is-open {
+.image-lightbox-overlay.is-open {
   opacity: 1;
   pointer-events: auto;
 }
 
-.pill-lightbox-dialog {
+.image-lightbox-dialog {
   background: white;
   border-radius: 1rem;
   box-shadow: 0 32px 80px rgb(3 18 42 / 38%);
@@ -2088,13 +2095,13 @@ textarea:focus,
   width: 100%;
 }
 
-.pill-lightbox-close {
+.image-lightbox-close {
   position: absolute;
   right: 0.75rem;
   top: 0.75rem;
 }
 
-.pill-lightbox-img {
+.image-lightbox-img {
   border-radius: 0.5rem;
   display: block;
   max-height: 360px;
@@ -2102,7 +2109,7 @@ textarea:focus,
   object-fit: contain;
 }
 
-.pill-lightbox-caption {
+.image-lightbox-caption {
   color: #46546c;
   font-size: 0.92rem;
   font-weight: 700;
@@ -2118,6 +2125,44 @@ textarea:focus,
 
 .med-detail-dialog {
   max-width: 640px;
+}
+
+.med-detail-images {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.med-detail-image-wrap {
+  flex: 1;
+  margin: 0;
+  min-width: 120px;
+  text-align: center;
+}
+
+.med-detail-image-wrap img {
+  background: #f4f7fc;
+  border: 1px solid #e7edf6;
+  border-radius: 8px;
+  display: block;
+  max-height: 180px;
+  max-width: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.med-detail-image-wrap img[src=""] {
+  display: none;
+}
+
+.med-detail-image-wrap figcaption {
+  color: #7a8b9a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-top: 0.3rem;
+  text-transform: uppercase;
 }
 
 .med-detail-section {
@@ -2182,7 +2227,7 @@ textarea:focus,
 }
 
 @media (max-width: 800px) {
-  .pill-lightbox-overlay {
+  .image-lightbox-overlay {
     padding: 1rem;
   }
 }

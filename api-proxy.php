@@ -4,6 +4,7 @@ declare(strict_types=1);
 $allowedPrefixes = [
     'https://dailymed.nlm.nih.gov/dailymed/services/v2/',
     'https://api.fda.gov/drug/label.json',
+    'https://rximage.nlm.nih.gov/api/rximage/',
 ];
 
 $url = (string) ($_GET['url'] ?? '');

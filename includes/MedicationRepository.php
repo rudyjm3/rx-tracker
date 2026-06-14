@@ -276,10 +276,13 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             if ($status === 'taken') {
-                if (!DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time) instanceof DateTimeImmutable) {
+                $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time);
+                if (!$scheduledAt instanceof DateTimeImmutable) {
                     throw new RuntimeException('Invalid scheduled dose time.');
                 }
-                $this->assertIntervalAllowed($medicationId, new DateTimeImmutable('now'));
+                // Use the scheduled slot time (not now) so that taking a snoozed dose
+                // from Today's Schedule is never blocked by sub-minute timing drift.
+                $this->assertIntervalAllowed($medicationId, $scheduledAt);
             }
 
             $existing = $this->db->prepare(
@@ -1155,7 +1158,10 @@ final class MedicationRepository
         }
 
         $intervalHours = (int) $medication['interval_hours'];
-        $nextAllowed = $lastTaken->modify('+' . $intervalHours . ' hours');
+        // Truncate seconds from lastTaken so the interval is minute-precise,
+        // matching the H:i slot times produced by timesForDate().
+        $lastTakenMinute = $lastTaken->setTime((int) $lastTaken->format('H'), (int) $lastTaken->format('i'), 0);
+        $nextAllowed = $lastTakenMinute->modify('+' . $intervalHours . ' hours');
         if ($candidate < $nextAllowed) {
             throw new RuntimeException(
                 'Too early for this medication. Next allowed dose is at ' . $nextAllowed->format('g:i A') . '.'
