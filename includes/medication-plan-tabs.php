@@ -52,7 +52,7 @@
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
         </div>
         <div class="row-actions medication-actions-top">
-          <a class="secondary modal-edit-link" href="index.php?edit=<?= e((string) $medication['id']) ?>">Edit</a>
+          <a class="secondary modal-edit-link" href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>">Edit</a>
           <?php if ((int) $medication['track_dose_feedback'] === 1): ?>
           <button
             type="button"
