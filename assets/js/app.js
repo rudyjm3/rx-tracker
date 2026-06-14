@@ -1665,32 +1665,33 @@ const showDrugDropdown = (items) => {
 
 const fetchDrugSuggestions = async (query) => {
   try {
-    const base = `https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=6`;
-    const [brandRes, genericRes] = await Promise.all([
-      fetch(apiProxy(`${base}&name_type=b`)),
-      fetch(apiProxy(`${base}&name_type=g`)),
-    ]);
+    const q = encodeURIComponent(query + '*');
+    const res = await fetch(
+      apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=10`)
+    );
+    if (!res.ok) return;
+    const data = await res.json();
 
-    const toItems = (res, type) => {
-      if (!res.ok) return [];
-      return res.json().then((data) =>
-        (data?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean).map((name) => ({ name, type }))
-      );
-    };
-
-    const [brandItems, genericItems] = await Promise.all([
-      toItems(brandRes, 'brand'),
-      toItems(genericRes, 'generic'),
-    ]);
-
+    const items = [];
     const seen = new Set();
-    const items = [...brandItems, ...genericItems].filter(({ name }) => {
-      const key = name.toUpperCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    const queryUpper = query.toUpperCase();
 
+    for (const result of (data?.results ?? [])) {
+      for (const name of (result.openfda?.brand_name ?? [])) {
+        const key = name.toUpperCase();
+        if (!seen.has(key) && key.includes(queryUpper)) {
+          seen.add(key);
+          items.push({ name, type: 'brand' });
+        }
+      }
+      for (const name of (result.openfda?.generic_name ?? [])) {
+        const key = name.toUpperCase();
+        if (!seen.has(key) && key.includes(queryUpper)) {
+          seen.add(key);
+          items.push({ name, type: 'generic' });
+        }
+      }
+    }
     showDrugDropdown(items);
   } catch { hideDrugDropdown(); }
 };
