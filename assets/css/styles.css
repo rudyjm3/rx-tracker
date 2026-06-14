@@ -193,6 +193,7 @@ h1 {
   display: flex;
   height: 110px;
   justify-content: center;
+  justify-self: center;
   position: relative;
   width: 110px;
 }
@@ -222,10 +223,13 @@ h1 {
 .adherence-ring-num {
   font-size: 1.5rem;
   font-weight: 800;
+  left: 50%;
   letter-spacing: -0.05em;
   line-height: 1;
   pointer-events: none;
   position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .hero-left {

@@ -653,8 +653,8 @@ foreach ($recentLogs as $log) {
       <span class="stat-label">Today's adherence</span>
       <div class="adherence-ring-wrap">
         <svg class="adherence-ring" viewBox="0 0 100 100" aria-hidden="true">
-          <circle class="adherence-ring-track" cx="50" cy="50" r="42"/>
-          <circle class="adherence-ring-fill" cx="50" cy="50" r="42" data-adherence-pct="<?= e((string) $adherence) ?>"/>
+          <circle class="adherence-ring-track" cx="50" cy="50" r="42" fill="none"/>
+          <circle class="adherence-ring-fill" cx="50" cy="50" r="42" fill="none" data-adherence-pct="<?= e((string) $adherence) ?>"/>
         </svg>
         <span class="adherence-ring-num" data-adherence-num>0%</span>
       </div>
