@@ -1628,14 +1628,23 @@ const hideDrugDropdown = () => {
 // Matches a dose suffix like "50 MG", "0.5 MCG", "10 ML", "100 UNITS", "20 IU", "5%"
 const DOSE_SUFFIX_RE = /^(.*?)\s+(\d[\d.]*\s*(?:MG|MCG|ML|UNITS?|IU|%)\b.*)$/i;
 
-const showDrugDropdown = (names) => {
+const showDrugDropdown = (items) => {
   if (!autocompleteDropdown) return;
   autocompleteDropdown.innerHTML = '';
-  if (!names.length) { hideDrugDropdown(); return; }
-  names.forEach((name) => {
+  if (!items.length) { hideDrugDropdown(); return; }
+  items.forEach(({ name, type }) => {
     const li = document.createElement('li');
     li.className = 'autocomplete-item';
-    li.textContent = name;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    li.appendChild(nameSpan);
+
+    const badge = document.createElement('span');
+    badge.className = `autocomplete-badge autocomplete-badge--${type}`;
+    badge.textContent = type === 'brand' ? 'Brand' : 'Generic';
+    li.appendChild(badge);
+
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const doseMatch = name.match(DOSE_SUFFIX_RE);
@@ -1656,13 +1665,33 @@ const showDrugDropdown = (names) => {
 
 const fetchDrugSuggestions = async (query) => {
   try {
-    const res = await fetch(
-      apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=10`)
-    );
-    if (!res.ok) return;
-    const data = await res.json();
-    const names = [...new Set((data?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean))];
-    showDrugDropdown(names);
+    const base = `https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=6`;
+    const [brandRes, genericRes] = await Promise.all([
+      fetch(apiProxy(`${base}&name_type=b`)),
+      fetch(apiProxy(`${base}&name_type=g`)),
+    ]);
+
+    const toItems = (res, type) => {
+      if (!res.ok) return [];
+      return res.json().then((data) =>
+        (data?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean).map((name) => ({ name, type }))
+      );
+    };
+
+    const [brandItems, genericItems] = await Promise.all([
+      toItems(brandRes, 'brand'),
+      toItems(genericRes, 'generic'),
+    ]);
+
+    const seen = new Set();
+    const items = [...brandItems, ...genericItems].filter(({ name }) => {
+      const key = name.toUpperCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    showDrugDropdown(items);
   } catch { hideDrugDropdown(); }
 };
 

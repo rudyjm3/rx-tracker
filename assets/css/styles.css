@@ -2229,17 +2229,41 @@ textarea:focus,
 }
 
 .autocomplete-item {
+  align-items: center;
   border-radius: 0.6rem;
   color: #172033;
   cursor: pointer;
+  display: flex;
   font-size: 0.9rem;
   font-weight: 400;
+  gap: 0.5rem;
+  justify-content: space-between;
   padding: 0.55rem 0.75rem;
 }
 
 .autocomplete-item:hover {
   background: #f0f5ff;
   color: #1269ff;
+}
+
+.autocomplete-badge {
+  border-radius: 0.35rem;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.15rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.autocomplete-badge--brand {
+  background: #e8f0fe;
+  color: #1a56db;
+}
+
+.autocomplete-badge--generic {
+  background: #e8f5e9;
+  color: #1b7a3a;
 }
 
 /* ── Image lightbox ──────────────────────────────────────────────────────── */
