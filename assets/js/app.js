@@ -2014,7 +2014,7 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
 
 // ── Group panel delegated AJAX (add-med + delete) ─────────────────────────────
 
-planPanels.groups?.addEventListener('submit', async (e) => {
+document.querySelector('[data-plan-panel="groups"]')?.addEventListener('submit', async (e) => {
   // ── Add medication to group ───────────────────────────────────────────────
   const addForm = e.target.closest('.group-add-med-form[data-ajax-add]');
   if (addForm) {
