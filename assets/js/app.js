@@ -720,6 +720,18 @@ let alarmGroupItems = [];
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
 let alarmVibrateTimer = null;
+let userHasGestured = false;
+
+// Unlock AudioContext on the first user gesture so it's ready before alarms fire.
+const onUserGesture = () => {
+  userHasGestured = true;
+  if (!alarmAudioCtx || alarmAudioCtx.state === 'closed') {
+    try { alarmAudioCtx = new AudioContext(); } catch { /* unavailable */ }
+  }
+};
+['pointerdown', 'keydown', 'touchstart'].forEach((evt) =>
+  document.addEventListener(evt, onUserGesture, { passive: true })
+);
 let swRegistration = null;
 
 const getCsrfToken = () =>
@@ -867,21 +879,13 @@ const playAlarmPattern = () => {
 };
 
 const startAlarmAudio = () => {
-  if (alarmAudioCtx) {
-    if (alarmAudioCtx.state === 'suspended') {
-      alarmAudioCtx.resume().then(playAlarmPattern).catch(() => {});
-    }
-    return;
+  if (!alarmAudioCtx || alarmAudioCtx.state === 'closed') {
+    try { alarmAudioCtx = new AudioContext(); } catch { return; }
   }
-  try {
-    alarmAudioCtx = new AudioContext();
-    if (alarmAudioCtx.state === 'suspended') {
-      alarmAudioCtx.resume().then(playAlarmPattern).catch(() => {});
-    } else {
-      playAlarmPattern();
-    }
-  } catch {
-    // AudioContext unavailable
+  if (alarmAudioCtx.state === 'suspended') {
+    alarmAudioCtx.resume().then(playAlarmPattern).catch(() => {});
+  } else {
+    playAlarmPattern();
   }
 };
 
@@ -890,9 +894,8 @@ const stopAlarmAudio = () => {
     clearTimeout(alarmBeepTimer);
     alarmBeepTimer = null;
   }
-  if (alarmAudioCtx) {
-    alarmAudioCtx.close().catch(() => {});
-    alarmAudioCtx = null;
+  if (alarmAudioCtx && alarmAudioCtx.state === 'running') {
+    alarmAudioCtx.suspend().catch(() => {});
   }
 };
 
@@ -901,9 +904,10 @@ const VIBRATE_PATTERN = [400, 200, 400, 200, 400];
 const startAlarmVibration = () => {
   if (!('vibrate' in navigator)) return;
   if (!isVibrationEnabled()) return;
+  if (!userHasGestured) return;
   navigator.vibrate(VIBRATE_PATTERN);
   alarmVibrateTimer = window.setInterval(() => {
-    if (!isVibrationEnabled()) {
+    if (!isVibrationEnabled() || !userHasGestured) {
       stopAlarmVibration();
       return;
     }
