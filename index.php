@@ -556,12 +556,12 @@ $lowSupplyMeds = array_values(array_filter($medications, static fn(array $m): bo
 $onTimeCount = 0;
 $lateCount = 0;
 foreach ($recentLogs as $log) {
-    if ((string) $log['status'] === 'taken') {
-        if (isLate($log, $graceMinutes)) {
-            $lateCount++;
-        } else {
-            $onTimeCount++;
-        }
+    if ((string) $log['status'] !== 'taken') continue;
+    if ((string) $log['scheduled_for_date'] !== $today) continue;
+    if (isLate($log, $graceMinutes)) {
+        $lateCount++;
+    } else {
+        $onTimeCount++;
     }
 }
 

@@ -346,7 +346,10 @@ final class MedicationRepository
         $this->assertIntervalAllowed($medicationId, $now);
 
         $date = $now->format('Y-m-d');
-        $time = $now->format('H:i:s');
+
+        // Map to the closest unlogged scheduled slot so todaySchedule can match it.
+        $medication = $this->medicationById($medicationId);
+        $time = $this->bestUnloggedSlotTime($medication, $date, $now);
 
         $this->db->beginTransaction();
         try {
@@ -1011,6 +1014,47 @@ final class MedicationRepository
         foreach ($doseTimes as $time) {
             $insert->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
         }
+    }
+
+    private function medicationById(int $id): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours,
+                    first_dose_time, as_needed, starting_pill_count, pill_count,
+                    low_supply_threshold, track_dose_feedback, set_id
+             FROM medications WHERE id = :id LIMIT 1'
+        );
+        $stmt->execute(['id' => $id]);
+        $med = $stmt->fetch();
+        if ($med === false) {
+            throw new RuntimeException('Medication not found.');
+        }
+        $med['times'] = $this->scheduleTimesForMedication($id);
+        return $med;
+    }
+
+    private function bestUnloggedSlotTime(array $medication, string $date, DateTimeImmutable $now): string
+    {
+        $slots = $this->timesForDate($medication);
+        $logMap = $this->doseLogMapForDate($date);
+        $nowMinutes = (int) $now->format('G') * 60 + (int) $now->format('i');
+        $bestTime = null;
+        $bestDiff = PHP_INT_MAX;
+
+        foreach ($slots as $slot) {
+            $key = (int) $medication['id'] . '|' . $slot;
+            if (isset($logMap[$key])) {
+                continue; // slot already logged
+            }
+            [$h, $m] = explode(':', $slot);
+            $diff = abs((int) $h * 60 + (int) $m - $nowMinutes);
+            if ($diff < $bestDiff) {
+                $bestDiff = $diff;
+                $bestTime = $slot . ':00';
+            }
+        }
+
+        return $bestTime ?? $now->format('H:i:s');
     }
 
     private function doseLogMapForDate(string $date): array
