@@ -323,10 +323,11 @@ medPlanModal?.addEventListener('click', (event) => {
 
 // ── Med plan modal: deactivate / activate AJAX ────────────────────────────────
 
-medPlanModal?.addEventListener('submit', async (e) => {
+document.addEventListener('submit', async (e) => {
   const form = e.target.closest('form');
   if (!form) return;
   const action = form.querySelector('input[name="action"]')?.value;
+  if (action !== 'deactivate_medication' && action !== 'activate_medication') return;
 
   // ── Deactivate ──────────────────────────────────────────────────────────────
   if (action === 'deactivate_medication') {
@@ -420,8 +421,10 @@ medPlanModal?.addEventListener('submit', async (e) => {
         document.querySelector('.inactive-list')?.insertAdjacentHTML('afterbegin', '<div class="empty-state"><p>No inactive medications.</p></div>');
       }
 
-      // Reload to show the full active card, and reopen the modal on the active tab
-      sessionStorage.setItem('medPlanReopen', 'active');
+      // On the medications page just reload; in the modal reopen on the active tab
+      if (!document.querySelector('.medications-page')) {
+        sessionStorage.setItem('medPlanReopen', 'active');
+      }
       window.location.reload();
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
