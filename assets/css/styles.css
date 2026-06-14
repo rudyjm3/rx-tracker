@@ -174,6 +174,8 @@ h1 {
   max-width: 720px;
 }
 
+.hero-card[hidden] { display: none; }
+
 .hero-card {
   align-self: center;
   backdrop-filter: blur(18px);
@@ -548,6 +550,47 @@ h1 {
   gap: 0.6rem;
 }
 
+/* ── Medications page ────────────────────────────────────────────────────── */
+
+.medications-page {
+  margin-top: 1.25rem;
+}
+
+.medications-page .plan-tab-panel {
+  background: white;
+  border: 1px solid #e3e9f3;
+  border-radius: 1.5rem;
+  box-shadow: 0 18px 50px rgb(23 32 51 / 8%);
+  padding: 1rem;
+}
+
+.medications-page-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.medications-page-title {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.medications-page-title h1 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.medications-page-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
 .count-badge {
   background: #e9f0ff;
   border: 1px solid #c8dafd;
@@ -569,6 +612,10 @@ h1 {
   display: flex;
   gap: 0.55rem;
   margin-bottom: 0.8rem;
+}
+
+.medications-page-header .medication-plan-tabs {
+  margin-bottom: 0;
 }
 
 .plan-tab {

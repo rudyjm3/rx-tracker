@@ -357,11 +357,8 @@ medPlanModal?.addEventListener('submit', async (e) => {
       activeCard?.remove();
 
       // Update active tab count
-      const activeTab = document.querySelector('[data-plan-tab="active"]');
-      if (activeTab) {
-        const n = document.querySelectorAll('#active-medications-panel .medication-row-plan').length;
-        activeTab.textContent = `Active (${n})`;
-      }
+      const n = document.querySelectorAll('[data-plan-panel="active"] .medication-row-plan').length;
+      document.querySelectorAll('[data-plan-tab="active"]').forEach((t) => { t.textContent = `Active (${n})`; });
 
       // Add a row to inactive panel
       const inactiveList = document.querySelector('.inactive-list');
@@ -383,11 +380,8 @@ medPlanModal?.addEventListener('submit', async (e) => {
         inactiveList.appendChild(row);
       }
 
-      const inactiveTab = document.querySelector('[data-plan-tab="inactive"]');
-      if (inactiveTab) {
-        const n = document.querySelectorAll('#inactive-medications-panel .medication-row').length;
-        inactiveTab.textContent = `Inactive (${n})`;
-      }
+      const ni = document.querySelectorAll('[data-plan-panel="inactive"] .medication-row').length;
+      document.querySelectorAll('[data-plan-tab="inactive"]').forEach((t) => { t.textContent = `Inactive (${ni})`; });
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
       if (submitBtn) submitBtn.disabled = false;
@@ -420,13 +414,10 @@ medPlanModal?.addEventListener('submit', async (e) => {
 
       inactiveRow?.remove();
 
-      const inactiveTab = document.querySelector('[data-plan-tab="inactive"]');
-      if (inactiveTab) {
-        const n = document.querySelectorAll('#inactive-medications-panel .medication-row').length;
-        inactiveTab.textContent = `Inactive (${n})`;
-        if (n === 0) {
-          document.querySelector('.inactive-list')?.insertAdjacentHTML('afterbegin', '<div class="empty-state"><p>No inactive medications.</p></div>');
-        }
+      const ni2 = document.querySelectorAll('[data-plan-panel="inactive"] .medication-row').length;
+      document.querySelectorAll('[data-plan-tab="inactive"]').forEach((t) => { t.textContent = `Inactive (${ni2})`; });
+      if (ni2 === 0) {
+        document.querySelector('.inactive-list')?.insertAdjacentHTML('afterbegin', '<div class="empty-state"><p>No inactive medications.</p></div>');
       }
 
       // Reload to show the full active card, and reopen the modal on the active tab
@@ -457,11 +448,6 @@ document.addEventListener('keydown', (event) => {
 });
 
 const planTabs = document.querySelectorAll('[data-plan-tab]');
-const planPanels = {
-  active: document.querySelector('#active-medications-panel'),
-  inactive: document.querySelector('#inactive-medications-panel'),
-  groups: document.querySelector('#groups-panel'),
-};
 
 const medPlanHeaderActions = document.querySelectorAll('[data-med-plan-action]');
 
@@ -471,9 +457,8 @@ const setPlanTab = (target) => {
     tab.classList.toggle('is-active', isSelected);
     tab.setAttribute('aria-selected', isSelected ? 'true' : 'false');
   });
-  Object.entries(planPanels).forEach(([key, panel]) => {
-    if (!panel) return;
-    panel.hidden = key !== target;
+  document.querySelectorAll('[data-plan-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.planPanel !== target;
   });
   medPlanHeaderActions.forEach((btn) => {
     const action = btn.dataset.medPlanAction;
@@ -985,7 +970,11 @@ const hideAlarmOverlay = () => {
   stopAlarmVibration();
 };
 
-const isMedicationModalOpen = () => medicationModal?.classList.contains('is-open') ?? false;
+const isAnyModalOpen = () =>
+  [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
+   imageLightbox, medDetailModal, refillModal, refillHistoryModal]
+    .some((m) => m?.classList.contains('is-open')) ||
+  (groupFormWrap != null && !groupFormWrap.hidden);
 
 const alarmAction = async (action, extra = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
@@ -1012,14 +1001,14 @@ const alarmAction = async (action, extra = {}) => {
     const data = await resp.json();
     if (data.ok) {
       hideAlarmOverlay();
-      if (!isMedicationModalOpen()) window.location.reload();
+      if (!isAnyModalOpen()) window.location.reload();
       return;
     }
   } catch {
     // fall through
   }
   hideAlarmOverlay();
-  if (!isMedicationModalOpen()) window.location.reload();
+  if (!isAnyModalOpen()) window.location.reload();
 };
 
 // ── Sequential feedback queue ─────────────────────────────────────────────────
@@ -1077,7 +1066,7 @@ const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMin
 const processNextFeedbackQueueItem = () => {
   if (feedbackQueue.length === 0) {
     feedbackQueueMode = false;
-    if (!isMedicationModalOpen()) window.location.reload();
+    if (!isAnyModalOpen()) window.location.reload();
     return;
   }
   const item = feedbackQueue[0];
@@ -1930,11 +1919,8 @@ groupForm?.addEventListener('submit', async (e) => {
       createRow ? createRow.after(card) : groupsList?.appendChild(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-      const groupsTab = document.querySelector('[data-plan-tab="groups"]');
-      if (groupsTab) {
-        const n = document.querySelectorAll('.group-card').length;
-        groupsTab.textContent = `Groups (${n})`;
-      }
+      const ng = document.querySelectorAll('.group-card').length;
+      document.querySelectorAll('[data-plan-tab="groups"]').forEach((t) => { t.textContent = `Groups (${ng})`; });
     } else {
       const card = groupsList?.querySelector(`[data-group-card-id="${json.group_id}"]`);
       if (card) {
@@ -2194,13 +2180,10 @@ planPanels.groups?.addEventListener('submit', async (e) => {
     const card = deleteForm.closest('.group-card');
     card?.remove();
 
-    const groupsTab = document.querySelector('[data-plan-tab="groups"]');
-    if (groupsTab) {
-      const n = document.querySelectorAll('.group-card').length;
-      groupsTab.textContent = `Groups (${n})`;
-    }
+    const ng2 = document.querySelectorAll('.group-card').length;
+    document.querySelectorAll('[data-plan-tab="groups"]').forEach((t) => { t.textContent = `Groups (${ng2})`; });
 
-    if (document.querySelectorAll('.group-card').length === 0) {
+    if (ng2 === 0) {
       const groupsList = document.querySelector('.groups-list');
       const emptyState = document.createElement('div');
       emptyState.className = 'empty-state groups-empty-state';
