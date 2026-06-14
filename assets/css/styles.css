@@ -115,6 +115,7 @@ button:disabled {
   letter-spacing: -0.04em;
   margin-right: auto;
   padding: 0.6rem 0;
+  text-decoration: none;
   user-select: none;
 }
 
@@ -1096,6 +1097,11 @@ textarea:focus,
 
 .export-section {
   margin-top: 1.25rem;
+}
+
+.table-scroll-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .export-table {
@@ -2349,13 +2355,34 @@ textarea:focus,
   padding-top: 0.85rem;
 }
 
-.med-detail-section h3 {
+.med-detail-section-title {
   color: #172033;
+  cursor: pointer;
   font-size: 0.88rem;
   font-weight: 800;
   letter-spacing: 0.04em;
+  list-style: none;
   margin: 0 0 0.4rem;
   text-transform: uppercase;
+  user-select: none;
+}
+
+.med-detail-section-title::-webkit-details-marker {
+  display: none;
+}
+
+.med-detail-section-title::after {
+  content: ' ▾';
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+details.med-detail-section[open] .med-detail-section-title::after {
+  content: ' ▴';
+}
+
+.med-detail-section-body {
+  margin-top: 0.4rem;
 }
 
 .med-detail-section p {

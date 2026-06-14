@@ -258,6 +258,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            $redirectPage = post_string('redirect_page');
+            if ($redirectPage === 'medications') {
+                header('Location: index.php?page=medications');
+                exit;
+            }
             redirect_home();
         }
 
@@ -570,6 +575,9 @@ foreach ($recentLogs as $log) {
         $onTimeCount++;
     }
 }
+$skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =>
+    (string) ($row['status'] ?? '') === 'skipped' && !(bool) $row['as_needed']
+));
 
 ?>
 <!doctype html>
@@ -593,10 +601,10 @@ foreach ($recentLogs as $log) {
 <body>
 <main class="app-shell">
   <nav class="top-nav">
-    <span class="nav-brand">
+    <a class="nav-brand" href="index.php">
       <img src="assets/icons/icon-192.png" alt="" class="nav-logo" aria-hidden="true" width="28" height="28">
       RxTracker
-    </span>
+    </a>
     <div class="nav-links">
       <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
@@ -666,7 +674,9 @@ foreach ($recentLogs as $log) {
       </div>
       <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
       <?php if ($onTimeCount + $lateCount > 0): ?>
-        <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?></span>
+        <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?><?php if ($skippedCount > 0): ?> &middot; Skipped: <?= e((string) $skippedCount) ?><?php endif; ?></span>
+      <?php elseif ($skippedCount > 0): ?>
+        <span>Skipped: <?= e((string) $skippedCount) ?></span>
       <?php endif; ?>
       <span>Missed required doses today: <?= e((string) $missedCount) ?></span>
     </div>
@@ -676,6 +686,7 @@ foreach ($recentLogs as $log) {
   <?php if ($notice !== null): ?><div class="notice"><?= e($notice) ?></div><?php endif; ?>
   <?php if ($error !== null): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
 
+  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications'], true)): ?>
   <div class="med-plan-modal-overlay" id="med-plan-modal" role="dialog" aria-modal="true" aria-label="Medication plan" hidden>
     <div class="med-plan-modal-inner">
       <div class="med-plan-modal-header">
@@ -698,6 +709,7 @@ foreach ($recentLogs as $log) {
 
     </div>
   </div>
+  <?php endif; ?>
 
   <div class="modal-overlay<?= $editing ? ' is-open' : '' ?>" data-medication-modal>
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
@@ -711,6 +723,7 @@ foreach ($recentLogs as $log) {
         <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
         <input type="hidden" name="medication_id" value="<?= e((string) ($editing['id'] ?? 0)) ?>">
         <input type="hidden" name="set_id" data-set-id-input value="<?= e((string) ($editing['set_id'] ?? '')) ?>">
+        <input type="hidden" name="redirect_page" value="<?= e($page) ?>">
 
         <label class="autocomplete-wrap">Name
           <input name="name" required autocomplete="off" data-med-name-input value="<?= e((string) ($editing['name'] ?? '')) ?>">
@@ -771,8 +784,8 @@ foreach ($recentLogs as $log) {
       </div>
       <div class="modal-scroll">
         <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-          <button class="range-tab" data-range="0">Today</button>
-          <button class="range-tab is-active" data-range="7">7 days</button>
+          <button class="range-tab is-active" data-range="0">Today</button>
+          <button class="range-tab" data-range="7">7 days</button>
           <button class="range-tab" data-range="30">30 days</button>
           <button class="range-tab" data-range="90">90 days</button>
         </div>
@@ -1117,6 +1130,7 @@ foreach ($recentLogs as $log) {
       <h2>Medication List &mdash; <?= e(date('F j, Y')) ?></h2>
       <button type="button" class="no-print" onclick="window.print()">Print / Save as PDF</button>
     </div>
+    <div class="table-scroll-wrap">
     <table class="export-table">
       <thead>
         <tr>
@@ -1159,6 +1173,7 @@ foreach ($recentLogs as $log) {
         <?php endif; ?>
       </tbody>
     </table>
+    </div>
   </section>
 
   <?php $exportLogs = $repository->logsForDateRange($filterStart, $filterEnd); ?>
@@ -1189,6 +1204,7 @@ foreach ($recentLogs as $log) {
       &mdash; <?= count($exportLogs) ?> record<?= count($exportLogs) !== 1 ? 's' : '' ?>
     </p>
     <?php if ($exportLogs !== []): ?>
+    <div class="table-scroll-wrap">
     <table class="export-table">
       <thead>
         <tr>
@@ -1213,6 +1229,7 @@ foreach ($recentLogs as $log) {
         <?php endforeach; ?>
       </tbody>
     </table>
+    </div>
     <?php else: ?>
     <p class="empty-state-text">No dose records for this period.</p>
     <?php endif; ?>
