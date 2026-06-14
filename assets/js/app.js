@@ -1696,23 +1696,39 @@ const _SVG_ATTRS = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill=
 const ICON_TABLET  = `<svg ${_SVG_ATTRS}><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/></svg>`;
 const ICON_CAPSULE = `<svg ${_SVG_ATTRS}><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/></svg>`;
 const ICON_BOTTLE  = `<svg ${_SVG_ATTRS}><rect x="9" y="1" width="6" height="3" rx="1"/><path d="M8 4h8l1 3v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V7l1-3z"/><line x1="7" y1="14" x2="17" y2="14"/></svg>`;
+const ICON_SPRAY   = `<svg ${_SVG_ATTRS}><path d="M7 3h4v5H7z"/><path d="M11 5h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h1"/><path d="M15 5c1 0 3-1 3-3"/><path d="M18 5l1.5-1.5M18 8l1.5 1.5M20 6.5h1.5"/></svg>`;
+const ICON_DROPS   = `<svg ${_SVG_ATTRS}><path d="M12 2C8 8 6 11 6 14a6 6 0 0 0 12 0c0-3-2-6-6-12z"/></svg>`;
+const ICON_INHALER = `<svg ${_SVG_ATTRS}><rect x="8" y="2" width="8" height="14" rx="3"/><path d="M8 10H5a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h3"/><path d="M5 16v3"/><line x1="12" y1="16" x2="12" y2="22"/></svg>`;
+const ICON_SYRINGE = `<svg ${_SVG_ATTRS}><path d="m18 2 4 4"/><path d="m17 7 3-3"/><path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5"/><path d="m9 11 4 4"/><path d="m5 19-3 3"/><path d="m14 4 6 6"/></svg>`;
+const ICON_CREAM   = `<svg ${_SVG_ATTRS}><path d="M14 2H6a2 2 0 0 0-2 2v3h16V4a2 2 0 0 0-2-2h-4z"/><path d="M4 7v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7H4z"/><path d="M9 13c1 1 3 1 4 0"/><path d="M9 17c1 1 3 1 4 0"/></svg>`;
 
-// Map an FDA openfda.dosage_form string to an icon (returns null if unknown).
-const getDoseFormIcon = (formKey) => {
-  const k = (formKey ?? '').toUpperCase();
-  if (/SOLUTION|SUSPENSION|SYRUP|ELIXIR|LIQUID|DROPS?|TINCTURE|\/ML/.test(k)) return ICON_BOTTLE;
-  if (/CAPSULE|SOFTGEL|GEL\s*CAP/.test(k))                                     return ICON_CAPSULE;
-  if (/TABLET|CAPLET|CHEWABLE|LOZENGE/.test(k))                                 return ICON_TABLET;
-  return null;
+const ICON_MAP = {
+  tablet:  ICON_TABLET,
+  capsule: ICON_CAPSULE,
+  bottle:  ICON_BOTTLE,
+  spray:   ICON_SPRAY,
+  drops:   ICON_DROPS,
+  inhaler: ICON_INHALER,
+  syringe: ICON_SYRINGE,
+  cream:   ICON_CREAM,
 };
 
-// Instant fallback: keyword-match on user-entered fields.
-const iconFromLocalFields = (name, dose, instructions) => {
-  const t = `${name} ${dose} ${instructions}`.toLowerCase();
-  if (/\/ml|ml\b|liquid|solution|suspension|syrup|elixir|\bdrops?\b/.test(t)) return ICON_BOTTLE;
-  if (/capsule|softgel|gel\s*cap/.test(t))                                     return ICON_CAPSULE;
-  return ICON_TABLET; // default for mg, tablet, caplet, or anything unrecognised
+// Resolve text to an icon key. Checks specific forms before generic liquid/capsule/tablet.
+const resolveIconKey = (text) => {
+  const t = (text ?? '').toLowerCase();
+  if (/\bsyringe\b|inject|subcutaneous|intramuscular|intravenous/.test(t)) return 'syringe';
+  if (/\binhaler\b|inhalation|aerosol|nebulizer|nebuliser/.test(t))         return 'inhaler';
+  if (/\bspray\b|nasal spray|pump spray/.test(t))                           return 'spray';
+  if (/\bdrops?\b|ophthalmic|otic|eye drop|ear drop/.test(t))               return 'drops';
+  if (/cream|ointment|\bgel\b|lotion|topical|patch/.test(t))                return 'cream';
+  if (/\/ml|ml\b|liquid|solution|suspension|syrup|elixir/.test(t))          return 'bottle';
+  if (/capsule|softgel|gel\s*cap/.test(t))                                  return 'capsule';
+  return 'tablet';
 };
+
+// Instant keyword-match on user-entered fields.
+const iconFromLocalFields = (name, dose, instructions) =>
+  ICON_MAP[resolveIconKey(`${name} ${dose} ${instructions}`)];
 
 // ── Product label image (DailyMed) — used by View Details modal ───────────────
 
@@ -1774,7 +1790,7 @@ const fetchProductLabelUrl = async (setId, medicationName) => {
 
 // ── Dose-form icon rendering for medication list rows ─────────────────────────
 
-const DOSE_FORM_CACHE_PREFIX = 'rxtracker_doseform_v1_';
+const DOSE_FORM_CACHE_PREFIX = 'rxtracker_doseform_v2_';
 const DOSE_FORM_CACHE_TTL    = 604800000; // 7 days
 
 const loadProductLabels = () => {
@@ -1790,14 +1806,14 @@ const loadProductLabels = () => {
 
     if (!setId) return;
 
-    // 2. Check localStorage for a previously resolved FDA dosage_form
+    // 2. Check localStorage for a previously resolved icon key
     const cacheKey = DOSE_FORM_CACHE_PREFIX + setId;
     try {
       const raw = localStorage.getItem(cacheKey);
       if (raw) {
-        const { form, ts } = JSON.parse(raw);
+        const { iconKey, ts } = JSON.parse(raw);
         if (Date.now() - ts < DOSE_FORM_CACHE_TTL) {
-          const icon = getDoseFormIcon(form);
+          const icon = ICON_MAP[iconKey];
           if (icon) setIcon(icon);
           return;
         }
@@ -1805,15 +1821,21 @@ const loadProductLabels = () => {
       }
     } catch {}
 
-    // 3. Background fetch from FDA OpenData; update icon + cache on success
+    // 3. Background fetch from FDA OpenData; combine prose fields for accurate matching
     try {
       const res  = await fetch(apiProxy(`https://api.fda.gov/drug/label.json?search=openfda.set_id:"${encodeURIComponent(setId)}"&limit=1`));
       if (!res.ok) return;
       const data = await res.json();
-      const form = data?.results?.[0]?.openfda?.dosage_form?.[0] ?? '';
-      try { localStorage.setItem(cacheKey, JSON.stringify({ form, ts: Date.now() })); } catch {}
-      const icon = getDoseFormIcon(form);
-      if (icon) setIcon(icon);
+      const result = data?.results?.[0] ?? {};
+      const productText = [
+        result.how_supplied?.[0],
+        result.dosage_forms_and_strengths?.[0],
+        result.description?.[0],
+        result.openfda?.dosage_form?.[0],
+      ].filter(Boolean).join(' ');
+      const iconKey = resolveIconKey(productText);
+      try { localStorage.setItem(cacheKey, JSON.stringify({ iconKey, ts: Date.now() })); } catch {}
+      setIcon(ICON_MAP[iconKey] ?? ICON_TABLET);
     } catch {}
   });
 };
