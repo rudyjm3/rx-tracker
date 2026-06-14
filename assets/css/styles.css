@@ -188,10 +188,44 @@ h1 {
   padding: 1.5rem;
 }
 
-.hero-card strong {
-  font-size: 4rem;
-  letter-spacing: -0.08em;
+.adherence-ring-wrap {
+  align-items: center;
+  display: flex;
+  height: 110px;
+  justify-content: center;
+  position: relative;
+  width: 110px;
+}
+
+.adherence-ring {
+  height: 100%;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.adherence-ring-track {
+  fill: none;
+  stroke: rgb(255 255 255 / 20%);
+  stroke-width: 8;
+}
+
+.adherence-ring-fill {
+  fill: none;
+  stroke: #fff;
+  stroke-dasharray: 263.89;
+  stroke-dashoffset: 263.89;
+  stroke-linecap: round;
+  stroke-width: 8;
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adherence-ring-num {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
   line-height: 1;
+  pointer-events: none;
+  position: absolute;
 }
 
 .hero-left {

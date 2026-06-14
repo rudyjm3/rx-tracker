@@ -2452,6 +2452,28 @@ window.addEventListener('appinstalled', () => {
   deferredInstallPrompt = null;
 });
 
+// ── Adherence ring animation ──────────────────────────────────────────────────
+
+const adherenceRingFill = document.querySelector('.adherence-ring-fill');
+const adherenceNum = document.querySelector('[data-adherence-num]');
+if (adherenceRingFill && adherenceNum) {
+  const pct = Math.min(100, Math.max(0, parseInt(adherenceRingFill.dataset.adherencePct, 10) || 0));
+  const circumference = 263.89;
+  const duration = 1100;
+  let startTime = null;
+
+  const tick = (timestamp) => {
+    if (!startTime) startTime = timestamp;
+    const progress = Math.min((timestamp - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    adherenceRingFill.style.strokeDashoffset = circumference * (1 - (eased * pct) / 100);
+    adherenceNum.textContent = Math.round(eased * pct) + '%';
+    if (progress < 1) requestAnimationFrame(tick);
+  };
+
+  requestAnimationFrame(tick);
+}
+
 // ── Push notification status panel (Settings page) ────────────────────────────
 
 const pushStatusPanel = document.querySelector('[data-push-status-panel]');

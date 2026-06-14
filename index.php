@@ -651,7 +651,13 @@ foreach ($recentLogs as $log) {
 
     <div class="hero-card" aria-label="Today's adherence summary">
       <span class="stat-label">Today's adherence</span>
-      <strong><?= e((string) $adherence) ?>%</strong>
+      <div class="adherence-ring-wrap">
+        <svg class="adherence-ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="adherence-ring-track" cx="50" cy="50" r="42"/>
+          <circle class="adherence-ring-fill" cx="50" cy="50" r="42" data-adherence-pct="<?= e((string) $adherence) ?>"/>
+        </svg>
+        <span class="adherence-ring-num" data-adherence-num>0%</span>
+      </div>
       <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
       <?php if ($onTimeCount + $lateCount > 0): ?>
         <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?></span>
