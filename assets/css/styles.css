@@ -2160,14 +2160,19 @@ textarea:focus,
 
 .product-label-placeholder {
   align-items: center;
-  background: #f0f4fb;
-  border: 1px solid #dce4f0;
-  border-radius: 0.5rem;
-  color: #9baec8;
+  background: #eef1ff;
+  border-radius: 50%;
+  color: #4f6ef7;
   display: flex;
+  flex-shrink: 0;
   height: 48px;
   justify-content: center;
   width: 48px;
+}
+
+.product-label-placeholder svg {
+  height: 26px;
+  width: 26px;
 }
 
 /* ── View details link-button ────────────────────────────────────────────── */

@@ -1689,12 +1689,35 @@ if (medNameInput) {
   medNameInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideDrugDropdown(); });
 }
 
-// ── Pill image loading ────────────────────────────────────────────────────────
+// ── Dose-form icons ───────────────────────────────────────────────────────────
+
+const _SVG_ATTRS = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+
+const ICON_TABLET  = `<svg ${_SVG_ATTRS}><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/></svg>`;
+const ICON_CAPSULE = `<svg ${_SVG_ATTRS}><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/></svg>`;
+const ICON_BOTTLE  = `<svg ${_SVG_ATTRS}><rect x="9" y="1" width="6" height="3" rx="1"/><path d="M8 4h8l1 3v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V7l1-3z"/><line x1="7" y1="14" x2="17" y2="14"/></svg>`;
+
+// Map an FDA openfda.dosage_form string to an icon (returns null if unknown).
+const getDoseFormIcon = (formKey) => {
+  const k = (formKey ?? '').toUpperCase();
+  if (/SOLUTION|SUSPENSION|SYRUP|ELIXIR|LIQUID|DROPS?|TINCTURE|\/ML/.test(k)) return ICON_BOTTLE;
+  if (/CAPSULE|SOFTGEL|GEL\s*CAP/.test(k))                                     return ICON_CAPSULE;
+  if (/TABLET|CAPLET|CHEWABLE|LOZENGE/.test(k))                                 return ICON_TABLET;
+  return null;
+};
+
+// Instant fallback: keyword-match on user-entered fields.
+const iconFromLocalFields = (name, dose, instructions) => {
+  const t = `${name} ${dose} ${instructions}`.toLowerCase();
+  if (/\/ml|ml\b|liquid|solution|suspension|syrup|elixir|\bdrops?\b/.test(t)) return ICON_BOTTLE;
+  if (/capsule|softgel|gel\s*cap/.test(t))                                     return ICON_CAPSULE;
+  return ICON_TABLET; // default for mg, tablet, caplet, or anything unrecognised
+};
+
+// ── Product label image (DailyMed) — used by View Details modal ───────────────
 
 const PRODUCT_LABEL_CACHE_PREFIX = 'rxtracker_pillimg_v2_';
 const PRODUCT_LABEL_TTL = 86400000;
-
-const PILL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H20a2 2 0 0 1 2 2v3"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg>`;
 
 // Key by setId when available so a medication edited to a different drug
 // immediately resolves its own cache entry rather than reusing the old one.
@@ -1749,41 +1772,49 @@ const fetchProductLabelUrl = async (setId, medicationName) => {
   } catch { return null; }
 };
 
-const applyProductLabel = (wrap, medicationId, setId, url) => {
-  wrap.innerHTML = '';
-  if (url) {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = '';
-    img.width = 48;
-    img.height = 48;
-    img.addEventListener('error', () => {
-      writeProductLabelCache(medicationId, setId, null);
-      applyProductLabel(wrap, medicationId, setId, null);
-    });
-    img.addEventListener('click', () => {
-      openImageLightbox(url, wrap.dataset.medicationName ?? '');
-    });
-    wrap.appendChild(img);
-  } else {
-    wrap.innerHTML = `<span class="product-label-placeholder">${PILL_SVG}</span>`;
-  }
-};
+// ── Dose-form icon rendering for medication list rows ─────────────────────────
+
+const DOSE_FORM_CACHE_PREFIX = 'rxtracker_doseform_v1_';
+const DOSE_FORM_CACHE_TTL    = 604800000; // 7 days
 
 const loadProductLabels = () => {
   document.querySelectorAll('[data-product-label-wrap]').forEach(async (wrap) => {
-    const { medicationId, setId = '', medicationName = '' } = wrap.dataset;
-    if (!medicationId) return;
-    wrap.innerHTML = `<span class="product-label-placeholder">${PILL_SVG}</span>`;
-    const cached = readProductLabelCache(medicationId, setId);
-    if (cached !== undefined) { applyProductLabel(wrap, medicationId, setId, cached); return; }
+    const { setId = '', medicationName = '', dose = '', instructions = '' } = wrap.dataset;
+
+    const setIcon = (icon) => {
+      wrap.innerHTML = `<span class="product-label-placeholder">${icon}</span>`;
+    };
+
+    // 1. Instant: keyword match on user-entered fields
+    setIcon(iconFromLocalFields(medicationName, dose, instructions));
+
+    if (!setId) return;
+
+    // 2. Check localStorage for a previously resolved FDA dosage_form
+    const cacheKey = DOSE_FORM_CACHE_PREFIX + setId;
     try {
-      const url = await fetchProductLabelUrl(setId, medicationName);
-      writeProductLabelCache(medicationId, setId, url);
-      applyProductLabel(wrap, medicationId, setId, url);
-    } catch {
-      writeProductLabelCache(medicationId, setId, null);
-    }
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const { form, ts } = JSON.parse(raw);
+        if (Date.now() - ts < DOSE_FORM_CACHE_TTL) {
+          const icon = getDoseFormIcon(form);
+          if (icon) setIcon(icon);
+          return;
+        }
+        localStorage.removeItem(cacheKey);
+      }
+    } catch {}
+
+    // 3. Background fetch from FDA OpenData; update icon + cache on success
+    try {
+      const res  = await fetch(apiProxy(`https://api.fda.gov/drug/label.json?search=openfda.set_id:"${encodeURIComponent(setId)}"&limit=1`));
+      if (!res.ok) return;
+      const data = await res.json();
+      const form = data?.results?.[0]?.openfda?.dosage_form?.[0] ?? '';
+      try { localStorage.setItem(cacheKey, JSON.stringify({ form, ts: Date.now() })); } catch {}
+      const icon = getDoseFormIcon(form);
+      if (icon) setIcon(icon);
+    } catch {}
   });
 };
 

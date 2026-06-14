@@ -15,7 +15,9 @@
              data-product-label-wrap
              data-medication-id="<?= e((string) $medication['id']) ?>"
              data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>"
-             data-medication-name="<?= e((string) $medication['name']) ?>">
+             data-medication-name="<?= e((string) $medication['name']) ?>"
+             data-dose="<?= e((string) $medication['dose']) ?>"
+             data-instructions="<?= e((string) $medication['instructions']) ?>">
         </div>
         <div class="medication-content">
           <strong><?= e((string) $medication['name']) ?></strong>
