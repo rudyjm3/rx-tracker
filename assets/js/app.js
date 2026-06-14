@@ -1628,14 +1628,25 @@ const hideDrugDropdown = () => {
 // Matches a dose suffix like "50 MG", "0.5 MCG", "10 ML", "100 UNITS", "20 IU", "5%"
 const DOSE_SUFFIX_RE = /^(.*?)\s+(\d[\d.]*\s*(?:MG|MCG|ML|UNITS?|IU|%)\b.*)$/i;
 
-const showDrugDropdown = (names) => {
+const showDrugDropdown = (items) => {
   if (!autocompleteDropdown) return;
   autocompleteDropdown.innerHTML = '';
-  if (!names.length) { hideDrugDropdown(); return; }
-  names.forEach((name) => {
+  if (!items.length) { hideDrugDropdown(); return; }
+  items.forEach(({ name, type }) => {
     const li = document.createElement('li');
     li.className = 'autocomplete-item';
-    li.textContent = name;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    li.appendChild(nameSpan);
+
+    if (type) {
+      const badge = document.createElement('span');
+      badge.className = `autocomplete-badge autocomplete-badge--${type}`;
+      badge.textContent = type === 'brand' ? 'Brand' : 'Generic';
+      li.appendChild(badge);
+    }
+
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const doseMatch = name.match(DOSE_SUFFIX_RE);
@@ -1656,13 +1667,45 @@ const showDrugDropdown = (names) => {
 
 const fetchDrugSuggestions = async (query) => {
   try {
-    const res = await fetch(
-      apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${encodeURIComponent(query)}&pagesize=10`)
-    );
-    if (!res.ok) return;
-    const data = await res.json();
-    const names = [...new Set((data?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean))];
-    showDrugDropdown(names);
+    const q = encodeURIComponent(query);
+    const [dmRes, fdaRes] = await Promise.all([
+      fetch(apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${q}&pagesize=12`)),
+      fetch(apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=20`)),
+    ]);
+
+    // DailyMed provides the list — good prefix matching, always returns [] on no match (never 404)
+    const dmNames = dmRes.ok
+      ? ((await dmRes.json())?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean)
+      : [];
+
+    if (!dmNames.length) { hideDrugDropdown(); return; }
+
+    // OpenFDA provides brand/generic classification; failure is graceful (names still shown, just unlabelled)
+    const brandSet = new Set();
+    const genericSet = new Set();
+    if (fdaRes.ok) {
+      const fdaData = await fdaRes.json();
+      for (const result of (fdaData?.results ?? [])) {
+        for (const name of (result.openfda?.brand_name ?? [])) brandSet.add(name.toUpperCase());
+        for (const name of (result.openfda?.generic_name ?? [])) genericSet.add(name.toUpperCase());
+      }
+    }
+
+    // Classify each DailyMed name; check both the full name and the base name (without dose suffix)
+    const seen = new Set();
+    const items = [];
+    for (const name of dmNames) {
+      const key = name.toUpperCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const baseKey = (name.match(DOSE_SUFFIX_RE)?.[1] ?? name).toUpperCase();
+      const type = brandSet.has(key) || brandSet.has(baseKey) ? 'brand'
+                 : genericSet.has(key) || genericSet.has(baseKey) ? 'generic'
+                 : null;
+      items.push({ name, type });
+    }
+
+    showDrugDropdown(items);
   } catch { hideDrugDropdown(); }
 };
 
