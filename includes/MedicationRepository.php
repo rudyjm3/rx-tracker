@@ -329,9 +329,13 @@ final class MedicationRepository
                 if (!$scheduledAt instanceof DateTimeImmutable) {
                     throw new RuntimeException('Invalid scheduled dose time.');
                 }
-                // Use the scheduled slot time (not now) so that taking a snoozed dose
-                // from Today's Schedule is never blocked by sub-minute timing drift.
-                $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                // Skip the interval check for snoozed doses — the snooze itself is
+                // explicit user intent to take the dose later, so the original slot
+                // time should not block it.
+                $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
+                if (!$isSnoozed) {
+                    $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                }
             }
 
             $existing = $this->db->prepare(
