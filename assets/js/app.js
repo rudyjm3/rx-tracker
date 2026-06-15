@@ -1614,6 +1614,37 @@ if (medicationForm) {
   });
 }
 
+// ── Inventory type dynamic fields ────────────────────────────────────────────
+
+if (medicationForm) {
+  const inventoryTypeSelect = medicationForm.querySelector('[data-inventory-type-select]');
+  const invQtyLabel     = medicationForm.querySelector('[data-inv-qty-label]');
+  const invLiquidLabel  = medicationForm.querySelector('[data-inv-liquid-label]');
+  const invUnitLabels   = medicationForm.querySelectorAll('[data-inv-unit-label]');
+
+  const inventoryUnits = {
+    pills:     'tablets',
+    liquid:    'mL',
+    inhaler:   'puffs',
+    injection: 'units',
+    patch:     'patches',
+    drops:     'drops',
+    other:     'units',
+  };
+
+  const applyInventoryVisibility = () => {
+    const type = inventoryTypeSelect?.value ?? 'pills';
+    const isLiquid = type === 'liquid';
+    if (invQtyLabel)    invQtyLabel.style.display    = isLiquid ? 'none' : '';
+    if (invLiquidLabel) invLiquidLabel.style.display = isLiquid ? ''     : 'none';
+    const unit = inventoryUnits[type] ?? 'units';
+    invUnitLabels.forEach((el) => { el.textContent = unit; });
+  };
+
+  inventoryTypeSelect?.addEventListener('change', applyInventoryVisibility);
+  applyInventoryVisibility();
+}
+
 // ── Drug name autocomplete ────────────────────────────────────────────────────
 
 const medNameInput = document.querySelector('[data-med-name-input]');

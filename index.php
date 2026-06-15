@@ -82,8 +82,9 @@ function isLate(array $log, int $graceMinutes): bool
 
 function daysUntilRunout(array $medication): ?int
 {
-    $pillCount = (int) ($medication['pill_count'] ?? 0);
-    if ($pillCount <= 0) {
+    $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
+    $qtyPerDose = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
+    if ($qty <= 0) {
         return 0;
     }
     $dosesPerDay = 0;
@@ -98,7 +99,7 @@ function daysUntilRunout(array $medication): ?int
     if ($dosesPerDay <= 0) {
         return null;
     }
-    return (int) floor($pillCount / $dosesPerDay);
+    return (int) floor($qty / ($dosesPerDay * $qtyPerDose));
 }
 
 $repository = new MedicationRepository(db());
@@ -220,7 +221,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'add_medication' || $action === 'update_medication') {
             $id = (int) post_string('medication_id');
             $name = post_string('name');
-            $dose = post_string('dose');
             $instructions = post_string('instructions');
             $scheduleMode = post_string('schedule_mode');
             $doseTimes = parseDoseTimes(post_string('dose_times'));
@@ -229,14 +229,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $firstDoseRaw = post_string('first_dose_time');
             $firstDoseTime = $firstDoseRaw === '' ? null : parseTimeValue($firstDoseRaw);
             $asNeeded = post_string('as_needed') === '1';
-            $pillCount = max(0, (int) post_string('pill_count'));
             $lowSupplyThreshold = max(0, (int) post_string('low_supply_threshold'));
             $trackDoseFeedback = post_string('track_dose_feedback') === '1';
             $setId = substr(trim(post_string('set_id')), 0, 64);
             $groupIdRaw = (int) post_string('group_id');
 
-            if ($name === '' || $dose === '') {
-                throw new RuntimeException('Medication name and dose are required.');
+            $medicationType = post_string('medication_type');
+            if (!in_array($medicationType, ['prescription', 'otc', 'supplement'], true)) {
+                $medicationType = 'prescription';
+            }
+
+            $doseAmountRaw = post_string('dose_amount');
+            $doseAmount = $doseAmountRaw !== '' ? (float) $doseAmountRaw : null;
+            $doseUnit = post_string('dose_unit') ?: null;
+            $doseForm = post_string('dose_form') ?: null;
+
+            $inventoryType = post_string('inventory_type');
+            if (!in_array($inventoryType, ['pills', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'], true)) {
+                $inventoryType = 'pills';
+            }
+
+            if ($inventoryType === 'liquid') {
+                $bottleAmount = post_string('bottle_amount');
+                $bottleUnit = post_string('bottle_unit');
+                $startingQtyRaw = $bottleUnit === 'oz'
+                    ? (string) round((float) $bottleAmount * 29.5735, 3)
+                    : $bottleAmount;
+            } else {
+                $startingQtyRaw = post_string('starting_quantity');
+            }
+            $startingQuantity = max(0.0, (float) $startingQtyRaw);
+            $quantityPerDoseRaw = post_string('quantity_per_dose');
+            $quantityPerDose = $quantityPerDoseRaw !== '' ? max(0.001, (float) $quantityPerDoseRaw) : 1.0;
+
+            if ($name === '') {
+                throw new RuntimeException('Medication name is required.');
             }
 
             if ($scheduleMode === 'interval') {
@@ -244,13 +271,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($action === 'add_medication') {
-                $repository->createMedication($name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
+                $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose);
                 $newMedicationId = $repository->lastInsertedMedicationId();
                 if ($groupIdRaw > 0) {
                     $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
                 }
             } else {
-                $repository->updateMedication($id, $name, $dose, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $pillCount, $lowSupplyThreshold, $trackDoseFeedback, $setId);
+                $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose);
                 if ($groupIdRaw > 0) {
                     $repository->addMedicationToGroup($groupIdRaw, $id);
                 } else {
@@ -560,8 +587,8 @@ $groups = $repository->allGroups();
 $ungroupedMedications = $repository->ungroupedActiveMedications();
 
 $lowSupplyMeds = array_values(array_filter($medications, static fn(array $m): bool =>
-    (int) ($m['low_supply_threshold'] ?? 0) > 0 &&
-    (int) ($m['pill_count'] ?? 0) <= (int) ($m['low_supply_threshold'] ?? 0)
+    (float) ($m['low_supply_threshold'] ?? 0) > 0 &&
+    (float) ($m['current_quantity'] ?? $m['pill_count'] ?? 0) <= (float) ($m['low_supply_threshold'] ?? 0)
 ));
 
 $onTimeCount = 0;
@@ -632,14 +659,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                   <?php foreach ($ndItem['_group_members'] as $ndMember): ?>
                     <div class="group-meds-member">
                       <span class="hero-med-name"><?= e((string) $ndMember['name']) ?></span>
-                      <span class="hero-med-dose"><?= e((string) $ndMember['dose']) ?></span>
+                      <span class="hero-med-dose"><?= e(trim((string) ($ndMember['dose_amount'] ?? '') . ' ' . (string) ($ndMember['dose_unit'] ?? ''))) ?></span>
                     </div>
                   <?php endforeach; ?>
                 </div>
               <?php else: ?>
                 <p class="hero-next-dose-name">
                   <?= e((string) $ndItem['name']) ?>
-                  <span class="hero-next-dose-dose"><?= e((string) $ndItem['dose']) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
+                  <span class="hero-next-dose-dose"><?= e(trim((string) ($ndItem['dose_amount'] ?? '') . ' ' . (string) ($ndItem['dose_unit'] ?? ''))) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
                 </p>
               <?php endif; ?>
             </div>
@@ -691,7 +718,42 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <input name="name" required autocomplete="off" data-med-name-input value="<?= e((string) ($editing['name'] ?? '')) ?>">
           <ul class="autocomplete-dropdown" data-autocomplete-dropdown hidden></ul>
         </label>
-        <label>Dose<input name="dose" required value="<?= e((string) ($editing['dose'] ?? '')) ?>"></label>
+
+        <fieldset class="form-section">
+          <legend>Dose info</legend>
+          <label>Medication type
+            <select name="medication_type">
+              <option value="prescription" <?= (($editing['medication_type'] ?? 'prescription') === 'prescription') ? 'selected' : '' ?>>Prescription</option>
+              <option value="otc"          <?= (($editing['medication_type'] ?? '') === 'otc')          ? 'selected' : '' ?>>OTC Medication</option>
+              <option value="supplement"   <?= (($editing['medication_type'] ?? '') === 'supplement')   ? 'selected' : '' ?>>Vitamin / Supplement</option>
+            </select>
+          </label>
+          <label>Dose amount
+            <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e((string) ($editing['dose_amount'] ?? '')) ?>">
+          </label>
+          <label>Dose unit
+            <select name="dose_unit" data-dailymed-dose-unit>
+              <?php
+              $doseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
+              $selectedDoseUnit = (string) ($editing['dose_unit'] ?? 'mg');
+              foreach ($doseUnits as $u): ?>
+              <option value="<?= e($u) ?>" <?= $selectedDoseUnit === $u ? 'selected' : '' ?>><?= e($u) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <label>Dose form <span class="field-optional">(optional)</span>
+            <select name="dose_form" data-dailymed-dose-form>
+              <?php
+              $doseForms = ['', 'tablet', 'capsule', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'];
+              $doseFormLabels = ['' => '-- select --', 'tablet' => 'Tablet', 'capsule' => 'Capsule', 'liquid' => 'Liquid', 'inhaler' => 'Inhaler', 'injection' => 'Injection', 'patch' => 'Patch', 'drops' => 'Drops', 'other' => 'Other'];
+              $selectedDoseForm = (string) ($editing['dose_form'] ?? '');
+              foreach ($doseForms as $f): ?>
+              <option value="<?= e($f) ?>" <?= $selectedDoseForm === $f ? 'selected' : '' ?>><?= e($doseFormLabels[$f]) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+        </fieldset>
+
         <label>Schedule type
           <select name="schedule_mode">
             <option value="fixed_times" <?= (($editing['schedule_mode'] ?? '') === 'fixed_times') ? 'selected' : '' ?>>Fixed times</option>
@@ -719,10 +781,55 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
           </select>
         </label>
-        <label>Pill count<input type="number" min="0" name="pill_count" value="<?= e((string) ($editing['pill_count'] ?? 0)) ?>"></label>
-        <label>Low supply threshold (pills)
-          <input type="number" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 0)) ?>">
-        </label>
+        <fieldset class="form-section" data-inventory-section>
+          <legend>Inventory</legend>
+          <label>Inventory type
+            <select name="inventory_type" data-inventory-type-select>
+              <?php
+              $invTypes = ['pills' => 'Pills / tablets / capsules', 'liquid' => 'Liquid', 'inhaler' => 'Inhaler', 'injection' => 'Injection pen / vial', 'patch' => 'Patch', 'drops' => 'Drops', 'other' => 'Other'];
+              $selectedInvType = (string) ($editing['inventory_type'] ?? 'pills');
+              foreach ($invTypes as $val => $label): ?>
+              <option value="<?= e($val) ?>" <?= $selectedInvType === $val ? 'selected' : '' ?>><?= e($label) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+
+          <label data-inv-qty-label>Starting quantity
+            <span class="input-with-unit">
+              <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string) ($editing['current_quantity'] ?? $editing['pill_count'] ?? 0)) ?>">
+              <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
+            </span>
+          </label>
+
+          <label data-inv-liquid-label style="display:none">Bottle amount
+            <span class="input-with-unit">
+              <?php
+              $storedMl = (float) ($editing['current_quantity'] ?? 0);
+              $bottleDisplayVal = $storedMl > 0 ? round($storedMl, 3) : '';
+              ?>
+              <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e((string) $bottleDisplayVal) ?>">
+              <select name="bottle_unit" data-bottle-unit-select>
+                <option value="mL">mL</option>
+                <option value="oz">oz</option>
+              </select>
+            </span>
+          </label>
+
+          <label>Dose reduces inventory by
+            <span class="input-with-unit">
+              <input type="number" step="0.001" min="0.001" name="quantity_per_dose" value="<?= e((string) ($editing['quantity_per_dose'] ?? 1)) ?>">
+              <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
+            </span>
+          </label>
+
+          <label>Low supply alert at
+            <span class="input-with-unit">
+              <input type="number" step="0.001" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 0)) ?>">
+              <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
+            </span>
+          </label>
+        </fieldset>
+
         <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
         <label>Medication group <span class="field-optional">(optional)</span>
           <select name="group_id">
@@ -1110,7 +1217,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <?php $exportDays = daysUntilRunout($med); ?>
           <tr>
             <td><?= e((string) $med['name']) ?></td>
-            <td><?= e((string) $med['dose']) ?></td>
+            <td><?= e(trim((string) ($med['dose_amount'] ?? '') . ' ' . (string) ($med['dose_unit'] ?? ''))) ?></td>
             <td>
               <?php if ((string) $med['schedule_mode'] === 'interval'): ?>
                 Every <?= e((string) $med['interval_hours']) ?>h from <?= e(to12h((string) $med['first_dose_time'])) ?>
@@ -1119,7 +1226,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <?php endif; ?>
             </td>
             <td><?= e((string) ($med['instructions'] ?: '—')) ?></td>
-            <td><?= e((string) $med['pill_count']) ?></td>
+            <td><?= e((string) ($med['current_quantity'] ?? $med['pill_count'] ?? 0)) ?> <?= e((string) ($med['inventory_unit'] ?? 'tablets')) ?></td>
             <td><?= e((string) $med['low_supply_threshold']) ?></td>
             <td>
               <?php if ($exportDays !== null): ?>
@@ -1206,7 +1313,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <?php if ($lowSupplyMeds !== []): ?>
   <div class="warning-banner" role="alert">
     <?php foreach ($lowSupplyMeds as $lowMed): ?>
-      <p><strong><?= e((string) $lowMed['name']) ?></strong> &mdash; only <?= e((string) $lowMed['pill_count']) ?> pill<?= (int) $lowMed['pill_count'] === 1 ? '' : 's' ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?>)</p>
+      <?php
+        $lowCurQty = (float) ($lowMed['current_quantity'] ?? $lowMed['pill_count'] ?? 0);
+        $lowUnit   = (string) ($lowMed['inventory_unit'] ?? 'tablets');
+        $lowCurDisplay = $lowCurQty == (int) $lowCurQty ? (string) (int) $lowCurQty : rtrim(number_format($lowCurQty, 3), '0');
+      ?>
+      <p><strong><?= e((string) $lowMed['name']) ?></strong> &mdash; only <?= e($lowCurDisplay) ?> <?= e($lowUnit) ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?> <?= e($lowUnit) ?>)</p>
     <?php endforeach; ?>
   </div>
   <?php endif; ?>

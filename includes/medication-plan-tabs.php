@@ -16,12 +16,19 @@
              data-medication-id="<?= e((string) $medication['id']) ?>"
              data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>"
              data-medication-name="<?= e((string) $medication['name']) ?>"
-             data-dose="<?= e((string) $medication['dose']) ?>"
+             data-dose="<?= e(trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''))) ?>"
              data-instructions="<?= e((string) $medication['instructions']) ?>">
         </div>
         <div class="medication-content">
-          <strong><?= e((string) $medication['name']) ?></strong>
-          <p><?= e((string) $medication['dose']) ?></p>
+          <?php
+            $medTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+            $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
+            $medTypeLabel  = $medTypeLabels[$medTypeSlug] ?? 'Rx';
+          ?>
+          <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($medTypeSlug) ?>"><?= e($medTypeLabel) ?></span>
+          <?php if (!empty($medication['dose_amount']) || !empty($medication['dose_unit'])): ?>
+          <p><?= e((string) ($medication['dose_amount'] ?? '')) ?> <?= e((string) ($medication['dose_unit'] ?? '')) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
+          <?php endif; ?>
           <p>
             <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
               Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(to12h((string) $medication['first_dose_time'])) ?>
@@ -30,10 +37,18 @@
             <?php endif; ?>
             <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
           </p>
-          <p class="pill-meta">Pills: <?= e((string) $medication['pill_count']) ?> / <?= e((string) $medication['starting_pill_count']) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> pills</p>
-          <?php if ((int) $medication['starting_pill_count'] > 0): ?>
+          <?php
+            $curQty   = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
+            $startQty = (float) ($medication['starting_quantity'] ?? $medication['starting_pill_count'] ?? 0);
+            $invUnit  = (string) ($medication['inventory_unit'] ?? 'tablets');
+            $lowThresh = (float) ($medication['low_supply_threshold'] ?? 0);
+            $curQtyDisplay   = $curQty == (int) $curQty ? (string) (int) $curQty : rtrim(number_format($curQty, 3), '0');
+            $startQtyDisplay = $startQty == (int) $startQty ? (string) (int) $startQty : rtrim(number_format($startQty, 3), '0');
+          ?>
+          <p class="pill-meta"><?= e($invUnit === 'tablets' ? 'Pills' : ucfirst($invUnit)) ?>: <?= e($curQtyDisplay) ?> / <?= e($startQtyDisplay) ?> | Refill alert at <?= e((string) $medication['low_supply_threshold']) ?> <?= e($invUnit) ?></p>
+          <?php if ($startQty > 0): ?>
             <?php
-              $supplyPercent = min(100, (int) round((int) $medication['pill_count'] / (int) $medication['starting_pill_count'] * 100));
+              $supplyPercent = min(100, (int) round($curQty / $startQty * 100));
               $supplyBarClass = $supplyPercent <= 25 ? ' pill-supply-bar-fill--critical' : ($supplyPercent <= 50 ? ' pill-supply-bar-fill--low' : '');
             ?>
             <div class="pill-supply-bar" role="progressbar" aria-valuenow="<?= e((string) $supplyPercent) ?>" aria-valuemin="0" aria-valuemax="100" aria-label="<?= e((string) $supplyPercent) ?>% supply remaining">
@@ -44,7 +59,7 @@
             <p class="pill-meta<?= $daysLeft <= 7 ? ' refill-soon' : '' ?>">~<?= e((string) $daysLeft) ?> days left &middot; runs out ~<?= e((new DateTime())->modify('+' . $daysLeft . ' days')->format('M j')) ?></p>
           <?php endif; ?>
           <?php if (!empty($medication['last_refill'])): ?>
-            <p class="pill-meta refill-meta">Last refill: <?= e((new DateTimeImmutable((string) $medication['last_refill']['refill_date']))->format('M j, Y')) ?> &middot; <?= e((string) $medication['last_refill']['amount']) ?> pills</p>
+            <p class="pill-meta refill-meta">Last refill: <?= e((new DateTimeImmutable((string) $medication['last_refill']['refill_date']))->format('M j, Y')) ?> &middot; <?= e((string) $medication['last_refill']['amount']) ?> <?= e($invUnit) ?></p>
           <?php endif; ?>
           <button type="button" class="view-details-link"
                   data-view-details
@@ -115,7 +130,9 @@
       <div class="medication-row">
         <div>
           <strong><?= e((string) $medication['name']) ?></strong>
-          <p><?= e((string) $medication['dose']) ?></p>
+          <?php if (!empty($medication['dose_amount']) || !empty($medication['dose_unit'])): ?>
+          <p><?= e(trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''))) ?></p>
+          <?php endif; ?>
         </div>
         <div class="row-actions">
           <form method="post" action="index.php">
@@ -185,7 +202,7 @@
           <?php foreach ($group['members'] as $member): ?>
             <div class="group-member-row">
               <span class="group-member-name"><?= e((string) $member['name']) ?></span>
-              <span class="group-member-dose"><?= e((string) $member['dose']) ?></span>
+              <span class="group-member-dose"><?= e(trim((string) ($member['dose_amount'] ?? '') . ' ' . (string) ($member['dose_unit'] ?? ''))) ?></span>
               <?php if ((int) $member['track_dose_feedback'] === 1): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
               <?php endif; ?>
@@ -214,7 +231,8 @@
             <select name="medication_id" class="group-add-select">
               <option value="">Add a medication&hellip;</option>
               <?php foreach ($eligibleToAdd as $ungrouped): ?>
-                <option value="<?= e((string) $ungrouped['id']) ?>" data-name="<?= e((string) $ungrouped['name']) ?>" data-dose="<?= e((string) $ungrouped['dose']) ?>"><?= e((string) $ungrouped['name']) ?> &mdash; <?= e((string) $ungrouped['dose']) ?></option>
+                <?php $ungroupedDose = trim((string) ($ungrouped['dose_amount'] ?? '') . ' ' . (string) ($ungrouped['dose_unit'] ?? '')); ?>
+                <option value="<?= e((string) $ungrouped['id']) ?>" data-name="<?= e((string) $ungrouped['name']) ?>" data-dose="<?= e($ungroupedDose) ?>"><?= e((string) $ungrouped['name']) ?><?= $ungroupedDose !== '' ? ' &mdash; ' . e($ungroupedDose) : '' ?></option>
               <?php endforeach; ?>
             </select>
             <button type="submit" class="secondary group-add-btn">Add</button>
