@@ -80,6 +80,38 @@ function isLate(array $log, int $graceMinutes): bool
     }
 }
 
+function minutesLate(array $log, int $graceMinutes): ?int
+{
+    if ((string) ($log['status'] ?? '') !== 'taken') {
+        return null;
+    }
+    $takenAt = (string) ($log['taken_at'] ?? '');
+    $scheduledDate = (string) ($log['scheduled_for_date'] ?? '');
+    $scheduledTime = (string) ($log['scheduled_time'] ?? '');
+    if ($takenAt === '' || $scheduledDate === '' || $scheduledTime === '') {
+        return null;
+    }
+    try {
+        $scheduled = new DateTimeImmutable($scheduledDate . ' ' . $scheduledTime);
+        $threshold = $scheduled->modify('+' . $graceMinutes . ' minutes');
+        $taken = new DateTimeImmutable($takenAt);
+        $diff = $taken->getTimestamp() - $threshold->getTimestamp();
+        return $diff > 0 ? (int) ceil($diff / 60) : null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function formatLate(int $minutes): string
+{
+    if ($minutes < 60) {
+        return $minutes . 'mins late';
+    }
+    $hrs = intdiv($minutes, 60);
+    $mins = $minutes % 60;
+    return $mins > 0 ? $hrs . 'hr ' . $mins . 'mins late' : $hrs . 'hr late';
+}
+
 function daysUntilRunout(array $medication): ?int
 {
     $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
@@ -1348,7 +1380,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
               <?php endif; ?>
               <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
-                <span class="done-pill">Taken</span>
+                <?php $lateMin = minutesLate($dose, $graceMinutes); ?>
+                <span class="<?= $lateMin !== null ? 'warn-pill' : 'done-pill' ?>">Taken<?= $lateMin !== null ? ' (' . formatLate($lateMin) . ')' : '' ?></span>
               <?php elseif ((string) ($dose['status'] ?? '') === 'skipped'): ?>
                 <span class="warn-pill">Skipped</span>
               <?php endif; ?>
@@ -1402,10 +1435,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <div>
             <strong><?= e((string) $log['name']) ?></strong>
             <p>
-              <?php if ((string) $log['status'] === 'taken' && isLate($log, $graceMinutes)): ?>
-                <span class="warn-pill">Taken (late)</span>
-              <?php elseif ((string) $log['status'] === 'taken'): ?>
-                <span class="done-pill">Taken</span>
+              <?php if ((string) $log['status'] === 'taken'): ?>
+                <?php $lateMin = minutesLate($log, $graceMinutes); ?>
+                <span class="<?= $lateMin !== null ? 'warn-pill' : 'done-pill' ?>">Taken<?= $lateMin !== null ? ' (' . formatLate($lateMin) . ')' : '' ?></span>
               <?php elseif ((string) $log['status'] === 'skipped'): ?>
                 <span class="warn-pill">Skipped</span>
               <?php elseif ((string) $log['status'] === 'missed'): ?>

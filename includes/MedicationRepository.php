@@ -487,8 +487,11 @@ final class MedicationRepository
                     'as_needed' => (int) $medication['as_needed'] === 1,
                     'track_dose_feedback' => (int) $medication['track_dose_feedback'] === 1,
                     'reminder_time' => $time,
+                    'scheduled_for_date' => $date,
+                    'scheduled_time' => $time . ':00',
                     'status' => $log['status'] ?? null,
                     'note' => $log['note'] ?? '',
+                    'taken_at' => $log['taken_at'] ?? null,
                     'postponed_until' => $postpones[$key] ?? null,
                     'group_id' => $medGroup !== null ? (int) $medGroup['group_id'] : null,
                     'group_name' => $medGroup !== null ? (string) $medGroup['group_name'] : null,
@@ -1152,7 +1155,7 @@ final class MedicationRepository
 
     private function doseLogMapForDate(string $date): array
     {
-        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level FROM dose_logs WHERE scheduled_for_date = :date');
+        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level, taken_at FROM dose_logs WHERE scheduled_for_date = :date');
         $statement->execute(['date' => $date]);
         $map = [];
         foreach ($statement->fetchAll() as $row) {
@@ -1160,6 +1163,7 @@ final class MedicationRepository
                 'status' => (string) $row['status'],
                 'note' => (string) $row['note'],
                 'pain_level' => $row['pain_level'] !== null ? (int) $row['pain_level'] : null,
+                'taken_at' => $row['taken_at'] !== null ? (string) $row['taken_at'] : null,
             ];
         }
 
