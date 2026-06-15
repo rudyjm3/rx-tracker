@@ -1904,6 +1904,13 @@ textarea:focus,
   color: #6b7a96;
 }
 
+.field-hint {
+  color: #6b7a96;
+  font-size: 0.8rem;
+  display: block;
+  margin-top: 0.2rem;
+}
+
 .pain-level-selector {
   display: flex;
   flex-wrap: wrap;

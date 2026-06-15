@@ -774,6 +774,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="0" <?= ((int) ($editing['as_needed'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
             <option value="1" <?= ((int) ($editing['as_needed'] ?? 0) === 1) ? 'selected' : '' ?>>Yes</option>
           </select>
+          <small class="field-hint">If Yes, excluded from the dashboard's required dose count.</small>
         </label>
         <label>Track dose feedback (pain &amp; comments)
           <select name="track_dose_feedback">
