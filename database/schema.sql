@@ -143,3 +143,36 @@ CREATE TABLE IF NOT EXISTS push_delivery_log (
 
 ALTER TABLE push_delivery_log
     ADD COLUMN IF NOT EXISTS action_nonce VARCHAR(64) NOT NULL DEFAULT '';
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS medication_type ENUM('prescription','otc','supplement') NOT NULL DEFAULT 'prescription';
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS dose_amount DECIMAL(10,3) NULL;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS dose_unit VARCHAR(20) NULL;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS dose_form VARCHAR(30) NULL;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS inventory_type VARCHAR(30) NOT NULL DEFAULT 'pills';
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS inventory_unit VARCHAR(20) NOT NULL DEFAULT 'tablets';
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS starting_quantity DECIMAL(10,3) NULL;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS current_quantity DECIMAL(10,3) NULL;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,3) NOT NULL DEFAULT 1.000;
+
+UPDATE medications
+SET current_quantity  = pill_count,
+    starting_quantity = starting_pill_count,
+    inventory_unit    = 'tablets'
+WHERE current_quantity IS NULL;

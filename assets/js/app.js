@@ -1614,6 +1614,37 @@ if (medicationForm) {
   });
 }
 
+// ── Inventory type dynamic fields ────────────────────────────────────────────
+
+if (medicationForm) {
+  const inventoryTypeSelect = medicationForm.querySelector('[data-inventory-type-select]');
+  const invQtyLabel     = medicationForm.querySelector('[data-inv-qty-label]');
+  const invLiquidLabel  = medicationForm.querySelector('[data-inv-liquid-label]');
+  const invUnitLabels   = medicationForm.querySelectorAll('[data-inv-unit-label]');
+
+  const inventoryUnits = {
+    pills:     'tablets',
+    liquid:    'mL',
+    inhaler:   'puffs',
+    injection: 'units',
+    patch:     'patches',
+    drops:     'drops',
+    other:     'units',
+  };
+
+  const applyInventoryVisibility = () => {
+    const type = inventoryTypeSelect?.value ?? 'pills';
+    const isLiquid = type === 'liquid';
+    if (invQtyLabel)    invQtyLabel.style.display    = isLiquid ? 'none' : '';
+    if (invLiquidLabel) invLiquidLabel.style.display = isLiquid ? ''     : 'none';
+    const unit = inventoryUnits[type] ?? 'units';
+    invUnitLabels.forEach((el) => { el.textContent = unit; });
+  };
+
+  inventoryTypeSelect?.addEventListener('change', applyInventoryVisibility);
+  applyInventoryVisibility();
+}
+
 // ── Drug name autocomplete ────────────────────────────────────────────────────
 
 const medNameInput = document.querySelector('[data-med-name-input]');
@@ -1651,11 +1682,25 @@ const showDrugDropdown = (items) => {
       e.preventDefault();
       const doseMatch = name.match(DOSE_SUFFIX_RE);
       const baseName = doseMatch ? doseMatch[1] : name;
-      const parsedDose = doseMatch ? doseMatch[2] : null;
+      const parsedDose = doseMatch ? doseMatch[2].trim() : null;
       if (medNameInput) medNameInput.value = baseName;
       if (parsedDose) {
-        const doseInput = medNameInput?.closest('form')?.querySelector('input[name="dose"]');
-        if (doseInput && !doseInput.value.trim()) doseInput.value = parsedDose;
+        const form = medNameInput?.closest('form');
+        const doseAmountInput = form?.querySelector('[data-dailymed-dose-amount]');
+        const doseUnitSelect  = form?.querySelector('[data-dailymed-dose-unit]');
+        if (doseAmountInput && doseUnitSelect && !doseAmountInput.value.trim()) {
+          const dosePartMatch = parsedDose.match(/^([\d.]+)\s*([A-Z%]+)/i);
+          if (dosePartMatch) {
+            doseAmountInput.value = dosePartMatch[1];
+            const rawUnit = dosePartMatch[2].toUpperCase();
+            const unitMap = { MG: 'mg', MCG: 'mcg', G: 'g', ML: 'mL', TSP: 'tsp', TBSP: 'tbsp', OZ: 'oz', IU: 'IU', UNITS: 'units', UNIT: 'units', DROPS: 'drops', PUFFS: 'puffs', PATCHES: 'patches' };
+            const mappedUnit = unitMap[rawUnit];
+            if (mappedUnit) {
+              const opt = Array.from(doseUnitSelect.options).find((o) => o.value === mappedUnit);
+              if (opt) doseUnitSelect.value = mappedUnit;
+            }
+          }
+        }
       }
       hideDrugDropdown();
       fetchAndSetSplId(name); // use full name (with dose) for the most specific SPL match
@@ -1709,6 +1754,16 @@ const fetchDrugSuggestions = async (query) => {
   } catch { hideDrugDropdown(); }
 };
 
+const SPL_FORM_MAP = {
+  tablet: 'tablet', tablets: 'tablet',
+  capsule: 'capsule', capsules: 'capsule',
+  solution: 'liquid', liquid: 'liquid', syrup: 'liquid', suspension: 'liquid', elixir: 'liquid',
+  inhaler: 'inhaler', inhalation: 'inhaler', aerosol: 'inhaler',
+  injection: 'injection', injectable: 'injection',
+  patch: 'patch', transdermal: 'patch',
+  drops: 'drops', ophthalmic: 'drops', otic: 'drops',
+};
+
 const fetchAndSetSplId = async (name) => {
   if (!setIdInput) return;
   setIdInput.value = '';
@@ -1718,7 +1773,23 @@ const fetchAndSetSplId = async (name) => {
     );
     if (!res.ok) return;
     const data = await res.json();
-    setIdInput.value = data?.data?.[0]?.setid ?? '';
+    const first = data?.data?.[0];
+    setIdInput.value = first?.setid ?? '';
+
+    // Try to pre-fill dose_form from the SPL title (e.g. "IBUPROFEN 200 MG Oral Tablet")
+    const title = (first?.title ?? '').toLowerCase();
+    if (title) {
+      const form = setIdInput.closest('form');
+      const doseFormSelect = form?.querySelector('[data-dailymed-dose-form]');
+      if (doseFormSelect && !doseFormSelect.value) {
+        for (const [keyword, mapped] of Object.entries(SPL_FORM_MAP)) {
+          if (title.includes(keyword)) {
+            const opt = Array.from(doseFormSelect.options).find((o) => o.value === mapped);
+            if (opt) { doseFormSelect.value = mapped; break; }
+          }
+        }
+      }
+    }
   } catch {}
 };
 

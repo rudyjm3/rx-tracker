@@ -118,7 +118,7 @@ final class PushNotificationService
         foreach ($due as $item) {
             $nonce = bin2hex(random_bytes(16));
             $payload = json_encode([
-                'title' => (string) $item['name'] . ' (' . (string) $item['dose'] . ')',
+                'title' => (string) $item['name'] . (isset($item['dose_amount']) ? ' (' . trim((string) $item['dose_amount'] . ' ' . (string) ($item['dose_unit'] ?? '')) . ')' : ''),
                 'body' => (string) ($item['postponed_until'] ? 'Snoozed dose due now' : 'Dose due now'),
                 'tag' => 'dose|' . (int) $item['medication_id'] . '|' . (string) $item['scheduled_date'] . '|' . (string) $item['scheduled_time'],
                 'url' => 'index.php',

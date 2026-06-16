@@ -15,12 +15,16 @@ final class MedicationRepository
         $this->ensureGroupTables();
         $this->ensureRefillsTable();
         $this->ensurePushActionNonceColumn();
+        $this->ensureMedicationTypeColumn();
+        $this->ensureDoseStructuredColumns();
+        $this->ensureInventoryColumns();
     }
 
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE active = 1
              ORDER BY name ASC"
@@ -37,7 +41,8 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE active = 0
              ORDER BY name ASC"
@@ -54,7 +59,7 @@ final class MedicationRepository
     {
         $sql = 'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
-                       medications.name, medications.dose
+                       medications.name, medications.dose_amount, medications.dose_unit
                 FROM dose_logs
                 INNER JOIN medications ON medications.id = dose_logs.medication_id';
         if ($date !== null && $date !== '') {
@@ -123,7 +128,8 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE id = :id AND active = 1'
         );
@@ -154,40 +160,57 @@ final class MedicationRepository
 
     public function createMedication(
         string $name,
-        string $dose,
         string $instructions,
         string $scheduleMode,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
         bool $asNeeded,
-        int $pillCount,
         int $lowSupplyThreshold,
         bool $trackDoseFeedback = false,
-        string $setId = ''
+        string $setId = '',
+        string $medicationType = 'prescription',
+        ?float $doseAmount = null,
+        ?string $doseUnit = null,
+        ?string $doseForm = null,
+        string $inventoryType = 'pills',
+        float $startingQuantity = 0.0,
+        float $quantityPerDose = 1.0
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
+        $this->validateMedicationType($medicationType);
+        $this->validateInventoryType($inventoryType);
+
+        $inventoryUnit = $this->inventoryUnitFor($inventoryType);
 
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id)
-                 VALUES (:name, :dose, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, :starting_pill_count, :pill_count, :low_supply_threshold, :track_dose_feedback, :set_id)'
+                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                                          medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
+                 VALUES (:name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
+                         :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
                 'name' => $name,
-                'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
-                'starting_pill_count' => $pillCount,
-                'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
                 'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
                 'set_id' => $setId,
+                'medication_type' => $medicationType,
+                'dose_amount' => $doseAmount,
+                'dose_unit' => $doseUnit,
+                'dose_form' => $doseForm,
+                'inventory_type' => $inventoryType,
+                'inventory_unit' => $inventoryUnit,
+                'starting_quantity' => $startingQuantity,
+                'current_quantity' => $startingQuantity,
+                'quantity_per_dose' => $quantityPerDose,
             ]);
 
             $medicationId = (int) $this->db->lastInsertId();
@@ -202,26 +225,34 @@ final class MedicationRepository
     public function updateMedication(
         int $id,
         string $name,
-        string $dose,
         string $instructions,
         string $scheduleMode,
         array $doseTimes,
         ?int $intervalHours,
         ?string $firstDoseTime,
         bool $asNeeded,
-        int $pillCount,
         int $lowSupplyThreshold,
         bool $trackDoseFeedback = false,
-        string $setId = ''
+        string $setId = '',
+        string $medicationType = 'prescription',
+        ?float $doseAmount = null,
+        ?string $doseUnit = null,
+        ?string $doseForm = null,
+        string $inventoryType = 'pills',
+        float $startingQuantity = 0.0,
+        float $quantityPerDose = 1.0
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
+        $this->validateMedicationType($medicationType);
+        $this->validateInventoryType($inventoryType);
+
+        $inventoryUnit = $this->inventoryUnitFor($inventoryType);
 
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
                 'UPDATE medications
                  SET name = :name,
-                     dose = :dose,
                      instructions = :instructions,
                      schedule_mode = :schedule_mode,
                      time_format = :time_format,
@@ -231,28 +262,46 @@ final class MedicationRepository
                      starting_pill_count = CASE WHEN NOT EXISTS (
                          SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id
                      ) THEN :starting_pill_count ELSE starting_pill_count END,
-                     pill_count = :pill_count,
                      low_supply_threshold = :low_supply_threshold,
                      track_dose_feedback = :track_dose_feedback,
-                     set_id = :set_id
+                     set_id = :set_id,
+                     medication_type = :medication_type,
+                     dose_amount = :dose_amount,
+                     dose_unit = :dose_unit,
+                     dose_form = :dose_form,
+                     inventory_type = :inventory_type,
+                     inventory_unit = :inventory_unit,
+                     starting_quantity = CASE WHEN NOT EXISTS (
+                         SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id2
+                     ) THEN :starting_quantity ELSE starting_quantity END,
+                     current_quantity = :current_quantity,
+                     quantity_per_dose = :quantity_per_dose
                  WHERE id = :id'
             );
             $statement->execute([
                 'id' => $id,
                 'refill_check_id' => $id,
-                'starting_pill_count' => $pillCount,
+                'refill_check_id2' => $id,
+                'starting_pill_count' => 0,
                 'name' => $name,
-                'dose' => $dose,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
                 'interval_hours' => $intervalHours,
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
-                'pill_count' => $pillCount,
                 'low_supply_threshold' => $lowSupplyThreshold,
                 'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
                 'set_id' => $setId,
+                'medication_type' => $medicationType,
+                'dose_amount' => $doseAmount,
+                'dose_unit' => $doseUnit,
+                'dose_form' => $doseForm,
+                'inventory_type' => $inventoryType,
+                'inventory_unit' => $inventoryUnit,
+                'starting_quantity' => $startingQuantity,
+                'current_quantity' => $startingQuantity,
+                'quantity_per_dose' => $quantityPerDose,
             ]);
 
             $this->replaceScheduleTimes($id, $doseTimes);
@@ -280,9 +329,13 @@ final class MedicationRepository
                 if (!$scheduledAt instanceof DateTimeImmutable) {
                     throw new RuntimeException('Invalid scheduled dose time.');
                 }
-                // Use the scheduled slot time (not now) so that taking a snoozed dose
-                // from Today's Schedule is never blocked by sub-minute timing drift.
-                $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                // Skip the interval check for snoozed doses — the snooze itself is
+                // explicit user intent to take the dose later, so the original slot
+                // time should not block it.
+                $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
+                if (!$isSnoozed) {
+                    $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                }
             }
 
             $existing = $this->db->prepare(
@@ -305,7 +358,7 @@ final class MedicationRepository
                 $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
                 $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
-                    $this->deductPillCount($medicationId);
+                    $this->deductInventory($medicationId);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -326,7 +379,7 @@ final class MedicationRepository
                     'taken_at' => $takenAt,
                 ]);
                 if ($status === 'taken') {
-                    $this->deductPillCount($medicationId);
+                    $this->deductInventory($medicationId);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -392,7 +445,7 @@ final class MedicationRepository
                 'taken_at' => $takenAt->format('Y-m-d H:i:s'),
             ]);
 
-            $this->deductPillCount($medicationId);
+            $this->deductInventory($medicationId);
             $this->clearPostponeForDose($medicationId, $date, $time);
             $this->db->commit();
         } catch (PDOException $exception) {
@@ -424,7 +477,10 @@ final class MedicationRepository
                 $schedule[] = [
                     'medication_id' => (int) $medication['id'],
                     'name' => (string) $medication['name'],
-                    'dose' => (string) $medication['dose'],
+                    'dose' => $medication['dose'] ?? '',
+                    'dose_amount' => $medication['dose_amount'],
+                    'dose_unit' => $medication['dose_unit'],
+                    'dose_form' => $medication['dose_form'],
                     'instructions' => (string) $medication['instructions'],
                     'starting_pill_count' => (int) $medication['starting_pill_count'],
                     'pill_count' => (int) $medication['pill_count'],
@@ -432,8 +488,11 @@ final class MedicationRepository
                     'as_needed' => (int) $medication['as_needed'] === 1,
                     'track_dose_feedback' => (int) $medication['track_dose_feedback'] === 1,
                     'reminder_time' => $time,
+                    'scheduled_for_date' => $date,
+                    'scheduled_time' => $time . ':00',
                     'status' => $log['status'] ?? null,
                     'note' => $log['note'] ?? '',
+                    'taken_at' => $log['taken_at'] ?? null,
                     'postponed_until' => $postpones[$key] ?? null,
                     'group_id' => $medGroup !== null ? (int) $medGroup['group_id'] : null,
                     'group_name' => $medGroup !== null ? (string) $medGroup['group_name'] : null,
@@ -697,7 +756,9 @@ final class MedicationRepository
             $rows[] = [
                 'medication_id' => (int) $row['medication_id'],
                 'name' => (string) $row['name'],
-                'dose' => (string) $row['dose'],
+                'dose' => formattedDose($row),
+                'dose_amount' => $row['dose_amount'],
+                'dose_unit' => $row['dose_unit'],
                 'reminder_time' => (string) $row['reminder_time'],
                 'scheduled_date' => $now->format('Y-m-d'),
                 'scheduled_time' => (string) $row['reminder_time'] . ':00',
@@ -865,7 +926,7 @@ final class MedicationRepository
         return $unsent;
     }
 
-    public function logRefill(int $medicationId, string $refillDate, int $amount, string $note): void
+    public function logRefill(int $medicationId, string $refillDate, float $amount, string $note): void
     {
         if ($amount <= 0) {
             throw new RuntimeException('Refill amount must be greater than 0.');
@@ -873,20 +934,20 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            $stmt = $this->db->prepare('SELECT pill_count FROM medications WHERE id = :id AND active = 1');
+            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND active = 1');
             $stmt->execute(['id' => $medicationId]);
             $current = $stmt->fetchColumn();
             if ($current === false) {
                 throw new RuntimeException('Medication not found.');
             }
-            $newCount = (int) $current + $amount;
+            $newCount = (float) $current + $amount;
 
             $update = $this->db->prepare(
-                'UPDATE medications SET pill_count = :pill_count, starting_pill_count = :starting_pill_count WHERE id = :id'
+                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id'
             );
             $update->execute([
-                'pill_count' => $newCount,
-                'starting_pill_count' => $amount,
+                'current_quantity' => $newCount,
+                'starting_quantity' => $amount,
                 'id' => $medicationId,
             ]);
 
@@ -994,6 +1055,33 @@ final class MedicationRepository
         ];
     }
 
+    private function validateMedicationType(string $type): void
+    {
+        if (!in_array($type, ['prescription', 'otc', 'supplement'], true)) {
+            throw new RuntimeException('Invalid medication type.');
+        }
+    }
+
+    private function validateInventoryType(string $type): void
+    {
+        if (!in_array($type, ['pills', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'], true)) {
+            throw new RuntimeException('Invalid inventory type.');
+        }
+    }
+
+    private function inventoryUnitFor(string $inventoryType): string
+    {
+        return match ($inventoryType) {
+            'pills'     => 'tablets',
+            'liquid'    => 'mL',
+            'inhaler'   => 'puffs',
+            'injection' => 'units',
+            'patch'     => 'patches',
+            'drops'     => 'drops',
+            default     => 'units',
+        };
+    }
+
     private function validateScheduleInputs(string $scheduleMode, array $doseTimes, ?int $intervalHours, ?string $firstDoseTime): void
     {
         if (!in_array($scheduleMode, ['fixed_times', 'interval'], true)) {
@@ -1030,7 +1118,8 @@ final class MedicationRepository
         $stmt = $this->db->prepare(
             'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours,
                     first_dose_time, as_needed, starting_pill_count, pill_count,
-                    low_supply_threshold, track_dose_feedback, set_id
+                    low_supply_threshold, track_dose_feedback, set_id,
+                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications WHERE id = :id LIMIT 1'
         );
         $stmt->execute(['id' => $id]);
@@ -1068,7 +1157,7 @@ final class MedicationRepository
 
     private function doseLogMapForDate(string $date): array
     {
-        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level FROM dose_logs WHERE scheduled_for_date = :date');
+        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level, taken_at FROM dose_logs WHERE scheduled_for_date = :date');
         $statement->execute(['date' => $date]);
         $map = [];
         foreach ($statement->fetchAll() as $row) {
@@ -1076,6 +1165,7 @@ final class MedicationRepository
                 'status' => (string) $row['status'],
                 'note' => (string) $row['note'],
                 'pain_level' => $row['pain_level'] !== null ? (int) $row['pain_level'] : null,
+                'taken_at' => $row['taken_at'] !== null ? (string) $row['taken_at'] : null,
             ];
         }
 
@@ -1141,10 +1231,17 @@ final class MedicationRepository
         return sprintf('%02d:%02d', $hour, $minute);
     }
 
-    private function deductPillCount(int $medicationId): void
+    private function deductInventory(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET pill_count = CASE WHEN pill_count > 0 THEN pill_count - 1 ELSE 0 END WHERE id = :id');
-        $statement->execute(['id' => $medicationId]);
+        $this->db->prepare(
+            'UPDATE medications
+             SET current_quantity = CASE
+                 WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
+                 WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
+                 ELSE 0
+             END
+             WHERE id = :id'
+        )->execute(['id' => $medicationId]);
     }
 
     private function nextDueDateTime(int $medicationId): ?DateTimeImmutable
@@ -1340,14 +1437,18 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->query(
-                'SELECT m.id, m.name, m.dose
+                'SELECT m.id, m.name, m.dose, m.dose_amount, m.dose_unit
                  FROM medications m
                  LEFT JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE m.active = 1 AND mgm.medication_id IS NULL
                  ORDER BY m.name ASC'
             );
+            $rows = $statement->fetchAll();
+            foreach ($rows as &$row) {
+                $row['dose'] = formattedDose($row);
+            }
 
-            return $statement->fetchAll();
+            return $rows;
         } catch (Throwable) {
             return [];
         }
@@ -1357,7 +1458,7 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT m.id AS medication_id, m.name, m.dose, m.track_dose_feedback, mgm.sort_order
+                'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit, m.track_dose_feedback, mgm.sort_order
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE mgm.group_id = :group_id AND m.active = 1
@@ -1805,6 +1906,133 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails; runtime errors will surface if unresolved.
+        }
+    }
+
+    private function ensureMedicationTypeColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'medication_type'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN medication_type ENUM('prescription','otc','supplement') NOT NULL DEFAULT 'prescription'");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'medication_type') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN medication_type TEXT NOT NULL DEFAULT 'prescription'");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureDoseStructuredColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                foreach (['dose_amount' => 'DECIMAL(10,3) NULL', 'dose_unit' => 'VARCHAR(20) NULL', 'dose_form' => 'VARCHAR(30) NULL'] as $col => $def) {
+                    $check = $this->db->query("SHOW COLUMNS FROM medications LIKE '{$col}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE medications ADD COLUMN {$col} {$def}");
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $existing = array_column($check->fetchAll(), 'name');
+                if (!in_array('dose_amount', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN dose_amount REAL NULL');
+                }
+                if (!in_array('dose_unit', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN dose_unit TEXT NULL');
+                }
+                if (!in_array('dose_form', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN dose_form TEXT NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureInventoryColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $cols = [
+                    'inventory_type'   => "VARCHAR(30) NOT NULL DEFAULT 'pills'",
+                    'inventory_unit'   => "VARCHAR(20) NOT NULL DEFAULT 'tablets'",
+                    'starting_quantity' => 'DECIMAL(10,3) NULL',
+                    'current_quantity'  => 'DECIMAL(10,3) NULL',
+                    'quantity_per_dose' => 'DECIMAL(10,3) NOT NULL DEFAULT 1.000',
+                ];
+                foreach ($cols as $col => $def) {
+                    $check = $this->db->query("SHOW COLUMNS FROM medications LIKE '{$col}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE medications ADD COLUMN {$col} {$def}");
+                    }
+                }
+                $this->db->exec(
+                    "UPDATE medications
+                     SET current_quantity  = pill_count,
+                         starting_quantity = starting_pill_count,
+                         inventory_unit    = 'tablets'
+                     WHERE current_quantity IS NULL"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $existing = array_column($check->fetchAll(), 'name');
+                if (!in_array('inventory_type', $existing, true)) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN inventory_type TEXT NOT NULL DEFAULT 'pills'");
+                }
+                if (!in_array('inventory_unit', $existing, true)) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN inventory_unit TEXT NOT NULL DEFAULT 'tablets'");
+                }
+                if (!in_array('starting_quantity', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN starting_quantity REAL NULL');
+                }
+                if (!in_array('current_quantity', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN current_quantity REAL NULL');
+                }
+                if (!in_array('quantity_per_dose', $existing, true)) {
+                    $this->db->exec('ALTER TABLE medications ADD COLUMN quantity_per_dose REAL NOT NULL DEFAULT 1.0');
+                }
+                $this->db->exec(
+                    "UPDATE medications
+                     SET current_quantity  = pill_count,
+                         starting_quantity = starting_pill_count,
+                         inventory_unit    = 'tablets'
+                     WHERE current_quantity IS NULL"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
         }
     }
 }
