@@ -16,7 +16,7 @@
              data-medication-id="<?= e((string) $medication['id']) ?>"
              data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>"
              data-medication-name="<?= e((string) $medication['name']) ?>"
-             data-dose="<?= e(trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''))) ?>"
+             data-dose="<?= e(formattedDose($medication)) ?>"
              data-instructions="<?= e((string) $medication['instructions']) ?>">
         </div>
         <div class="medication-content">
@@ -26,8 +26,8 @@
             $medTypeLabel  = $medTypeLabels[$medTypeSlug] ?? 'Rx';
           ?>
           <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($medTypeSlug) ?>"><?= e($medTypeLabel) ?></span>
-          <?php if (!empty($medication['dose_amount']) || !empty($medication['dose_unit'])): ?>
-          <p><?= e((string) ($medication['dose_amount'] ?? '')) ?> <?= e((string) ($medication['dose_unit'] ?? '')) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
+          <?php if (formattedDose($medication) !== ''): ?>
+          <p><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
           <?php endif; ?>
           <p>
             <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
@@ -130,8 +130,8 @@
       <div class="medication-row">
         <div>
           <strong><?= e((string) $medication['name']) ?></strong>
-          <?php if (!empty($medication['dose_amount']) || !empty($medication['dose_unit'])): ?>
-          <p><?= e(trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''))) ?></p>
+          <?php if (formattedDose($medication) !== ''): ?>
+          <p><?= e(formattedDose($medication)) ?></p>
           <?php endif; ?>
         </div>
         <div class="row-actions">
@@ -202,7 +202,7 @@
           <?php foreach ($group['members'] as $member): ?>
             <div class="group-member-row">
               <span class="group-member-name"><?= e((string) $member['name']) ?></span>
-              <span class="group-member-dose"><?= e(trim((string) ($member['dose_amount'] ?? '') . ' ' . (string) ($member['dose_unit'] ?? ''))) ?></span>
+              <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
               <?php if ((int) $member['track_dose_feedback'] === 1): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
               <?php endif; ?>
@@ -231,7 +231,7 @@
             <select name="medication_id" class="group-add-select">
               <option value="">Add a medication&hellip;</option>
               <?php foreach ($eligibleToAdd as $ungrouped): ?>
-                <?php $ungroupedDose = trim((string) ($ungrouped['dose_amount'] ?? '') . ' ' . (string) ($ungrouped['dose_unit'] ?? '')); ?>
+                <?php $ungroupedDose = formattedDose($ungrouped); ?>
                 <option value="<?= e((string) $ungrouped['id']) ?>" data-name="<?= e((string) $ungrouped['name']) ?>" data-dose="<?= e($ungroupedDose) ?>"><?= e((string) $ungrouped['name']) ?><?= $ungroupedDose !== '' ? ' &mdash; ' . e($ungroupedDose) : '' ?></option>
               <?php endforeach; ?>
             </select>

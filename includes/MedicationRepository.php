@@ -23,7 +23,7 @@ final class MedicationRepository
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                     medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE active = 1
@@ -41,7 +41,7 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                     medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE active = 0
@@ -128,7 +128,7 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                     medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
              FROM medications
              WHERE id = :id AND active = 1'
@@ -477,6 +477,7 @@ final class MedicationRepository
                 $schedule[] = [
                     'medication_id' => (int) $medication['id'],
                     'name' => (string) $medication['name'],
+                    'dose' => $medication['dose'] ?? '',
                     'dose_amount' => $medication['dose_amount'],
                     'dose_unit' => $medication['dose_unit'],
                     'dose_form' => $medication['dose_form'],
@@ -755,6 +756,7 @@ final class MedicationRepository
             $rows[] = [
                 'medication_id' => (int) $row['medication_id'],
                 'name' => (string) $row['name'],
+                'dose' => formattedDose($row),
                 'dose_amount' => $row['dose_amount'],
                 'dose_unit' => $row['dose_unit'],
                 'reminder_time' => (string) $row['reminder_time'],
@@ -1114,7 +1116,7 @@ final class MedicationRepository
     private function medicationById(int $id): array
     {
         $stmt = $this->db->prepare(
-            'SELECT id, name, instructions, schedule_mode, time_format, interval_hours,
+            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours,
                     first_dose_time, as_needed, starting_pill_count, pill_count,
                     low_supply_threshold, track_dose_feedback, set_id,
                     medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
@@ -1435,14 +1437,18 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->query(
-                'SELECT m.id, m.name, m.dose
+                'SELECT m.id, m.name, m.dose, m.dose_amount, m.dose_unit
                  FROM medications m
                  LEFT JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE m.active = 1 AND mgm.medication_id IS NULL
                  ORDER BY m.name ASC'
             );
+            $rows = $statement->fetchAll();
+            foreach ($rows as &$row) {
+                $row['dose'] = formattedDose($row);
+            }
 
-            return $statement->fetchAll();
+            return $rows;
         } catch (Throwable) {
             return [];
         }
@@ -1452,7 +1458,7 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT m.id AS medication_id, m.name, m.dose, m.track_dose_feedback, mgm.sort_order
+                'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit, m.track_dose_feedback, mgm.sort_order
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE mgm.group_id = :group_id AND m.active = 1

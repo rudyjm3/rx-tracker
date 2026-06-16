@@ -49,3 +49,10 @@ function today(): string
 {
     return (new DateTimeImmutable('now'))->format('Y-m-d');
 }
+
+function formattedDose(array $medication): string
+{
+    $structured = trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''));
+
+    return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
+}
