@@ -384,7 +384,12 @@ document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
     event.preventDefault();
     const btn = form.querySelector('[data-log-dose-now]');
     if (!btn) return;
-    const slots = JSON.parse(btn.dataset.slots || '[]');
+    let slots;
+    try {
+      slots = JSON.parse(btn.dataset.slots || '[]');
+    } catch {
+      slots = [];
+    }
     if (slots.length === 0) return;
     openSlotPickerModal({
       medicationId:  btn.dataset.medicationId ?? '',

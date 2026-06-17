@@ -287,6 +287,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $startingQtyRaw = $bottleUnit === 'oz'
                     ? (string) round((float) $bottleAmount * 29.5735, 3)
                     : $bottleAmount;
+                if ($bottleAmount !== '' && (float) $startingQtyRaw <= 0.0) {
+                    throw new RuntimeException('Bottle amount must be greater than 0.');
+                }
             } else {
                 $startingQtyRaw = post_string('starting_quantity');
             }
@@ -468,6 +471,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $refillDate)) {
                 throw new RuntimeException('Invalid refill date.');
             }
+            [$ry, $rm, $rd] = array_map('intval', explode('-', $refillDate));
+            if (!checkdate($rm, $rd, $ry)) {
+                throw new RuntimeException('Invalid refill date.');
+            }
             if ($amount <= 0) {
                 throw new RuntimeException('Refill amount must be greater than 0.');
             }
@@ -510,7 +517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $endpoint = trim((string) ($_POST['endpoint'] ?? ''));
             $p256dh = trim((string) ($_POST['p256dh'] ?? ''));
             $auth = trim((string) ($_POST['auth'] ?? ''));
-            $repository->upsertPushSubscription($endpoint, $p256dh, $auth, (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+            $repository->upsertPushSubscription($endpoint, $p256dh, $auth, substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255));
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
             exit;
         }
@@ -671,11 +678,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       RxTracker
     </a>
     <div class="nav-links">
-      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
       <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
+      <a href="index.php?page=help"<?= $page === 'help' ? ' class="is-active"' : '' ?>>Help</a>
     </div>
     <div class="nav-actions">
       <button class="nav-bell-btn" aria-label="Notifications">
@@ -689,7 +697,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>
 
-  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications'], true)): ?>
+  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true)): ?>
   <section class="hero">
     <div class="hero-left">
       <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
@@ -1166,6 +1174,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </section>
 
+    <section class="panel settings-panel" style="margin-top:1rem;">
+      <div class="panel-heading"><h2>Help &amp; Documentation</h2></div>
+      <p style="margin:0 0 .75rem;">New to RxTracker or need a refresher? The user guide covers every feature step by step.</p>
+      <a href="index.php?page=help" class="button secondary" style="display:inline-block;">Open User Guide</a>
+    </section>
+
     <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
   </main>
   </body>
@@ -1435,6 +1449,126 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 <?php exit; ?>
 <?php endif; ?>
 
+  <?php if ($page === 'help'): ?>
+<main class="app-shell">
+  <section class="panel help-panel" style="max-width:780px;margin:1.5rem auto;padding:1.5rem 1.75rem;">
+    <div class="panel-heading"><h2>Help &amp; User Guide</h2></div>
+
+    <nav class="help-toc" style="margin-bottom:1.5rem;line-height:2;">
+      <strong>Jump to:</strong>
+      <a href="#help-dashboard">Dashboard</a> &bull;
+      <a href="#help-add-med">Adding Medications</a> &bull;
+      <a href="#help-doses">Marking Doses</a> &bull;
+      <a href="#help-inventory">Inventory &amp; Refills</a> &bull;
+      <a href="#help-groups">Groups</a> &bull;
+      <a href="#help-feedback">Pain Tracking</a> &bull;
+      <a href="#help-history">History &amp; Calendar</a> &bull;
+      <a href="#help-export">Export</a> &bull;
+      <a href="#help-settings">Settings</a> &bull;
+      <a href="#help-push">Notifications</a> &bull;
+      <a href="#help-pwa">Install App</a> &bull;
+      <a href="#help-troubleshoot">Troubleshooting</a>
+    </nav>
+
+    <h3 id="help-dashboard">Dashboard</h3>
+    <p>The Dashboard is your home base. It shows your <strong>Next Dose</strong> card, today&rsquo;s full schedule with action buttons, your adherence summary for the day, and a recent dose history list.</p>
+
+    <h3 id="help-add-med">Adding a Medication</h3>
+    <p>Click <strong>Add medication</strong> on the Dashboard or Medications page. Fill in:</p>
+    <ul>
+      <li><strong>Name</strong> &mdash; start typing for autocomplete suggestions from DailyMed.</li>
+      <li><strong>Type</strong> &mdash; Prescription, OTC, or Supplement.</li>
+      <li><strong>Dose amount &amp; unit</strong> &mdash; e.g. 500 mg or 10 mL.</li>
+      <li><strong>Schedule</strong> &mdash; Fixed times (e.g. <code>8:00 AM, 2:00 PM, 9:00 PM</code>) or Every X hours with a first-dose time.</li>
+      <li><strong>Inventory</strong> (optional) &mdash; starting quantity, quantity per dose, and a low-supply alert threshold.</li>
+      <li><strong>Track dose feedback</strong> (optional) &mdash; prompts for a 1&ndash;10 pain/symptom rating after each dose.</li>
+    </ul>
+    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon. To <strong>deactivate</strong>: click Deactivate on the card; reactivate from the Inactive tab.</p>
+
+    <h3 id="help-doses">Marking Doses</h3>
+    <p>Each scheduled dose on the Dashboard has three buttons:</p>
+    <ul>
+      <li><strong>Take</strong> &mdash; marks the dose taken now. Opens a feedback prompt if enabled.</li>
+      <li><strong>Skip</strong> &mdash; records an intentional skip.</li>
+      <li><strong>Snooze</strong> &mdash; delays the reminder by your chosen snooze duration.</li>
+    </ul>
+    <p>Statuses: <em>Taken</em>, <em>Taken late</em> (after the grace period), <em>Skipped</em>, <em>Missed</em> (grace period expired), <em>Snoozed until [time]</em>.</p>
+
+    <h3 id="help-inventory">Inventory &amp; Refills</h3>
+    <p>RxTracker deducts from your supply each time a dose is logged taken. The supply bar turns yellow below 50% and red below 25%, with a days-remaining estimate and a refill alert when below your threshold.</p>
+    <p>To <strong>log a refill</strong>: Medications &rarr; click <em>Log refill</em> &rarr; enter date, amount, optional note. View past refills with the <em>Refill history</em> button.</p>
+
+    <h3 id="help-groups">Medication Groups</h3>
+    <p>Groups bundle medications taken at the same time into one alarm. Go to <strong>Medications &rarr; Groups tab</strong> to create a group (name + time) and add medications to it. A medication can only belong to one group.</p>
+
+    <h3 id="help-feedback">Pain &amp; Feedback Tracking</h3>
+    <p>Enable <em>Track dose feedback</em> in the medication form. After taking a dose, rate your pain/symptom level 1&ndash;10 and add an optional note. View the trend with the <strong>Pain trend</strong> button on the medication card (Today / 7 / 30 / 90 days).</p>
+
+    <h3 id="help-history">History &amp; Calendar</h3>
+    <p>The <strong>Calendar</strong> page shows a month view with color-coded adherence markers per day. Navigate months with the arrows. The <strong>Export</strong> page has a filterable dose history table.</p>
+
+    <h3 id="help-export">Export &amp; Print</h3>
+    <p>Go to the <strong>Export</strong> page for your full medication list and dose history. Filter by date range, then click <em>Print / Save as PDF</em> to open the browser print dialog.</p>
+
+    <h3 id="help-settings">Settings</h3>
+    <ul>
+      <li><strong>Grace period</strong> &mdash; 30 or 60 minutes before a dose is auto-marked Missed.</li>
+      <li><strong>Snooze duration</strong> &mdash; default snooze length (5, 10, 15, or 30 minutes).</li>
+      <li><strong>Sound &amp; Vibration</strong> &mdash; controls for in-app alarm behavior.</li>
+      <li><strong>Background Reminders</strong> &mdash; enables push notifications when the app is closed.</li>
+    </ul>
+
+    <h3 id="help-push">Push Notifications</h3>
+    <p>Go to <strong>Settings &rarr; Background Reminders</strong> and toggle it on. When prompted, click <em>Allow</em> in your browser. All six items on the push status checklist must pass. Use <em>Send test notification</em> to verify. On iPhone, the app must be installed to the home screen first.</p>
+
+    <h3 id="help-pwa">Installing as an App</h3>
+    <ul>
+      <li><strong>iPhone (Safari)</strong>: Share button &rarr; Add to Home Screen &rarr; Add.</li>
+      <li><strong>Android (Chrome)</strong>: Menu &rarr; Add to Home Screen &rarr; Install.</li>
+      <li><strong>Desktop (Chrome/Edge)</strong>: Click the install icon in the address bar.</li>
+    </ul>
+
+    <h3 id="help-troubleshoot">Troubleshooting</h3>
+    <ul>
+      <li><strong>No push notifications</strong> &mdash; Check browser notification permission. On iPhone, the PWA must be installed. Verify the server-side cron job is running.</li>
+      <li><strong>Dose shows Missed despite taking it</strong> &mdash; The grace period expired. Increase it in Settings.</li>
+      <li><strong>Supply count is wrong</strong> &mdash; Check that <em>Quantity per dose</em> is set correctly in the medication edit form.</li>
+      <li><strong>Autocomplete not working</strong> &mdash; Requires internet access to DailyMed/OpenFDA. Type the name manually if offline.</li>
+      <li><strong>App feels outdated after an update</strong> &mdash; Force-refresh with Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac).</li>
+    </ul>
+
+    <p style="margin-top:2rem;color:var(--color-text-muted,#64748b);font-size:.875rem;">
+      Full documentation available in <a href="docs/user-guide.md" target="_blank" rel="noopener"><code>docs/user-guide.md</code></a>.
+    </p>
+  </section>
+</main>
+<nav class="bottom-nav" aria-label="Main navigation">
+  <a href="index.php" class="bottom-nav-item" aria-label="Dashboard">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    Dashboard
+  </a>
+  <a href="index.php?page=medications" class="bottom-nav-item" aria-label="Medications">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H20a2 2 0 0 1 2 2v3"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg>
+    Medications
+  </a>
+  <a href="index.php?page=calendar" class="bottom-nav-item" aria-label="Calendar">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Calendar
+  </a>
+  <a href="index.php?page=export" class="bottom-nav-item" aria-label="Export">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Export
+  </a>
+  <a href="index.php?page=settings" class="bottom-nav-item" aria-label="Settings">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    Settings
+  </a>
+</nav>
+</body>
+</html>
+<?php exit; ?>
+<?php endif; ?>
+
   <?php if ($lowSupplyMeds !== []): ?>
   <div class="warning-banner" role="alert">
     <?php foreach ($lowSupplyMeds as $lowMed): ?>
@@ -1458,7 +1592,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
   </div>
 
-  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export'], true)): ?>
+  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export', 'help'], true)): ?>
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel dashboard-schedule-panel">
       <div class="panel-heading">
@@ -1734,7 +1868,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   </div>
 </div>
 <nav class="bottom-nav" aria-label="Main navigation">
-  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
+  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
     <i class="fa-solid fa-house" aria-hidden="true"></i>
     Dashboard
   </a>
