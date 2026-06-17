@@ -491,7 +491,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       $vapidConfigured = trim((string) getenv('PUSH_VAPID_PUBLIC_KEY')) !== ''
           && trim((string) getenv('PUSH_VAPID_PRIVATE_KEY')) !== ''
           && trim((string) getenv('PUSH_VAPID_SUBJECT')) !== '';
-      $webPushInstalled = is_file(__DIR__ . '/vendor/autoload.php')
+      $webPushInstalled = is_file(dirname(__DIR__) . '/vendor/autoload.php')
           && class_exists(\Minishlink\WebPush\WebPush::class);
       $lastPushSentAt = $repository->lastPushSentAt();
     ?>
