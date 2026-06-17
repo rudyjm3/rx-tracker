@@ -58,3 +58,127 @@ function formattedDose(array $medication): string
 
     return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
 }
+
+function parseTimeValue(string $raw): string
+{
+    $value = trim($raw);
+
+    if (!preg_match('/^(0?[1-9]|1[0-2]):([0-5]\d)\s*([AaPp][Mm])$/', $value, $matches)) {
+        throw new RuntimeException('Time must be h:mm AM/PM (e.g. 8:00 AM, 2:30 PM).');
+    }
+
+    $hour = (int) $matches[1];
+    $minute = (int) $matches[2];
+    $period = strtoupper($matches[3]);
+
+    if ($period === 'AM') {
+        $hour = $hour === 12 ? 0 : $hour;
+    } else {
+        $hour = $hour === 12 ? 12 : $hour + 12;
+    }
+
+    return sprintf('%02d:%02d:00', $hour, $minute);
+}
+
+function parseDoseTimes(string $raw): array
+{
+    $segments = preg_split('/\s*,\s*/', trim($raw)) ?: [];
+    $times = [];
+    foreach ($segments as $segment) {
+        if ($segment === '') {
+            continue;
+        }
+        $times[] = parseTimeValue($segment);
+    }
+    $times = array_values(array_unique($times));
+    sort($times);
+
+    return $times;
+}
+
+function to12h(string $time): string
+{
+    $dt = DateTimeImmutable::createFromFormat('H:i', substr($time, 0, 5));
+    return $dt ? $dt->format('g:i A') : $time;
+}
+
+function timeToMinutes(string $time): int
+{
+    [$hour, $minute] = array_map('intval', explode(':', substr($time, 0, 5)));
+    return ($hour * 60) + $minute;
+}
+
+function isLate(array $log, int $graceMinutes): bool
+{
+    if ((string) $log['status'] !== 'taken') {
+        return false;
+    }
+    $takenAt = (string) ($log['taken_at'] ?? '');
+    $scheduledDate = (string) ($log['scheduled_for_date'] ?? '');
+    $scheduledTime = (string) ($log['scheduled_time'] ?? '');
+    if ($takenAt === '' || $scheduledDate === '' || $scheduledTime === '') {
+        return false;
+    }
+    try {
+        $scheduled = new DateTimeImmutable($scheduledDate . ' ' . $scheduledTime);
+        $threshold = $scheduled->modify('+' . $graceMinutes . ' minutes');
+        $taken = new DateTimeImmutable($takenAt);
+        return $taken > $threshold;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
+function minutesLate(array $log, int $graceMinutes): ?int
+{
+    if ((string) ($log['status'] ?? '') !== 'taken') {
+        return null;
+    }
+    $takenAt = (string) ($log['taken_at'] ?? '');
+    $scheduledDate = (string) ($log['scheduled_for_date'] ?? '');
+    $scheduledTime = (string) ($log['scheduled_time'] ?? '');
+    if ($takenAt === '' || $scheduledDate === '' || $scheduledTime === '') {
+        return null;
+    }
+    try {
+        $scheduled = new DateTimeImmutable($scheduledDate . ' ' . $scheduledTime);
+        $threshold = $scheduled->modify('+' . $graceMinutes . ' minutes');
+        $taken = new DateTimeImmutable($takenAt);
+        $diff = $taken->getTimestamp() - $threshold->getTimestamp();
+        return $diff > 0 ? (int) ceil($diff / 60) : null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function formatLate(int $minutes): string
+{
+    if ($minutes < 60) {
+        return $minutes . 'mins late';
+    }
+    $hrs = intdiv($minutes, 60);
+    $mins = $minutes % 60;
+    return $mins > 0 ? $hrs . 'hr ' . $mins . 'mins late' : $hrs . 'hr late';
+}
+
+function daysUntilRunout(array $medication): ?int
+{
+    $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
+    $qtyPerDose = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
+    if ($qty <= 0) {
+        return 0;
+    }
+    $dosesPerDay = 0;
+    if ((string) $medication['schedule_mode'] === 'fixed_times') {
+        $dosesPerDay = count($medication['times'] ?? []);
+    } elseif ((string) $medication['schedule_mode'] === 'interval') {
+        $intervalHours = (int) ($medication['interval_hours'] ?? 0);
+        if ($intervalHours > 0) {
+            $dosesPerDay = (int) max(1, round(24 / $intervalHours));
+        }
+    }
+    if ($dosesPerDay <= 0) {
+        return null;
+    }
+    return (int) floor($qty / ($dosesPerDay * $qtyPerDose));
+}

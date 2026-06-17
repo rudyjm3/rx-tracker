@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 final class MedicationRepository
 {
+    private const MEDICATION_COLUMNS = 'id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
+
     public function __construct(private readonly PDO $db)
     {
         $this->ensureStartingPillCountColumn();
@@ -23,17 +25,17 @@ final class MedicationRepository
     public function activeMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
-                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
-             FROM medications
-             WHERE active = 1
-             ORDER BY name ASC"
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 ORDER BY name ASC'
         );
         $medications = $statement->fetchAll();
+        $ids = array_column($medications, 'id');
+        $allTimes   = $this->scheduleTimesByMedicationIds($ids);
+        $allRefills = $this->lastRefillsByMedicationIds($ids);
         foreach ($medications as &$medication) {
-            $medication['times'] = $this->scheduleTimesForMedication((int) $medication['id']);
-            $medication['last_refill'] = $this->lastRefillForMedication((int) $medication['id']);
+            $medication['times']       = $allTimes[(int) $medication['id']] ?? [];
+            $medication['last_refill'] = $allRefills[(int) $medication['id']] ?? null;
         }
+        unset($medication);
 
         return $medications;
     }
@@ -41,16 +43,15 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->query(
-            "SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
-                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
-             FROM medications
-             WHERE active = 0
-             ORDER BY name ASC"
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 0 ORDER BY name ASC'
         );
         $medications = $statement->fetchAll();
+        $ids = array_column($medications, 'id');
+        $allTimes = $this->scheduleTimesByMedicationIds($ids);
         foreach ($medications as &$medication) {
-            $medication['times'] = $this->scheduleTimesForMedication((int) $medication['id']);
+            $medication['times'] = $allTimes[(int) $medication['id']] ?? [];
         }
+        unset($medication);
 
         return $medications;
     }
@@ -128,10 +129,7 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
-                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
-             FROM medications
-             WHERE id = :id AND active = 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND active = 1'
         );
         $statement->execute(['id' => $id]);
         $row = $statement->fetch();
@@ -156,6 +154,50 @@ final class MedicationRepository
         $statement->execute(['medication_id' => $medicationId]);
 
         return array_map(static fn (string $time): string => substr($time, 0, 5), array_column($statement->fetchAll(), 'reminder_time'));
+    }
+
+    private function scheduleTimesByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT medication_id, reminder_time
+             FROM medication_schedule_times
+             WHERE medication_id IN ({$placeholders})
+             ORDER BY medication_id ASC, reminder_time ASC"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $result[(int) $row['medication_id']][] = substr((string) $row['reminder_time'], 0, 5);
+        }
+        return $result;
+    }
+
+    private function lastRefillsByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT id, medication_id, refill_date, amount, pills_on_hand, note
+             FROM (
+                 SELECT id, medication_id, refill_date, amount, pills_on_hand, note,
+                        ROW_NUMBER() OVER (PARTITION BY medication_id ORDER BY refill_date DESC, id DESC) AS rn
+                 FROM medication_refills
+                 WHERE medication_id IN ({$placeholders})
+             ) ranked
+             WHERE rn = 1"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $result[(int) $row['medication_id']] = $row;
+        }
+        return $result;
     }
 
     public function createMedication(
@@ -1116,11 +1158,7 @@ final class MedicationRepository
     private function medicationById(int $id): array
     {
         $stmt = $this->db->prepare(
-            'SELECT id, name, dose, instructions, schedule_mode, time_format, interval_hours,
-                    first_dose_time, as_needed, starting_pill_count, pill_count,
-                    low_supply_threshold, track_dose_feedback, set_id,
-                    medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose
-             FROM medications WHERE id = :id LIMIT 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id LIMIT 1'
         );
         $stmt->execute(['id' => $id]);
         $med = $stmt->fetch();
@@ -1336,10 +1374,12 @@ final class MedicationRepository
         } catch (Throwable) {
             return [];
         }
+        $membersByGroup = $this->allGroupMembersByGroupId();
         foreach ($groups as &$group) {
             $group['scheduled_time'] = substr((string) $group['scheduled_time'], 0, 5);
-            $group['members'] = $this->groupMembers((int) $group['id']);
+            $group['members'] = $membersByGroup[(int) $group['id']] ?? [];
         }
+        unset($group);
 
         return $groups;
     }
@@ -1470,6 +1510,30 @@ final class MedicationRepository
         } catch (Throwable) {
             return [];
         }
+    }
+
+    private function allGroupMembersByGroupId(): array
+    {
+        try {
+            $statement = $this->db->query(
+                'SELECT mgm.group_id, m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
+                        m.track_dose_feedback, mgm.sort_order
+                 FROM medications m
+                 INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
+                 WHERE m.active = 1
+                 ORDER BY mgm.group_id ASC, mgm.sort_order ASC, m.name ASC'
+            );
+            $rows = $statement->fetchAll();
+        } catch (Throwable) {
+            return [];
+        }
+        $result = [];
+        foreach ($rows as $row) {
+            $gid = (int) $row['group_id'];
+            unset($row['group_id']);
+            $result[$gid][] = $row;
+        }
+        return $result;
     }
 
     private function medicationGroupMap(): array
