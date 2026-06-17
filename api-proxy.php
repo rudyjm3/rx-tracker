@@ -44,6 +44,15 @@ if ($failed || $body === false) {
     exit;
 }
 
+// OpenFDA returns 404 when a search yields no results (not a real server error).
+// Normalize it to 200 with an empty results array so the browser console stays clean.
+if ($httpCode === 404 && str_starts_with($url, 'https://api.fda.gov/')) {
+    http_response_code(200);
+    header('Content-Type: application/json');
+    echo json_encode(['results' => []]);
+    exit;
+}
+
 http_response_code($httpCode);
 header('Content-Type: application/json');
 echo $body;

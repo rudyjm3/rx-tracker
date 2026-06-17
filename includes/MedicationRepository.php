@@ -57,9 +57,9 @@ final class MedicationRepository
 
     public function recentLogs(?string $date = null, int $limit = 12): array
     {
-        $sql = 'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
+        $sql = 'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
-                       medications.name, medications.dose_amount, medications.dose_unit
+                       medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed
                 FROM dose_logs
                 INNER JOIN medications ON medications.id = dose_logs.medication_id';
         if ($date !== null && $date !== '') {

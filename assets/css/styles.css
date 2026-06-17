@@ -18,7 +18,7 @@
 
   --rx-gradient: linear-gradient(135deg, #14CFE0 0%, #0A8AC8 48%, #0754A8 100%);
   --rx-gradient-dark: linear-gradient(135deg, #102B57 0%, #0754A8 60%, #14CFE0 100%);
-  --rx-gradient-hero: linear-gradient(160deg, #071D3D 0%, #0754A8 45%, #0A8AC8 75%, #14CFE0 100%);
+  --rx-gradient-hero: linear-gradient(160deg, #14CFE0 0%, #0A8AC8 25%, #0754A8 55%, #071D3D 100%);
 
   --rx-radius-sm: 10px;
   --rx-radius-md: 18px;
@@ -155,14 +155,24 @@ button:disabled {
   transform: none;
 }
 
+.nav-brand:focus,
+.nav-brand:focus-visible,
+.nav-brand:active {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
 .nav-logo {
-  border-radius: 0.5rem;
+  border: none;
+  border-radius: 0.75rem;
   display: block;
   flex-shrink: 0;
   height: 3rem;
   max-height: 3rem;
   max-width: 3rem;
   object-fit: contain;
+  outline: none;
   width: 3rem;
 }
 
@@ -228,8 +238,8 @@ button:disabled {
 .hero {
   align-items: stretch;
   background:
-    radial-gradient(ellipse at top right, rgba(20, 207, 224, 0.28) 0%, transparent 55%),
-    radial-gradient(ellipse at bottom left, rgba(7, 29, 61, 0.5) 0%, transparent 60%),
+    radial-gradient(ellipse at top left, rgba(20, 207, 224, 0.32) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(7, 29, 61, 0.55) 0%, transparent 60%),
     var(--rx-gradient-hero);
   border-radius: var(--rx-radius-lg);
   color: white;
@@ -398,13 +408,21 @@ h1 {
 }
 
 .hero-pill-graphic {
-  background: linear-gradient(135deg, #fff 50%, #0A8AC8 50%);
+  background: rgba(255, 255, 255, 0.12);
   border: 3px solid rgba(255, 255, 255, 0.30);
   border-radius: 50%;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
   flex-shrink: 0;
-  height: 72px;
-  width: 72px;
+  height: 84px;
+  overflow: hidden;
+  width: 84px;
+}
+
+.hero-pill-img {
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  width: 100%;
 }
 
 .hero-upcoming-section {
@@ -1051,6 +1069,13 @@ h1 {
   gap: 0.5rem;
 }
 
+.medications-page-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.4rem;
+  padding: 0.65rem 1.1rem;
+}
+
 .count-badge {
   background: rgba(7, 84, 168, 0.10);
   border: 1px solid rgba(7, 84, 168, 0.22);
@@ -1069,9 +1094,10 @@ h1 {
 }
 
 .medication-plan-tabs {
+  border-bottom: 1px solid var(--rx-border);
   display: flex;
-  gap: 0.55rem;
-  margin-bottom: 0.8rem;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .medications-page-header .medication-plan-tabs {
@@ -1079,13 +1105,34 @@ h1 {
 }
 
 .plan-tab {
-  padding: 0.55rem 0.9rem;
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--rx-text-muted);
+  display: inline-flex;
+  font-size: 0.88rem;
+  gap: 0.4rem;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.1rem;
+  transform: none;
+}
+
+.plan-tab:hover {
+  background: transparent;
+  box-shadow: none;
+  color: var(--rx-text);
+  transform: none;
 }
 
 .plan-tab.is-active {
-  background: var(--rx-gradient);
-  border-color: transparent;
-  color: #fff;
+  background: transparent;
+  border-bottom-color: var(--rx-blue);
+  box-shadow: none;
+  color: var(--rx-blue);
+  font-weight: 800;
 }
 
 .plan-tab-panel {
@@ -1341,8 +1388,11 @@ textarea:focus,
 }
 
 .medication-actions-top {
-  grid-column: 3;
+  align-items: center;
   align-self: flex-start;
+  display: flex;
+  gap: 0.4rem;
+  grid-column: 3;
   justify-content: flex-end;
 }
 
@@ -1367,6 +1417,7 @@ textarea:focus,
 }
 
 .done-pill {
+  align-self: flex-start;
   background: rgba(24, 191, 166, 0.12);
   border-radius: 999px;
   color: var(--rx-success);
@@ -1485,6 +1536,7 @@ textarea:focus,
 
 .warn-pill,
 .alert-pill {
+  align-self: flex-start;
   border-radius: 999px;
   font-size: 0.74rem;
   font-weight: 900;
@@ -2305,7 +2357,7 @@ textarea:focus,
   }
 
   .medication-actions-bottom {
-    grid-column: 1;
+    grid-column: 2 / span 2;
     grid-row: auto;
   }
 
@@ -2315,13 +2367,13 @@ textarea:focus,
   }
 
   .medication-actions-top {
-    grid-column: 1;
-    justify-content: flex-start;
-    margin-top: 0.15rem;
+    grid-column: 3;
+    justify-content: flex-end;
+    margin-top: 0;
   }
 
   .medication-row-plan {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 3rem minmax(0, 1fr) auto;
   }
 
   .dashboard-grid {

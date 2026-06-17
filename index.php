@@ -567,7 +567,12 @@ $missedCount = $repository->missedDoseCount($today, $currentTime);
 
 $requiredRows = array_filter($todaySchedule, static fn(array $row): bool => !$row['as_needed']);
 $takenRows = array_filter($requiredRows, static fn(array $row): bool => (string) ($row['status'] ?? '') === 'taken');
-$adherence = count($requiredRows) > 0 ? (int) round((count($takenRows) / count($requiredRows)) * 100) : 0;
+$takenTodayCount = count(array_filter($recentLogs, static fn(array $l): bool =>
+    (string) ($l['status'] ?? '') === 'taken' &&
+    (string) ($l['scheduled_for_date'] ?? '') === $today &&
+    !(bool) ($l['as_needed'] ?? false)
+));
+$adherence = count($requiredRows) > 0 ? (int) round(($takenTodayCount / count($requiredRows)) * 100) : 0;
 $nextDose = null;
 foreach ($todaySchedule as $row) {
     if (!in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
@@ -713,7 +718,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <?php endif; ?>
               <?php endif; ?>
             </div>
-            <div class="hero-pill-graphic" aria-hidden="true"></div>
+            <div class="hero-pill-graphic" aria-hidden="true">
+              <img src="assets/images/blue-white-pill-graphic.png" alt="" class="hero-pill-img">
+            </div>
           </div>
           <?php if (isset($heroNextDoseItems[1])): ?>
             <?php $ndNext = $heroNextDoseItems[1]; ?>
@@ -744,8 +751,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <svg class="adherence-ring" viewBox="0 0 100 100" aria-hidden="true">
             <defs>
               <linearGradient id="adherence-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#0A8AC8"/>
-                <stop offset="100%" stop-color="#14CFE0"/>
+                <stop offset="0%" stop-color="rgba(255,255,255,0.6)"/>
+                <stop offset="100%" stop-color="#ffffff"/>
               </linearGradient>
             </defs>
             <circle class="adherence-ring-track" cx="50" cy="50" r="42" fill="none"/>
@@ -754,7 +761,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <span class="adherence-ring-num" data-adherence-num>0%</span>
         </div>
         <div class="hero-adherence-stats">
-          <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
+          <span>Required doses taken: <?= e((string) $takenTodayCount) ?> of <?= e((string) count($requiredRows)) ?></span>
           <?php if ($onTimeCount + $lateCount > 0): ?>
             <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?><?php if ($skippedCount > 0): ?> &middot; Skipped: <?= e((string) $skippedCount) ?><?php endif; ?></span>
           <?php elseif ($skippedCount > 0): ?>
@@ -1012,12 +1019,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
       </div>
       <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
-        <button type="button" class="secondary plan-tab is-active" data-plan-tab="active" role="tab" aria-selected="true" aria-controls="active-medications-panel" id="active-medications-tab">Active (<?= e((string) $medicationPlanCount) ?>)</button>
-        <button type="button" class="secondary plan-tab" data-plan-tab="inactive" role="tab" aria-selected="false" aria-controls="inactive-medications-panel" id="inactive-medications-tab">Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
-        <button type="button" class="secondary plan-tab" data-plan-tab="groups" role="tab" aria-selected="false" aria-controls="groups-panel" id="groups-tab">Groups (<?= e((string) count($groups)) ?>)</button>
+        <button type="button" class="plan-tab is-active" data-plan-tab="active" role="tab" aria-selected="true" aria-controls="active-medications-panel" id="active-medications-tab"><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Active (<?= e((string) $medicationPlanCount) ?>)</button>
+        <button type="button" class="plan-tab" data-plan-tab="inactive" role="tab" aria-selected="false" aria-controls="inactive-medications-panel" id="inactive-medications-tab"><i class="fa-regular fa-clock" aria-hidden="true"></i> Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
+        <button type="button" class="plan-tab" data-plan-tab="groups" role="tab" aria-selected="false" aria-controls="groups-panel" id="groups-tab"><i class="fa-regular fa-layer-group" aria-hidden="true"></i> Groups (<?= e((string) count($groups)) ?>)</button>
       </div>
       <div class="medications-page-actions">
-        <button type="button" data-open-medication-modal>Add medication</button>
+        <button type="button" data-open-medication-modal><i class="fa-solid fa-plus" aria-hidden="true"></i> Add medication</button>
       </div>
     </div>
     <?php include __DIR__ . '/includes/medication-plan-tabs.php'; ?>
@@ -1503,7 +1510,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <aside class="dashboard-sidebar">
       <div class="panel quick-actions-panel">
         <h2 class="sidebar-panel-heading">Quick actions</h2>
-        <a href="index.php?page=medications" class="quick-action-row">
+        <a href="index.php?page=medications&open=add" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--add"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>
           <span class="quick-action-label">Add medication</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
@@ -1533,7 +1540,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           </div>
           <div class="medications-overview-row">
             <span>Doses taken</span>
-            <span class="medications-overview-value medications-overview-value--taken"><?= e((string) count($takenRows)) ?></span>
+            <span class="medications-overview-value medications-overview-value--taken"><?= e((string) $takenTodayCount) ?></span>
           </div>
           <div class="medications-overview-row">
             <span>Doses missed</span>
