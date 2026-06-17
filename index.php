@@ -651,6 +651,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
   <title>RxTracker</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
   <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
@@ -661,7 +662,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 <main class="app-shell">
   <nav class="top-nav">
     <a class="nav-brand" href="index.php">
-      <img src="assets/icons/icon-192.png" alt="" class="nav-logo" aria-hidden="true" width="28" height="28">
+      <img src="assets/icons/icon-192.png" alt="" class="nav-logo" aria-hidden="true" width="48" height="48">
       RxTracker
     </a>
     <div class="nav-links">
@@ -687,13 +688,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <section class="hero">
     <div class="hero-left">
       <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
-        <span class="stat-label">Next dose</span>
         <?php if ($heroNextDoseItems !== []): ?>
-          <?php foreach ($heroNextDoseItems as $ndIndex => $ndItem): ?>
-            <div class="hero-next-dose-entry<?= $ndIndex > 0 ? ' hero-next-dose-entry--subtle' : '' ?>">
-              <span class="hero-next-dose-time"><?= e(to12h((string) $ndItem['reminder_time'])) ?></span>
+          <?php $ndItem = $heroNextDoseItems[0]; ?>
+          <div class="hero-next-dose-primary">
+            <div class="hero-next-dose-info">
+              <div class="hero-next-dose-eyebrow"><i class="fa-regular fa-clock" aria-hidden="true"></i> NEXT DOSE</div>
+              <div class="hero-next-dose-time-large"><?= e(to12h((string) $ndItem['reminder_time'])) ?></div>
               <?php if ($ndItem['group_id'] !== null): ?>
-                <p class="hero-next-dose-name"><?= e((string) $ndItem['group_name']) ?></p>
+                <div class="hero-next-dose-name-large"><?= e((string) $ndItem['group_name']) ?></div>
                 <p class="hero-next-dose-meta"><?= e((string) count($ndItem['_group_members'])) ?> medication<?= count($ndItem['_group_members']) !== 1 ? 's' : '' ?> in group</p>
                 <button type="button" class="group-meds-toggle" data-group-meds-toggle>view group meds</button>
                 <div class="group-meds-list" hidden>
@@ -705,35 +707,62 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                   <?php endforeach; ?>
                 </div>
               <?php else: ?>
-                <p class="hero-next-dose-name">
-                  <?= e((string) $ndItem['name']) ?>
-                  <span class="hero-next-dose-dose"><?= e(formattedDose($ndItem)) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
-                </p>
+                <div class="hero-next-dose-name-large"><?= e((string) $ndItem['name']) ?></div>
+                <?php if (formattedDose($ndItem) !== ''): ?>
+                  <span class="hero-dose-badge"><?= e(formattedDose($ndItem)) ?></span>
+                <?php endif; ?>
               <?php endif; ?>
             </div>
-          <?php endforeach; ?>
+            <div class="hero-pill-graphic" aria-hidden="true"></div>
+          </div>
+          <?php if (isset($heroNextDoseItems[1])): ?>
+            <?php $ndNext = $heroNextDoseItems[1]; ?>
+            <div class="hero-upcoming-section">
+              <div class="hero-upcoming-label">UPCOMING</div>
+              <div class="hero-upcoming-row">
+                <span class="hero-upcoming-time"><?= e(to12h((string) $ndNext['reminder_time'])) ?></span>
+                <span class="hero-upcoming-name"><?= e($ndNext['group_id'] !== null ? (string) $ndNext['group_name'] : (string) $ndNext['name']) ?></span>
+                <?php if ($ndNext['group_id'] === null && formattedDose($ndNext) !== ''): ?>
+                  <span class="hero-upcoming-dose-badge"><?= e(formattedDose($ndNext)) ?></span>
+                <?php endif; ?>
+              </div>
+            </div>
+          <?php endif; ?>
         <?php else: ?>
-          <p class="hero-copy">All scheduled doses complete for today.</p>
+          <div class="hero-next-dose-info">
+            <div class="hero-next-dose-eyebrow"><i class="fa-regular fa-clock" aria-hidden="true"></i> NEXT DOSE</div>
+            <p class="hero-copy">All scheduled doses complete for today.</p>
+          </div>
         <?php endif; ?>
       </div>
     </div>
 
-    <div class="hero-card" aria-label="Today's adherence summary">
-      <span class="stat-label">Today's adherence</span>
-      <div class="adherence-ring-wrap">
-        <svg class="adherence-ring" viewBox="0 0 100 100" aria-hidden="true">
-          <circle class="adherence-ring-track" cx="50" cy="50" r="42" fill="none"/>
-          <circle class="adherence-ring-fill" cx="50" cy="50" r="42" fill="none" data-adherence-pct="<?= e((string) $adherence) ?>"/>
-        </svg>
-        <span class="adherence-ring-num" data-adherence-num>0%</span>
+    <div class="hero-card hero-adherence-card" aria-label="Today's adherence summary">
+      <div class="hero-adherence-header"><i class="fa-regular fa-calendar-check" aria-hidden="true"></i> TODAY'S ADHERENCE</div>
+      <div class="hero-adherence-body">
+        <div class="adherence-ring-wrap">
+          <svg class="adherence-ring" viewBox="0 0 100 100" aria-hidden="true">
+            <defs>
+              <linearGradient id="adherence-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#0A8AC8"/>
+                <stop offset="100%" stop-color="#14CFE0"/>
+              </linearGradient>
+            </defs>
+            <circle class="adherence-ring-track" cx="50" cy="50" r="42" fill="none"/>
+            <circle class="adherence-ring-fill" cx="50" cy="50" r="42" fill="none" data-adherence-pct="<?= e((string) $adherence) ?>"/>
+          </svg>
+          <span class="adherence-ring-num" data-adherence-num>0%</span>
+        </div>
+        <div class="hero-adherence-stats">
+          <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
+          <?php if ($onTimeCount + $lateCount > 0): ?>
+            <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?><?php if ($skippedCount > 0): ?> &middot; Skipped: <?= e((string) $skippedCount) ?><?php endif; ?></span>
+          <?php elseif ($skippedCount > 0): ?>
+            <span>Skipped: <?= e((string) $skippedCount) ?></span>
+          <?php endif; ?>
+          <span>Missed required doses today: <?= e((string) $missedCount) ?></span>
+        </div>
       </div>
-      <span>Required doses taken: <?= e((string) count($takenRows)) ?> of <?= e((string) count($requiredRows)) ?></span>
-      <?php if ($onTimeCount + $lateCount > 0): ?>
-        <span>On time: <?= e((string) $onTimeCount) ?> &middot; Late: <?= e((string) $lateCount) ?><?php if ($skippedCount > 0): ?> &middot; Skipped: <?= e((string) $skippedCount) ?><?php endif; ?></span>
-      <?php elseif ($skippedCount > 0): ?>
-        <span>Skipped: <?= e((string) $skippedCount) ?></span>
-      <?php endif; ?>
-      <span>Missed required doses today: <?= e((string) $missedCount) ?></span>
     </div>
   </section>
   <?php endif; ?>
@@ -1424,14 +1453,22 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export'], true)): ?>
   <section class="dashboard-grid" aria-label="Medication dashboard">
-    <article class="panel">
-      <div class="panel-heading"><h2>Today schedule <span class="panel-heading-date"><?= date('D, M j') ?></span></h2></div>
+    <article class="panel dashboard-schedule-panel">
+      <div class="panel-heading">
+        <h2>Today schedule <span class="panel-heading-date"><?= date('D, M j') ?></span></h2>
+        <a href="index.php?page=calendar" class="panel-heading-link"><i class="fa-regular fa-calendar" aria-hidden="true"></i> View calendar</a>
+      </div>
       <div class="schedule-list">
         <?php foreach ($todaySchedule as $dose): ?>
           <div class="schedule-row">
-            <div>
-              <strong><?= e((string) $dose['name']) ?></strong><?php if (formattedDose($dose) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
-              <p><?= e(to12h((string) $dose['reminder_time'])) ?> <?= $dose['as_needed'] ? '(PRN)' : '' ?></p>
+            <div class="schedule-row-time">
+              <i class="fa-regular fa-clock" aria-hidden="true"></i>
+              <span><?= e(to12h((string) $dose['reminder_time'])) ?></span>
+              <?php if ($dose['as_needed']): ?><span class="schedule-prn">(PRN)</span><?php endif; ?>
+            </div>
+            <div class="schedule-row-info">
+              <strong><?= e((string) $dose['name']) ?></strong>
+              <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
               <?php if ($dose['group_name'] !== null): ?>
                 <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
               <?php endif; ?>
@@ -1448,29 +1485,71 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable((string) $dose['postponed_until']))->format('H:i'))) ?></span>
               <?php endif; ?>
               <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
                 <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
                 <?php if (!$isCompleted): ?>
-                  <button
-                    type="button"
-                    class="secondary"
-                    data-open-postpone-modal
-                    data-medication-id="<?= e((string) $dose['medication_id']) ?>"
-                    data-scheduled-date="<?= e($today) ?>"
-                    data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"
-                    <?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>
-                  >Snooze</button>
+                  <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Snooze</button>
                 <?php endif; ?>
               </div>
             </div>
           </div>
         <?php endforeach; ?>
       </div>
+      <div class="schedule-view-full">
+        <a href="index.php?page=calendar" class="panel-link">View full schedule</a>
+      </div>
     </article>
+
+    <aside class="dashboard-sidebar">
+      <div class="panel quick-actions-panel">
+        <h2 class="sidebar-panel-heading">Quick actions</h2>
+        <a href="index.php?page=medications" class="quick-action-row">
+          <span class="quick-action-icon quick-action-icon--add"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>
+          <span class="quick-action-label">Add medication</span>
+          <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
+        </a>
+        <a href="index.php?page=medications" class="quick-action-row">
+          <span class="quick-action-icon quick-action-icon--log"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></span>
+          <span class="quick-action-label">Log a dose</span>
+          <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
+        </a>
+        <a href="index.php?page=medications" class="quick-action-row">
+          <span class="quick-action-icon quick-action-icon--manage"><i class="fa-solid fa-pills" aria-hidden="true"></i></span>
+          <span class="quick-action-label">Manage medications</span>
+          <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
+        </a>
+      </div>
+
+      <div class="panel medications-overview-panel">
+        <h2 class="sidebar-panel-heading"><i class="fa-regular fa-rectangle-list" aria-hidden="true"></i> Medications overview</h2>
+        <div class="medications-overview-list">
+          <div class="medications-overview-row">
+            <span>Active medications</span>
+            <span class="medications-overview-value"><?= e((string) count($medications ?? [])) ?></span>
+          </div>
+          <div class="medications-overview-row">
+            <span>Today's doses</span>
+            <span class="medications-overview-value"><?= e((string) count($requiredRows)) ?></span>
+          </div>
+          <div class="medications-overview-row">
+            <span>Doses taken</span>
+            <span class="medications-overview-value medications-overview-value--taken"><?= e((string) count($takenRows)) ?></span>
+          </div>
+          <div class="medications-overview-row">
+            <span>Doses missed</span>
+            <span class="medications-overview-value medications-overview-value--missed"><?= e((string) $missedCount) ?></span>
+          </div>
+        </div>
+        <a href="index.php?page=medications" class="panel-link medications-overview-link">View all medications</a>
+      </div>
+    </aside>
   </section>
 
   <section class="panel history-panel" data-history-panel>
-    <div class="panel-heading"><h2>Recent history</h2></div>
+    <div class="panel-heading">
+      <h2>Recent history</h2>
+      <a href="index.php?page=calendar" class="panel-heading-link">View all history</a>
+    </div>
     <ol class="history-list" data-history-list>
       <?php
         $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
@@ -1479,11 +1558,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php
           $logDate = (string) $log['scheduled_for_date'];
           if ($logDate === $today) {
-              $dateLabel = 'Today';
+              $dateLabel = 'TODAY';
           } elseif ($logDate === $yesterday) {
-              $dateLabel = 'Yesterday';
+              $dateLabel = 'YESTERDAY';
           } else {
-              $dateLabel = (new DateTimeImmutable($logDate))->format('M j');
+              $dateLabel = strtoupper((new DateTimeImmutable($logDate))->format('M j'));
           }
         ?>
         <li>
@@ -1649,24 +1728,24 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 </div>
 <nav class="bottom-nav" aria-label="Main navigation">
   <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <i class="fa-solid fa-house" aria-hidden="true"></i>
     Dashboard
   </a>
   <a href="index.php?page=medications" class="bottom-nav-item<?= $page === 'medications' ? ' is-active' : '' ?>" aria-label="Medications">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20H4a2 2 0 0 1-2-2V5c0-1.1.9-2 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H20a2 2 0 0 1 2 2v3"/><circle cx="18" cy="18" r="3"/><path d="m22 22-1.5-1.5"/></svg>
+    <i class="fa-solid fa-pills" aria-hidden="true"></i>
     Medications
   </a>
   <a href="index.php?page=calendar" class="bottom-nav-item<?= $page === 'calendar' ? ' is-active' : '' ?>" aria-label="Calendar">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <i class="fa-regular fa-calendar" aria-hidden="true"></i>
     Calendar
   </a>
   <a href="index.php?page=export" class="bottom-nav-item<?= $page === 'export' ? ' is-active' : '' ?>" aria-label="Export">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <i class="fa-solid fa-file-export" aria-hidden="true"></i>
     Export
   </a>
   <a href="index.php?page=settings" class="bottom-nav-item<?= $page === 'settings' ? ' is-active' : '' ?>" aria-label="Settings">
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    Settings
+    <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
+    More
   </a>
 </nav>
 </body>
