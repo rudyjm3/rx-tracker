@@ -2489,6 +2489,75 @@ textarea:focus,
   }
 }
 
+/* ── More menu (bottom nav popup) ───────────────────────────────────────── */
+
+.more-menu {
+  display: none;
+  inset: 0;
+  position: fixed;
+  z-index: 600;
+}
+
+.more-menu.is-open {
+  display: block;
+}
+
+.more-menu__backdrop {
+  background: rgba(7, 29, 61, 0.45);
+  inset: 0;
+  position: absolute;
+}
+
+.more-menu__sheet {
+  background: var(--rx-card);
+  border-radius: 1rem 1rem 0 0;
+  border-top: 1px solid var(--rx-border);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  left: 0;
+  padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+  position: absolute;
+  right: 0;
+}
+
+.more-menu__item {
+  align-items: center;
+  border-radius: 0.625rem;
+  color: var(--rx-text);
+  display: flex;
+  font-size: 1rem;
+  font-weight: 600;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  text-decoration: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.more-menu__item i {
+  color: var(--rx-blue);
+  font-size: 1.2rem;
+  text-align: center;
+  width: 1.5rem;
+}
+
+.more-menu__item:hover {
+  background: var(--rx-bg);
+  box-shadow: none;
+  color: var(--rx-deep-blue);
+  transform: none;
+}
+
+.more-menu__item:hover i {
+  color: var(--rx-deep-blue);
+}
+
+.more-menu__item.is-active,
+.more-menu__item.is-active i {
+  color: var(--rx-deep-blue);
+}
+
 /* ── Pain level trend graph ──────────────────────────────────────────────── */
 
 .pain-graph-btn {
