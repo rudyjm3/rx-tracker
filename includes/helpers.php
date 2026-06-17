@@ -52,7 +52,9 @@ function today(): string
 
 function formattedDose(array $medication): string
 {
-    $structured = trim((string) ($medication['dose_amount'] ?? '') . ' ' . (string) ($medication['dose_unit'] ?? ''));
+    $amount = $medication['dose_amount'] ?? '';
+    $amountStr = ($amount !== '' && $amount !== null && (float) $amount !== 0.0) ? (string) (float) $amount : '';
+    $structured = trim($amountStr . ' ' . (string) ($medication['dose_unit'] ?? ''));
 
     return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
 }

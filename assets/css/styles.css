@@ -751,9 +751,63 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.medication-form label:last-of-type,
-.medication-form button {
+.medication-form > label:nth-last-of-type(-n+2),
+.medication-form > button,
+.medication-form > .form-disclosure {
   grid-column: 1 / -1;
+}
+
+.form-section {
+  border: none;
+  border-top: 1px solid #e8edf5;
+  display: grid;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  padding: 0.75rem 0 0;
+}
+
+.form-section legend {
+  color: #6b7a96;
+  float: left;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0 0 0.4rem;
+  text-transform: uppercase;
+  width: 100%;
+}
+
+.form-disclosure {
+  grid-column: 1 / -1;
+}
+
+.form-disclosure-toggle {
+  color: #1269ff;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  list-style: none;
+  padding: 0.35rem 0;
+  user-select: none;
+}
+
+.form-disclosure-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.form-disclosure-toggle::before {
+  content: '\25B6\00A0';
+  font-size: 0.7em;
+}
+
+details[open] .form-disclosure-toggle::before {
+  content: '\25BC\00A0';
+}
+
+.form-disclosure .form-section {
+  margin-top: 0.5rem;
 }
 
 label {
@@ -824,6 +878,38 @@ textarea:focus,
 
 .medication-content {
   min-width: 0;
+}
+
+.dose-inline {
+  color: #6b7a96;
+  font-size: 0.82rem;
+  margin-left: 0.3rem;
+}
+
+.med-type-badge {
+  border-radius: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.med-type-badge--prescription {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.med-type-badge--otc {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.med-type-badge--supplement {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .medication-row-plan {
@@ -2215,6 +2301,7 @@ textarea:focus,
 /* ── Drug name autocomplete ──────────────────────────────────────────────── */
 
 .autocomplete-wrap {
+  grid-column: 1 / -1;
   position: relative;
 }
 
@@ -2253,25 +2340,6 @@ textarea:focus,
   color: #1269ff;
 }
 
-.autocomplete-badge {
-  border-radius: 0.35rem;
-  flex-shrink: 0;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 0.15rem 0.45rem;
-  text-transform: uppercase;
-}
-
-.autocomplete-badge--brand {
-  background: #e8f0fe;
-  color: #1a56db;
-}
-
-.autocomplete-badge--generic {
-  background: #e8f5e9;
-  color: #1b7a3a;
-}
 
 /* ── Image lightbox ──────────────────────────────────────────────────────── */
 

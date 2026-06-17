@@ -1643,6 +1643,22 @@ if (medicationForm) {
 
   inventoryTypeSelect?.addEventListener('change', applyInventoryVisibility);
   applyInventoryVisibility();
+
+  const doseFormSelect = medicationForm.querySelector('[data-dailymed-dose-form]');
+  const DOSE_FORM_TO_INV = {
+    tablet: 'pills', capsule: 'pills',
+    liquid: 'liquid', inhaler: 'inhaler',
+    injection: 'injection', patch: 'patch', drops: 'drops', other: 'other',
+  };
+  if (doseFormSelect && inventoryTypeSelect) {
+    doseFormSelect.addEventListener('change', () => {
+      const mapped = DOSE_FORM_TO_INV[doseFormSelect.value];
+      if (mapped) {
+        inventoryTypeSelect.value = mapped;
+        applyInventoryVisibility();
+      }
+    });
+  }
 }
 
 // ── Drug name autocomplete ────────────────────────────────────────────────────
@@ -1663,20 +1679,13 @@ const showDrugDropdown = (items) => {
   if (!autocompleteDropdown) return;
   autocompleteDropdown.innerHTML = '';
   if (!items.length) { hideDrugDropdown(); return; }
-  items.forEach(({ name, type }) => {
+  items.forEach(({ name }) => {
     const li = document.createElement('li');
     li.className = 'autocomplete-item';
 
     const nameSpan = document.createElement('span');
     nameSpan.textContent = name;
     li.appendChild(nameSpan);
-
-    if (type) {
-      const badge = document.createElement('span');
-      badge.className = `autocomplete-badge autocomplete-badge--${type}`;
-      badge.textContent = type === 'brand' ? 'Brand' : 'Generic';
-      li.appendChild(badge);
-    }
 
     li.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -1712,45 +1721,23 @@ const showDrugDropdown = (items) => {
 
 const fetchDrugSuggestions = async (query) => {
   try {
-    const q = encodeURIComponent(query);
-    const [dmRes, fdaRes] = await Promise.all([
-      fetch(apiProxy(`https://dailymed.nlm.nih.gov/dailymed/services/v2/drugnames.json?drug_name=${q}&pagesize=12`)),
-      fetch(apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=20`)),
-    ]);
-
-    // DailyMed provides the list — good prefix matching, always returns [] on no match (never 404)
-    const dmNames = dmRes.ok
-      ? ((await dmRes.json())?.data ?? []).map((item) => item?.drug_name ?? '').filter(Boolean)
-      : [];
-
-    if (!dmNames.length) { hideDrugDropdown(); return; }
-
-    // OpenFDA provides brand/generic classification; failure is graceful (names still shown, just unlabelled)
-    const brandSet = new Set();
-    const genericSet = new Set();
-    if (fdaRes.ok) {
-      const fdaData = await fdaRes.json();
-      for (const result of (fdaData?.results ?? [])) {
-        for (const name of (result.openfda?.brand_name ?? [])) brandSet.add(name.toUpperCase());
-        for (const name of (result.openfda?.generic_name ?? [])) genericSet.add(name.toUpperCase());
+    const q = encodeURIComponent(query + '*');
+    const res = await fetch(
+      apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=10`)
+    );
+    if (!res.ok) { hideDrugDropdown(); return; }
+    const data = await res.json();
+    const seen = new Set();
+    const names = [];
+    const queryUpper = query.toUpperCase();
+    for (const result of (data?.results ?? [])) {
+      for (const name of [...(result.openfda?.brand_name ?? []), ...(result.openfda?.generic_name ?? [])]) {
+        const key = name.toUpperCase();
+        if (!seen.has(key) && key.includes(queryUpper)) { seen.add(key); names.push(name); }
       }
     }
-
-    // Classify each DailyMed name; check both the full name and the base name (without dose suffix)
-    const seen = new Set();
-    const items = [];
-    for (const name of dmNames) {
-      const key = name.toUpperCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const baseKey = (name.match(DOSE_SUFFIX_RE)?.[1] ?? name).toUpperCase();
-      const type = brandSet.has(key) || brandSet.has(baseKey) ? 'brand'
-                 : genericSet.has(key) || genericSet.has(baseKey) ? 'generic'
-                 : null;
-      items.push({ name, type });
-    }
-
-    showDrugDropdown(items);
+    if (!names.length) { hideDrugDropdown(); return; }
+    showDrugDropdown(names.map((name) => ({ name })));
   } catch { hideDrugDropdown(); }
 };
 
@@ -1785,7 +1772,7 @@ const fetchAndSetSplId = async (name) => {
         for (const [keyword, mapped] of Object.entries(SPL_FORM_MAP)) {
           if (title.includes(keyword)) {
             const opt = Array.from(doseFormSelect.options).find((o) => o.value === mapped);
-            if (opt) { doseFormSelect.value = mapped; break; }
+            if (opt) { doseFormSelect.value = mapped; doseFormSelect.dispatchEvent(new Event('change')); break; }
           }
         }
       }

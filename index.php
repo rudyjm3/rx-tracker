@@ -691,14 +691,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                   <?php foreach ($ndItem['_group_members'] as $ndMember): ?>
                     <div class="group-meds-member">
                       <span class="hero-med-name"><?= e((string) $ndMember['name']) ?></span>
-                      <span class="hero-med-dose"><?= e(trim((string) ($ndMember['dose_amount'] ?? '') . ' ' . (string) ($ndMember['dose_unit'] ?? ''))) ?></span>
+                      <span class="hero-med-dose"><?= e(formattedDose($ndMember)) ?></span>
                     </div>
                   <?php endforeach; ?>
                 </div>
               <?php else: ?>
                 <p class="hero-next-dose-name">
                   <?= e((string) $ndItem['name']) ?>
-                  <span class="hero-next-dose-dose"><?= e(trim((string) ($ndItem['dose_amount'] ?? '') . ' ' . (string) ($ndItem['dose_unit'] ?? ''))) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
+                  <span class="hero-next-dose-dose"><?= e(formattedDose($ndItem)) ?><?= $ndItem['as_needed'] ? ' &middot; PRN' : '' ?></span>
                 </p>
               <?php endif; ?>
             </div>
@@ -761,7 +761,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </select>
           </label>
           <label>Dose amount
-            <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e((string) ($editing['dose_amount'] ?? '')) ?>">
+            <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>">
           </label>
           <label>Dose unit
             <select name="dose_unit" data-dailymed-dose-unit>
@@ -814,6 +814,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
           </select>
         </label>
+        <details class="form-disclosure" <?= (!empty($editing) && (float) ($editing['current_quantity'] ?? 0) > 0) ? 'open' : '' ?>>
+          <summary class="form-disclosure-toggle">Inventory tracking</summary>
         <fieldset class="form-section" data-inventory-section>
           <legend>Inventory</legend>
           <label>Inventory type
@@ -829,7 +831,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
           <label data-inv-qty-label>Starting quantity
             <span class="input-with-unit">
-              <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string) ($editing['current_quantity'] ?? $editing['pill_count'] ?? 0)) ?>">
+              <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string)(float)($editing['current_quantity'] ?? $editing['pill_count'] ?? 0)) ?>">
               <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
             </span>
           </label>
@@ -838,9 +840,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <span class="input-with-unit">
               <?php
               $storedMl = (float) ($editing['current_quantity'] ?? 0);
-              $bottleDisplayVal = $storedMl > 0 ? round($storedMl, 3) : '';
+              $bottleDisplayVal = $storedMl > 0 ? (string)(float)round($storedMl, 3) : '';
               ?>
-              <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e((string) $bottleDisplayVal) ?>">
+              <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e($bottleDisplayVal) ?>">
               <select name="bottle_unit" data-bottle-unit-select>
                 <option value="mL">mL</option>
                 <option value="oz">oz</option>
@@ -850,18 +852,19 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
           <label>Dose reduces inventory by
             <span class="input-with-unit">
-              <input type="number" step="0.001" min="0.001" name="quantity_per_dose" value="<?= e((string) ($editing['quantity_per_dose'] ?? 1)) ?>">
+              <input type="number" step="0.001" min="0.001" name="quantity_per_dose" value="<?= e((string)(float)($editing['quantity_per_dose'] ?? 1)) ?>">
               <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
             </span>
           </label>
 
           <label>Low supply alert at
             <span class="input-with-unit">
-              <input type="number" step="0.001" min="0" name="low_supply_threshold" value="<?= e((string) ($editing['low_supply_threshold'] ?? 0)) ?>">
+              <input type="number" step="0.001" min="0" name="low_supply_threshold" value="<?= e((string)(float)($editing['low_supply_threshold'] ?? 0)) ?>">
               <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
             </span>
           </label>
         </fieldset>
+        </details>
 
         <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
         <label>Medication group <span class="field-optional">(optional)</span>
@@ -1250,7 +1253,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <?php $exportDays = daysUntilRunout($med); ?>
           <tr>
             <td><?= e((string) $med['name']) ?></td>
-            <td><?= e(trim((string) ($med['dose_amount'] ?? '') . ' ' . (string) ($med['dose_unit'] ?? ''))) ?></td>
+            <td><?= e(formattedDose($med)) ?></td>
             <td>
               <?php if ((string) $med['schedule_mode'] === 'interval'): ?>
                 Every <?= e((string) $med['interval_hours']) ?>h from <?= e(to12h((string) $med['first_dose_time'])) ?>
@@ -1374,7 +1377,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php foreach ($todaySchedule as $dose): ?>
           <div class="schedule-row">
             <div>
-              <strong><?= e((string) $dose['name']) ?></strong>
+              <strong><?= e((string) $dose['name']) ?></strong><?php if (formattedDose($dose) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
               <p><?= e(to12h((string) $dose['reminder_time'])) ?> <?= $dose['as_needed'] ? '(PRN)' : '' ?></p>
               <?php if ($dose['group_name'] !== null): ?>
                 <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
@@ -1433,7 +1436,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <li>
           <span><span class="history-date"><?= e($dateLabel) ?></span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
           <div>
-            <strong><?= e((string) $log['name']) ?></strong>
+            <strong><?= e((string) $log['name']) ?></strong><?php if (formattedDose($log) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($log)) ?></span><?php endif; ?>
             <p>
               <?php if ((string) $log['status'] === 'taken'): ?>
                 <?php $lateMin = minutesLate($log, $graceMinutes); ?>
