@@ -105,15 +105,15 @@
               data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
               data-slots="<?= e(json_encode($medSlots)) ?>"
               data-grace-minutes="<?= e((string) $graceMinutes) ?>"
-            >Log dose now</button>
+            ><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Log dose now</button>
           </form>
-          <button type="button" class="secondary" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">Log refill</button>
-          <button type="button" class="secondary" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">Refill history</button>
+          <button type="button" class="secondary" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Log refill</button>
+          <button type="button" class="secondary" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Refill history</button>
           <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="deactivate_medication">
             <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-            <button type="submit" class="secondary">Deactivate</button>
+            <button type="submit" class="secondary"><i class="fa-solid fa-power-off" aria-hidden="true"></i> Deactivate</button>
           </form>
         </div>
       </div>
