@@ -36,10 +36,17 @@ try {
         $doseUnit = post_string('dose_unit') ?: null;
         $doseForm = post_string('dose_form') ?: null;
 
-        $inventoryType = post_string('inventory_type');
-        if (!in_array($inventoryType, ['pills', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'], true)) {
-            $inventoryType = 'pills';
-        }
+        $doseFormToInvType = [
+            'tablet'    => 'pills',
+            'capsule'   => 'pills',
+            'liquid'    => 'liquid',
+            'inhaler'   => 'inhaler',
+            'injection' => 'injection',
+            'patch'     => 'patch',
+            'drops'     => 'drops',
+            'other'     => 'other',
+        ];
+        $inventoryType = $doseFormToInvType[$doseForm ?? ''] ?? 'pills';
 
         if ($inventoryType === 'liquid') {
             $bottleAmount = post_string('bottle_amount');

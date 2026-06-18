@@ -1626,10 +1626,16 @@ if (medicationForm) {
 // ── Inventory type dynamic fields ────────────────────────────────────────────
 
 if (medicationForm) {
-  const inventoryTypeSelect = medicationForm.querySelector('[data-inventory-type-select]');
+  const doseFormSelect  = medicationForm.querySelector('[data-dailymed-dose-form]');
   const invQtyLabel     = medicationForm.querySelector('[data-inv-qty-label]');
   const invLiquidLabel  = medicationForm.querySelector('[data-inv-liquid-label]');
   const invUnitLabels   = medicationForm.querySelectorAll('[data-inv-unit-label]');
+
+  const DOSE_FORM_TO_INV = {
+    tablet: 'pills', capsule: 'pills',
+    liquid: 'liquid', inhaler: 'inhaler',
+    injection: 'injection', patch: 'patch', drops: 'drops', other: 'other',
+  };
 
   const inventoryUnits = {
     pills:     'tablets',
@@ -1642,32 +1648,16 @@ if (medicationForm) {
   };
 
   const applyInventoryVisibility = () => {
-    const type = inventoryTypeSelect?.value ?? 'pills';
-    const isLiquid = type === 'liquid';
+    const invType = DOSE_FORM_TO_INV[doseFormSelect?.value ?? ''] ?? 'pills';
+    const isLiquid = invType === 'liquid';
     if (invQtyLabel)    invQtyLabel.style.display    = isLiquid ? 'none' : '';
     if (invLiquidLabel) invLiquidLabel.style.display = isLiquid ? ''     : 'none';
-    const unit = inventoryUnits[type] ?? 'units';
+    const unit = inventoryUnits[invType] ?? 'units';
     invUnitLabels.forEach((el) => { el.textContent = unit; });
   };
 
-  inventoryTypeSelect?.addEventListener('change', applyInventoryVisibility);
+  doseFormSelect?.addEventListener('change', applyInventoryVisibility);
   applyInventoryVisibility();
-
-  const doseFormSelect = medicationForm.querySelector('[data-dailymed-dose-form]');
-  const DOSE_FORM_TO_INV = {
-    tablet: 'pills', capsule: 'pills',
-    liquid: 'liquid', inhaler: 'inhaler',
-    injection: 'injection', patch: 'patch', drops: 'drops', other: 'other',
-  };
-  if (doseFormSelect && inventoryTypeSelect) {
-    doseFormSelect.addEventListener('change', () => {
-      const mapped = DOSE_FORM_TO_INV[doseFormSelect.value];
-      if (mapped) {
-        inventoryTypeSelect.value = mapped;
-        applyInventoryVisibility();
-      }
-    });
-  }
 }
 
 // ── Drug name autocomplete ────────────────────────────────────────────────────

@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+/** @var MedicationRepository $repository */
+/** @var string $today */
+/** @var string $currentTime */
+/** @var string $page */
+/** @var string|null $error */
+/** @var string|null $notice */
+
 $graceMinutes = $repository->getMissedGraceMinutes();
 $snoozeMinutes = $repository->getSnoozeMinutes();
 $repository->finalizeMissedDoses(new DateTimeImmutable('now'), $graceMinutes);
@@ -173,8 +180,20 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <?php endif; ?>
               <?php endif; ?>
             </div>
-            <div class="hero-pill-graphic" aria-hidden="true">
-              <img src="assets/images/blue-white-pill-graphic.png" alt="" class="hero-pill-img">
+            <div class="hero-med-graphic" aria-hidden="true">
+              <?php
+              $heroMedImageMap = [
+                'tablet'    => 'med-pill.png',
+                'capsule'   => 'med-capsule.png',
+                'liquid'    => 'med-bottle.png',
+                'inhaler'   => 'med-inhaler.png',
+                'injection' => 'med-injection.png',
+                'patch'     => 'med-patch.png',
+                'drops'     => 'med-drop.png',
+              ];
+              $heroMedImg = $heroMedImageMap[(string) ($ndItem['dose_form'] ?? '')] ?? 'med-pill.png';
+              ?>
+              <img src="assets/images/<?= e($heroMedImg) ?>" alt="" class="med-graphic-image">
             </div>
           </div>
           <?php if (isset($heroNextDoseItems[1])): ?>
@@ -318,17 +337,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <summary class="form-disclosure-toggle">Inventory tracking</summary>
         <fieldset class="form-section" data-inventory-section>
           <legend>Inventory</legend>
-          <label>Inventory type
-            <select name="inventory_type" data-inventory-type-select>
-              <?php
-              $invTypes = ['pills' => 'Pills / tablets / capsules', 'liquid' => 'Liquid', 'inhaler' => 'Inhaler', 'injection' => 'Injection pen / vial', 'patch' => 'Patch', 'drops' => 'Drops', 'other' => 'Other'];
-              $selectedInvType = (string) ($editing['inventory_type'] ?? 'pills');
-              foreach ($invTypes as $val => $label): ?>
-              <option value="<?= e($val) ?>" <?= $selectedInvType === $val ? 'selected' : '' ?>><?= e($label) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </label>
-
           <label data-inv-qty-label>Starting quantity
             <span class="input-with-unit">
               <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string)(float)($editing['current_quantity'] ?? $editing['pill_count'] ?? 0)) ?>">
