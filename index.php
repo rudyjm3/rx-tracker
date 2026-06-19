@@ -32,6 +32,11 @@ if ($page === 'logout') {
 
 $auth->requireLogin();
 
+if ($page === 'profile') {
+    require __DIR__ . '/routes/profile.php';
+    exit;
+}
+
 $repository    = new MedicationRepository(db(), $auth->currentUserId());
 $error         = null;
 $notice        = null;
