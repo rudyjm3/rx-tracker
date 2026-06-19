@@ -2991,3 +2991,17 @@ document.addEventListener('keydown', (event) => {
 });
 
 initPushStatusPanel();
+
+// ── Password visibility toggle ─────────────────────────────────────────────
+
+document.querySelectorAll('.password-toggle').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const wrapper = btn.closest('.password-input-wrapper');
+    const input = wrapper.querySelector('input');
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+    btn.querySelector('.pw-eye').style.display = isHidden ? 'none' : '';
+    btn.querySelector('.pw-eye-off').style.display = isHidden ? '' : 'none';
+  });
+});
