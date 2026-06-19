@@ -4,13 +4,26 @@
 //          $inactiveMedications, $ungroupedMedications to be in scope.
 ?>
 <div class="plan-tab-panel" id="active-medications-panel" data-plan-panel="active" role="tabpanel" aria-labelledby="active-medications-tab">
+  <div class="med-type-filter" role="group" aria-label="Filter by medication type" data-med-type-filter>
+    <span class="med-type-filter-label">Show:</span>
+    <label class="med-type-filter-pill med-type-filter-pill--prescription">
+      <input type="checkbox" value="prescription" checked> Rx
+    </label>
+    <label class="med-type-filter-pill med-type-filter-pill--otc">
+      <input type="checkbox" value="otc" checked> OTC
+    </label>
+    <label class="med-type-filter-pill med-type-filter-pill--supplement">
+      <input type="checkbox" value="supplement" checked> Vitamin / Supplement
+    </label>
+    <button type="button" class="med-type-filter-apply" data-med-type-apply>Apply</button>
+  </div>
   <div class="medication-list">
     <?php if ($medicationPlanCount === 0): ?>
       <div class="empty-state"><p>No active medications yet.</p></div>
     <?php endif; ?>
     <?php foreach ($medications as $medication): ?>
       <?php $daysLeft = daysUntilRunout($medication); ?>
-      <div class="medication-row medication-row-plan">
+      <div class="medication-row medication-row-plan" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>">
         <div class="product-label-wrap"
              data-product-label-wrap
              data-medication-id="<?= e((string) $medication['id']) ?>"
@@ -67,7 +80,6 @@
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
         </div>
         <div class="row-actions medication-actions-top">
-          <a class="secondary modal-edit-link" href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>">Edit</a>
           <?php if ((int) $medication['track_dose_feedback'] === 1): ?>
           <button
             type="button"
@@ -79,6 +91,35 @@
             title="Pain level trend"
           ><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></button>
           <?php endif; ?>
+          <div class="med-actions-menu" data-med-actions-menu>
+            <button
+              type="button"
+              class="icon-button med-actions-trigger"
+              data-med-actions-trigger
+              aria-label="More actions for <?= e((string) $medication['name']) ?>"
+              aria-expanded="false"
+              aria-haspopup="true"
+            ><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></button>
+            <div class="med-actions-dropdown" data-med-actions-dropdown hidden>
+              <a href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>" class="med-actions-item">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                Edit
+              </a>
+              <button type="button" class="med-actions-item" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
+                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                Refill history
+              </button>
+              <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="deactivate_medication">
+                <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                <button type="submit" class="med-actions-item med-actions-item--danger">
+                  <i class="fa-solid fa-power-off" aria-hidden="true"></i>
+                  Deactivate
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
         <div class="row-actions medication-actions-bottom">
           <form method="post" action="index.php" data-log-dose-now-form>
@@ -108,13 +149,6 @@
             ><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Log dose now</button>
           </form>
           <button type="button" class="secondary" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Log refill</button>
-          <button type="button" class="secondary" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> Refill history</button>
-          <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="deactivate_medication">
-            <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-            <button type="submit" class="secondary"><i class="fa-solid fa-power-off" aria-hidden="true"></i> Deactivate</button>
-          </form>
         </div>
       </div>
     <?php endforeach; ?>
@@ -122,12 +156,25 @@
 </div>
 
 <div class="plan-tab-panel" id="inactive-medications-panel" data-plan-panel="inactive" role="tabpanel" aria-labelledby="inactive-medications-tab" hidden>
+  <div class="med-type-filter" role="group" aria-label="Filter by medication type" data-med-type-filter>
+    <span class="med-type-filter-label">Show:</span>
+    <label class="med-type-filter-pill med-type-filter-pill--prescription">
+      <input type="checkbox" value="prescription" checked> Rx
+    </label>
+    <label class="med-type-filter-pill med-type-filter-pill--otc">
+      <input type="checkbox" value="otc" checked> OTC
+    </label>
+    <label class="med-type-filter-pill med-type-filter-pill--supplement">
+      <input type="checkbox" value="supplement" checked> Vitamin / Supplement
+    </label>
+    <button type="button" class="med-type-filter-apply" data-med-type-apply>Apply</button>
+  </div>
   <div class="inactive-list">
     <?php if ($inactiveMedications === []): ?>
       <div class="empty-state"><p>No inactive medications.</p></div>
     <?php endif; ?>
     <?php foreach ($inactiveMedications as $medication): ?>
-      <div class="medication-row">
+      <div class="medication-row" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>">
         <div>
           <strong><?= e((string) $medication['name']) ?></strong>
           <?php if (formattedDose($medication) !== ''): ?>

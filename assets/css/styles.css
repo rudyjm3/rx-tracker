@@ -1383,6 +1383,73 @@ textarea:focus,
   color: #8a5c00;
 }
 
+.med-type-filter {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--rx-border);
+}
+
+.med-type-filter-label {
+  color: var(--rx-text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-right: 0.2rem;
+}
+
+.med-type-filter-pill {
+  align-items: center;
+  border-radius: 2rem;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+
+.med-type-filter-pill input[type="checkbox"] {
+  accent-color: currentColor;
+  cursor: pointer;
+  height: 0.8rem;
+  width: 0.8rem;
+}
+
+.med-type-filter-pill:has(input:not(:checked)) {
+  opacity: 0.45;
+}
+
+.med-type-filter-apply {
+  background: var(--rx-deep-blue);
+  border: none;
+  border-radius: 0.5rem;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+}
+
+.med-type-filter-apply:hover {
+  opacity: 0.88;
+}
+
+.med-type-filter-pill--prescription {
+  color: var(--rx-deep-blue);
+}
+
+.med-type-filter-pill--otc {
+  color: #0e7a68;
+}
+
+.med-type-filter-pill--supplement {
+  color: #8a5c00;
+}
+
 .medication-row-plan {
   align-items: flex-start;
   display: grid;
@@ -1397,6 +1464,59 @@ textarea:focus,
   gap: 0.4rem;
   grid-column: 3;
   justify-content: flex-end;
+}
+
+.med-actions-menu {
+  position: relative;
+}
+
+.med-actions-dropdown {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  min-width: 160px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 100;
+}
+
+.med-actions-item {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--rx-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.88rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  text-decoration: none;
+  width: 100%;
+}
+
+.med-actions-item:hover {
+  background: var(--rx-bg);
+}
+
+.med-actions-item i {
+  color: var(--rx-text-muted);
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.med-actions-item--danger {
+  color: var(--rx-danger);
+}
+
+.med-actions-item--danger i {
+  color: var(--rx-danger);
+}
+
+.med-actions-dropdown form {
+  display: contents;
 }
 
 .medication-actions-bottom {
@@ -1445,6 +1565,18 @@ textarea:focus,
 .icon-button:hover {
   background: rgba(229, 72, 77, 0.16);
   box-shadow: none;
+}
+
+.med-actions-trigger {
+  background: none;
+  border: none;
+  color: var(--rx-text-muted);
+  font-size: 1.1rem;
+}
+
+.med-actions-trigger:hover {
+  background: none;
+  color: var(--rx-text);
 }
 
 .secondary {
@@ -2616,6 +2748,122 @@ textarea:focus,
   font-size: 0.9rem;
   margin: 0;
   padding: 1rem 0;
+}
+
+/* ── Pain tracking dedicated page ───────────────────────────────────────── */
+
+.pain-tracking-page {
+  padding: 1.25rem 1rem 2rem;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.pain-tracking-header {
+  margin-bottom: 1.25rem;
+}
+
+.pain-tracking-header h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--rx-deep-blue);
+  margin: 0;
+}
+
+.pain-tracking-empty {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md);
+  box-shadow: var(--rx-shadow);
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--rx-text-muted);
+}
+
+.pain-tracking-empty p {
+  margin: 0 0 1rem;
+}
+
+.pain-tracking-med-panel {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md);
+  box-shadow: var(--rx-shadow);
+  padding: 1.35rem;
+  margin-bottom: 1rem;
+}
+
+.pain-tracking-med-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pain-tracking-med-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--rx-bg);
+  border: 1.5px solid var(--rx-border);
+  border-radius: 2rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--rx-text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pain-tracking-med-btn:hover {
+  background: var(--rx-border);
+}
+
+.pain-tracking-med-btn.is-active {
+  background: var(--rx-deep-blue);
+  border-color: var(--rx-deep-blue);
+  color: #fff;
+}
+
+.pain-tracking-med-dose {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.pain-tracking-chart-section {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md);
+  box-shadow: var(--rx-shadow);
+  padding: 1.35rem;
+}
+
+.pain-tracking-med-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--rx-text);
+  margin-bottom: 0.75rem;
+  min-height: 1.4rem;
+}
+
+.pain-page-range-tab {
+  background: var(--rx-bg);
+  border: 1.5px solid var(--rx-border);
+  border-radius: 2rem;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--rx-text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pain-page-range-tab:hover {
+  background: var(--rx-border);
+}
+
+.pain-page-range-tab.is-active {
+  background: var(--rx-deep-blue);
+  border-color: var(--rx-deep-blue);
+  color: #fff;
 }
 
 /* ── Dose feedback modal ─────────────────────────────────────────────────── */

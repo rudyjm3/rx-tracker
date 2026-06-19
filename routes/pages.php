@@ -132,7 +132,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       RxTracker
     </a>
     <div class="nav-links">
-      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
@@ -151,7 +151,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>
 
-  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true)): ?>
+  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true)): ?>
   <section class="hero">
     <div class="hero-left">
       <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
@@ -479,7 +479,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="medications-page-header">
       <div class="medications-page-title">
         <h1>Medication Plan</h1>
-        <span class="count-badge"><?= e((string) $medicationPlanCount) ?></span>
       </div>
       <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
         <button type="button" class="plan-tab is-active" data-plan-tab="active" role="tab" aria-selected="true" aria-controls="active-medications-panel" id="active-medications-tab"><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Active (<?= e((string) $medicationPlanCount) ?>)</button>
@@ -491,6 +490,56 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
     <?php include dirname(__DIR__) . '/includes/medication-plan-tabs.php'; ?>
+  </section>
+  <?php endif; ?>
+
+  <?php if ($page === 'pain-tracking'): ?>
+  <?php
+    $trackedMedications = array_values(array_filter(
+        $medications,
+        fn(array $m): bool => (int) $m['track_dose_feedback'] === 1
+    ));
+  ?>
+  <section class="pain-tracking-page">
+    <div class="pain-tracking-header">
+      <h1>Pain Tracking</h1>
+    </div>
+
+    <?php if ($trackedMedications === []): ?>
+    <div class="pain-tracking-empty">
+      <p>No medications are currently set up for pain tracking. Enable &ldquo;Track dose feedback&rdquo; on a medication to start recording pain levels.</p>
+      <a href="index.php?page=medications" class="button secondary">Manage medications</a>
+    </div>
+    <?php else: ?>
+
+    <div class="pain-tracking-med-panel">
+      <div class="panel-heading"><h2>Tracked medications</h2></div>
+      <div class="pain-tracking-med-list" role="group" aria-label="Select medication to view">
+        <?php foreach ($trackedMedications as $trackedMed): ?>
+        <button
+          type="button"
+          class="pain-tracking-med-btn"
+          data-select-medication
+          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
+          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
+        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
+    <div class="pain-tracking-chart-section">
+      <div class="pain-tracking-med-name" data-pain-page-med-name aria-live="polite"></div>
+      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+        <button class="pain-page-range-tab is-active" data-range="0">Today</button>
+        <button class="pain-page-range-tab" data-range="7">7 days</button>
+        <button class="pain-page-range-tab" data-range="30">30 days</button>
+        <button class="pain-page-range-tab" data-range="90">90 days</button>
+      </div>
+      <div class="pain-graph-body" data-pain-page-body></div>
+      <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
+    </div>
+
+    <?php endif; ?>
   </section>
   <?php endif; ?>
 
@@ -1090,7 +1139,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
   </div>
 
-  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export', 'help'], true)): ?>
+  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export', 'help', 'pain-tracking'], true)): ?>
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel dashboard-schedule-panel">
       <div class="panel-heading">
@@ -1147,9 +1196,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <span class="quick-action-label">Add medication</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
-        <a href="index.php?page=medications" class="quick-action-row">
-          <span class="quick-action-icon quick-action-icon--log"><i class="fa-regular fa-file-lines" aria-hidden="true"></i></span>
-          <span class="quick-action-label">Log a dose</span>
+        <a href="index.php?page=pain-tracking" class="quick-action-row">
+          <span class="quick-action-icon quick-action-icon--log"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span>
+          <span class="quick-action-label">Pain tracking</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
         <a href="index.php?page=medications" class="quick-action-row">
@@ -1366,7 +1415,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   </div>
 </div>
 <nav class="bottom-nav" aria-label="Main navigation">
-  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
+  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
     <i class="fa-solid fa-house" aria-hidden="true"></i>
     Dashboard
   </a>

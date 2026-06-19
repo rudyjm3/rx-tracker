@@ -807,6 +807,63 @@ painGraphModal?.addEventListener('click', (event) => {
   if (event.target === painGraphModal) closePainGraphModal();
 });
 
+// Pain tracking dedicated page
+const painPageBody = document.querySelector('[data-pain-page-body]');
+const painPageEmpty = document.querySelector('[data-pain-page-empty]');
+const painPageMedName = document.querySelector('[data-pain-page-med-name]');
+
+if (painPageBody) {
+  let painPageMedId = 0;
+  let painPageDays = 0;
+
+  const loadPainPageGraph = async () => {
+    if (!painPageMedId) return;
+    painPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
+    painPageEmpty.hidden = true;
+    try {
+      const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painPageMedId)}&days=${painPageDays}`);
+      const payload = await resp.json();
+      if (!payload.ok || payload.data.length === 0) {
+        painPageBody.innerHTML = '';
+        painPageEmpty.hidden = false;
+        return;
+      }
+      if (painPageDays === 0) {
+        renderPainChartToday(painPageBody, payload.data);
+      } else {
+        renderPainChart(painPageBody, payload.data);
+      }
+    } catch {
+      painPageBody.innerHTML = '';
+      painPageEmpty.hidden = false;
+    }
+  };
+
+  document.querySelectorAll('[data-select-medication]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+      if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
+      painPageDays = 0;
+      document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
+        t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
+      );
+      loadPainPageGraph();
+    });
+  });
+
+  document.querySelectorAll('.pain-page-range-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+      tab.classList.add('is-active');
+      painPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      loadPainPageGraph();
+    });
+  });
+
+  document.querySelector('[data-select-medication]')?.click();
+}
 
 const historyPanel = document.querySelector('[data-history-panel]');
 const historyList = document.querySelector('[data-history-list]');
@@ -2888,5 +2945,49 @@ document.querySelectorAll('[name="first_dose_time"], [data-group-form-time]').fo
 });
 const doseTimesInput = document.querySelector('[name="dose_times"]');
 if (doseTimesInput) setupTimeAutoColon(doseTimesInput, true);
+
+// Medication type filter (handles multiple panels independently)
+document.querySelectorAll('[data-med-type-filter]').forEach((filterBar) => {
+  const panel = filterBar.closest('.plan-tab-panel');
+  if (!panel) return;
+  const applyFilter = () => {
+    const checked = [...filterBar.querySelectorAll('input[type="checkbox"]:checked')].map((el) => el.value);
+    panel.querySelectorAll('[data-med-type]').forEach((row) => {
+      const hide = checked.length > 0 && !checked.includes(row.dataset.medType ?? '');
+      row.style.display = hide ? 'none' : '';
+    });
+  };
+  filterBar.querySelector('[data-med-type-apply]')?.addEventListener('click', applyFilter);
+});
+
+// Medication card action menu (ellipsis trigger)
+const closeAllMedMenus = () => {
+  document.querySelectorAll('[data-med-actions-menu]').forEach((menu) => {
+    const dropdown = menu.querySelector('[data-med-actions-dropdown]');
+    const trigger = menu.querySelector('[data-med-actions-trigger]');
+    if (dropdown) dropdown.hidden = true;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  });
+};
+
+document.querySelectorAll('[data-med-actions-trigger]').forEach((trigger) => {
+  trigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const menu = trigger.closest('[data-med-actions-menu]');
+    const dropdown = menu?.querySelector('[data-med-actions-dropdown]');
+    if (!dropdown) return;
+    const isOpen = !dropdown.hidden;
+    closeAllMedMenus();
+    if (!isOpen) {
+      dropdown.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+  });
+});
+
+document.addEventListener('click', closeAllMedMenus);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeAllMedMenus();
+});
 
 initPushStatusPanel();
