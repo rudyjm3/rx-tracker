@@ -72,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $validUser !== null) {
   <title>Reset Password — RxTracker</title>
   <link rel="stylesheet" href="assets/css/styles.css">
   <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+  <script src="assets/js/app.js" defer></script>
 </head>
 <body>
 
