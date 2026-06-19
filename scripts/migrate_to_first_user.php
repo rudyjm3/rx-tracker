@@ -85,11 +85,15 @@ if ($sql002 === false) {
     exit(1);
 }
 
-// Filter out comment lines and empty lines, then split on semicolons
-$statements = array_filter(
-    array_map('trim', explode(';', $sql002)),
-    static fn (string $s): bool => $s !== '' && !str_starts_with(ltrim($s), '--')
-);
+// Split on semicolons, strip comment lines from within each chunk, skip empties
+$statements = [];
+foreach (explode(';', $sql002) as $chunk) {
+    $stripped = preg_replace('/^\s*--[^\n]*$/m', '', $chunk);
+    $stripped = trim((string) $stripped);
+    if ($stripped !== '') {
+        $statements[] = $stripped;
+    }
+}
 
 try {
     foreach ($statements as $statement) {

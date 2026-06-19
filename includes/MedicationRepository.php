@@ -102,15 +102,17 @@ final class MedicationRepository
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
         $statement = $this->db->prepare(
-            'SELECT scheduled_for_date AS date, scheduled_time AS time,
-                    pain_level, note, status
-             FROM dose_logs
-             WHERE medication_id = :medication_id
-               AND pain_level IS NOT NULL
-               AND scheduled_for_date >= :start_date
-             ORDER BY scheduled_for_date ASC, scheduled_time ASC'
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date >= :start_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
         );
-        $statement->execute(['medication_id' => $medicationId, 'start_date' => $startDate]);
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
 
         return $statement->fetchAll();
     }
@@ -118,15 +120,17 @@ final class MedicationRepository
     public function painLevelTrendForDate(int $medicationId, string $date): array
     {
         $statement = $this->db->prepare(
-            'SELECT scheduled_for_date AS date, scheduled_time AS time,
-                    pain_level, note, status
-             FROM dose_logs
-             WHERE medication_id = :medication_id
-               AND pain_level IS NOT NULL
-               AND scheduled_for_date = :date
-             ORDER BY scheduled_time ASC'
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date = :date
+             ORDER BY dl.scheduled_time ASC'
         );
-        $statement->execute(['medication_id' => $medicationId, 'date' => $date]);
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
 
         return $statement->fetchAll();
     }
@@ -134,9 +138,9 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND active = 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id AND active = 1'
         );
-        $statement->execute(['id' => $id]);
+        $statement->execute(['id' => $id, 'user_id' => $this->userId]);
         $row = $statement->fetch();
 
         if (!is_array($row)) {
@@ -324,10 +328,11 @@ final class MedicationRepository
                      ) THEN :starting_quantity ELSE starting_quantity END,
                      current_quantity = :current_quantity,
                      quantity_per_dose = :quantity_per_dose
-                 WHERE id = :id'
+                 WHERE id = :id AND user_id = :user_id'
             );
             $statement->execute([
                 'id' => $id,
+                'user_id' => $this->userId,
                 'refill_check_id' => $id,
                 'refill_check_id2' => $id,
                 'starting_pill_count' => 0,
@@ -594,14 +599,14 @@ final class MedicationRepository
 
     public function deactivateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id');
-        $statement->execute(['id' => $medicationId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id');
+        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
     }
 
     public function activateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id');
-        $statement->execute(['id' => $medicationId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id');
+        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
     }
 
     public function getMissedGraceMinutes(): int
@@ -998,8 +1003,8 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND active = 1');
-            $stmt->execute(['id' => $medicationId]);
+            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id AND active = 1');
+            $stmt->execute(['id' => $medicationId, 'user_id' => $this->userId]);
             $current = $stmt->fetchColumn();
             if ($current === false) {
                 throw new RuntimeException('Medication not found.');
@@ -1007,12 +1012,13 @@ final class MedicationRepository
             $newCount = (float) $current + $amount;
 
             $update = $this->db->prepare(
-                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id'
+                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id'
             );
             $update->execute([
                 'current_quantity' => $newCount,
                 'starting_quantity' => $amount,
                 'id' => $medicationId,
+                'user_id' => $this->userId,
             ]);
 
             $insert = $this->db->prepare(

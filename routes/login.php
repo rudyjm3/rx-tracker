@@ -30,7 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!$auth->login($email, $password, $remember)) {
             $error = 'Invalid email or password.';
         } else {
-            $destination = ($redirect !== '' && str_starts_with($redirect, '/')) ? $redirect : 'index.php';
+            $destination = 'index.php';
+            if ($redirect !== '' && str_starts_with($redirect, '/') && !str_starts_with($redirect, '//')) {
+                $destination = $redirect;
+            }
             header('Location: ' . $destination);
             exit;
         }
