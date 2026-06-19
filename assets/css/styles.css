@@ -4338,3 +4338,41 @@ a.nav-user-btn.is-active {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Password visibility toggle ────────────────────────────────────────────── */
+
+.password-input-wrapper {
+  position: relative;
+}
+
+.password-input-wrapper input {
+  padding-right: 2.75rem !important;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: var(--rx-text-muted, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.password-toggle:hover {
+  color: var(--rx-text);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--rx-blue);
+  outline-offset: 1px;
+}
