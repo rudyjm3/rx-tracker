@@ -234,10 +234,6 @@ const closeMedicationModal = () => {
 document.querySelectorAll('[data-open-medication-modal]').forEach((btn) => {
   btn.addEventListener('click', openMedicationModal);
 });
-if (new URLSearchParams(window.location.search).get('open') === 'add') {
-  openMedicationModal();
-  history.replaceState(null, '', 'index.php?page=medications');
-}
 closeMedicationModalButton?.addEventListener('click', closeMedicationModal);
 
 const openPostponeModal = (medicationId, scheduledDate, scheduledTime) => {
@@ -430,6 +426,11 @@ const closeMedPlanModal = () => {
   medPlanModal.hidden = true;
   unlockBodyScroll();
 };
+
+if (new URLSearchParams(window.location.search).get('open') === 'add') {
+  openMedicationModal();
+  history.replaceState(null, '', 'index.php?page=medications');
+}
 
 openMedPlanModalBtns.forEach((btn) => btn.addEventListener('click', openMedPlanModal));
 closeMedPlanModalBtn?.addEventListener('click', closeMedPlanModal);
