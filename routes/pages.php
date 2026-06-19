@@ -484,7 +484,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <div class="medication-plan-tabs" role="tablist" aria-label="Medication status lists">
         <button type="button" class="plan-tab is-active" data-plan-tab="active" role="tab" aria-selected="true" aria-controls="active-medications-panel" id="active-medications-tab"><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Active (<?= e((string) $medicationPlanCount) ?>)</button>
         <button type="button" class="plan-tab" data-plan-tab="inactive" role="tab" aria-selected="false" aria-controls="inactive-medications-panel" id="inactive-medications-tab"><i class="fa-regular fa-clock" aria-hidden="true"></i> Inactive (<?= e((string) $inactiveMedicationCount) ?>)</button>
-        <button type="button" class="plan-tab" data-plan-tab="groups" role="tab" aria-selected="false" aria-controls="groups-panel" id="groups-tab"><i class="fa-regular fa-layer-group" aria-hidden="true"></i> Groups (<?= e((string) count($groups)) ?>)</button>
+        <button type="button" class="plan-tab" data-plan-tab="groups" role="tab" aria-selected="false" aria-controls="groups-panel" id="groups-tab"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Groups (<?= e((string) count($groups)) ?>)</button>
       </div>
       <div class="medications-page-actions">
         <button type="button" data-open-medication-modal><i class="fa-solid fa-plus" aria-hidden="true"></i> Add medication</button>
