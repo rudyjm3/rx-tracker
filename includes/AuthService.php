@@ -86,7 +86,7 @@ final class AuthService
 
     public function requireLogin(): void
     {
-        if ($this->currentUserId() > 0) {
+        if ($this->currentUser() !== null) {
             return;
         }
         $redirect = (string) ($_SERVER['REQUEST_URI'] ?? '');
@@ -109,7 +109,11 @@ final class AuthService
         );
         $stmt->execute(['id' => $userId]);
         $row = $stmt->fetch();
-        return is_array($row) ? $row : null;
+        if (!is_array($row)) {
+            unset($_SESSION['user_id']);
+            return null;
+        }
+        return $row;
     }
 
     public function currentUserId(): int
@@ -126,5 +130,27 @@ final class AuthService
             return $userId;
         }
         return 0;
+    }
+
+    public function changePassword(int $userId, string $currentPassword, string $newPassword): bool
+    {
+        $stmt = $this->db->prepare('SELECT password_hash FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $userId]);
+        $row = $stmt->fetch();
+        if (!is_array($row) || !password_verify($currentPassword, (string) $row['password_hash'])) {
+            return false;
+        }
+        $this->db->prepare('UPDATE users SET password_hash = :hash WHERE id = :id')
+            ->execute(['hash' => password_hash($newPassword, PASSWORD_BCRYPT), 'id' => $userId]);
+        return true;
+    }
+
+    public function deleteAccount(int $userId): void
+    {
+        $this->db->prepare('DELETE FROM push_subscriptions WHERE user_id = :uid')->execute(['uid' => $userId]);
+        $this->db->prepare('DELETE FROM medication_groups WHERE user_id = :uid')->execute(['uid' => $userId]);
+        $this->db->prepare('DELETE FROM medications WHERE user_id = :uid')->execute(['uid' => $userId]);
+        $this->db->prepare('DELETE FROM users WHERE id = :uid')->execute(['uid' => $userId]);
+        $this->logout();
     }
 }

@@ -107,6 +107,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="auth-success">Password reset successfully. You can now sign in.</div>
       <?php endif; ?>
 
+      <?php if (isset($_GET['deleted']) && $_GET['deleted'] === '1'): ?>
+        <div class="auth-success">Your account has been deleted. Sorry to see you go.</div>
+      <?php endif; ?>
+
       <form method="post" action="index.php?page=login<?= $redirect !== '' ? '&redirect=' . urlencode($redirect) : '' ?>" class="stacked-form" novalidate>
         <?= csrf_field() ?>
 
