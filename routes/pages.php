@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 /** @var MedicationRepository $repository */
+/** @var AuthService $auth */
 /** @var string $today */
 /** @var string $currentTime */
 /** @var string $page */
@@ -144,9 +145,16 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span class="nav-bell-badge" aria-label="0 notifications" hidden>0</span>
       </button>
-      <button class="nav-user-btn" aria-label="Account">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-      </button>
+      <?php $currentUser = $auth->currentUser(); ?>
+      <span class="nav-user-name" title="<?= e($currentUser['email'] ?? '') ?>">
+        <?= e($currentUser['display_name'] ?? $currentUser['email'] ?? '') ?>
+      </span>
+      <form method="post" action="index.php?page=logout" class="nav-logout-form">
+        <?= csrf_field() ?>
+        <button type="submit" class="nav-logout-btn" aria-label="Sign out">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </form>
     </div>
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>

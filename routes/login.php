@@ -1,0 +1,158 @@
+<?php
+
+declare(strict_types=1);
+
+/** @var AuthService $auth */
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// Already logged in — go to dashboard
+if ($auth->currentUserId() > 0) {
+    header('Location: index.php');
+    exit;
+}
+
+$error    = null;
+$redirect = trim((string) ($_GET['redirect'] ?? ''));
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verify_csrf_token((string) ($_POST['csrf_token'] ?? ''))) {
+        $error = 'Invalid form submission. Please try again.';
+    } else {
+        $email    = post_string('email');
+        $password = (string) ($_POST['password'] ?? '');
+        $remember = isset($_POST['remember_me']);
+
+        if ($email === '' || $password === '') {
+            $error = 'Email and password are required.';
+        } elseif (!$auth->login($email, $password, $remember)) {
+            $error = 'Invalid email or password.';
+        } else {
+            $destination = 'index.php';
+            if ($redirect !== '' && str_starts_with($redirect, '/') && !str_starts_with($redirect, '//')) {
+                $destination = $redirect;
+            }
+            header('Location: ' . $destination);
+            exit;
+        }
+    }
+}
+
+?>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0754A8">
+  <title>Sign In — RxTracker</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+</head>
+<body>
+
+<div class="auth-shell">
+
+  <!-- Left: gradient branding panel -->
+  <div class="auth-panel--left">
+    <div>
+      <div class="auth-brand">
+        <img src="assets/icons/logo-round.png" alt="" class="auth-logo" aria-hidden="true">
+        <span class="auth-brand-name">RxTracker</span>
+      </div>
+      <p class="auth-tagline">Stay on track<br>with every dose.</p>
+      <ul class="auth-features">
+        <li>
+          <span class="auth-feature-icon"><i class="fa-solid fa-check fa-xs" aria-hidden="true"></i></span>
+          Track adherence
+        </li>
+        <li>
+          <span class="auth-feature-icon"><i class="fa-solid fa-check fa-xs" aria-hidden="true"></i></span>
+          Medication plans
+        </li>
+        <li>
+          <span class="auth-feature-icon"><i class="fa-solid fa-check fa-xs" aria-hidden="true"></i></span>
+          Refill reminders
+        </li>
+        <li>
+          <span class="auth-feature-icon"><i class="fa-solid fa-check fa-xs" aria-hidden="true"></i></span>
+          Adherence reports
+        </li>
+      </ul>
+    </div>
+    <img src="assets/images/blue-white-pill-graphic.png" alt="" class="auth-graphic" aria-hidden="true">
+  </div>
+
+  <!-- Right: login form -->
+  <div class="auth-panel--right">
+    <div class="auth-card">
+
+      <!-- Mobile-only logo header -->
+      <div class="auth-mobile-header">
+        <img src="assets/icons/logo-round.png" alt="" class="auth-logo" aria-hidden="true">
+        <span class="auth-brand-name" style="color: var(--rx-navy);">RxTracker</span>
+      </div>
+
+      <h1>Welcome back!</h1>
+      <p class="auth-subtitle">Sign in to your account</p>
+
+      <?php if ($error !== null): ?>
+        <div class="auth-error" role="alert"><?= e($error) ?></div>
+      <?php endif; ?>
+
+      <?php if (isset($_GET['reset']) && $_GET['reset'] === 'success'): ?>
+        <div class="auth-success">Password reset successfully. You can now sign in.</div>
+      <?php endif; ?>
+
+      <form method="post" action="index.php?page=login<?= $redirect !== '' ? '&redirect=' . urlencode($redirect) : '' ?>" class="stacked-form" novalidate>
+        <?= csrf_field() ?>
+
+        <div class="form-group">
+          <label for="email">Email address</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value="<?= e(post_string('email')) ?>"
+            autocomplete="email"
+            required
+            autofocus
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+          >
+          <a href="index.php?page=forgot-password" class="auth-forgot-link">Forgot password?</a>
+        </div>
+
+        <div class="form-group auth-remember-row">
+          <label class="auth-checkbox-label">
+            <input type="checkbox" name="remember_me" value="1">
+            Remember me for 30 days
+          </label>
+        </div>
+
+        <button type="submit">Sign In</button>
+      </form>
+
+      <p class="auth-footer-link">
+        Don't have an account? <a href="index.php?page=register">Sign up</a>
+      </p>
+
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

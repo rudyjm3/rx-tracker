@@ -6,7 +6,7 @@ final class MedicationRepository
 {
     private const MEDICATION_COLUMNS = 'id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
 
-    public function __construct(private readonly PDO $db)
+    public function __construct(private readonly PDO $db, private readonly int $userId = 0)
     {
         $this->ensureStartingPillCountColumn();
         $this->ensureTimeFormatColumn();
@@ -24,9 +24,10 @@ final class MedicationRepository
 
     public function activeMedications(): array
     {
-        $statement = $this->db->query(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 ORDER BY name ASC'
+        $statement = $this->db->prepare(
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 AND user_id = :user_id ORDER BY name ASC'
         );
+        $statement->execute(['user_id' => $this->userId]);
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
         $allTimes   = $this->scheduleTimesByMedicationIds($ids);
@@ -42,9 +43,10 @@ final class MedicationRepository
 
     public function inactiveMedications(): array
     {
-        $statement = $this->db->query(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 0 ORDER BY name ASC'
+        $statement = $this->db->prepare(
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 0 AND user_id = :user_id ORDER BY name ASC'
         );
+        $statement->execute(['user_id' => $this->userId]);
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
         $allTimes = $this->scheduleTimesByMedicationIds($ids);
@@ -62,12 +64,14 @@ final class MedicationRepository
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
                        medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed
                 FROM dose_logs
-                INNER JOIN medications ON medications.id = dose_logs.medication_id';
+                INNER JOIN medications ON medications.id = dose_logs.medication_id
+                WHERE medications.user_id = :user_id';
         if ($date !== null && $date !== '') {
-            $sql .= ' WHERE dose_logs.scheduled_for_date = :scheduled_for_date';
+            $sql .= ' AND dose_logs.scheduled_for_date = :scheduled_for_date';
         }
         $sql .= ' ORDER BY dose_logs.taken_at DESC LIMIT :limit';
         $statement = $this->db->prepare($sql);
+        $statement->bindValue(':user_id', $this->userId, PDO::PARAM_INT);
         if ($date !== null && $date !== '') {
             $statement->bindValue(':scheduled_for_date', $date, PDO::PARAM_STR);
         }
@@ -85,10 +89,11 @@ final class MedicationRepository
                     medications.name, medications.dose
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
-             WHERE dose_logs.scheduled_for_date BETWEEN :start_date AND :end_date
+             WHERE medications.user_id = :user_id
+               AND dose_logs.scheduled_for_date BETWEEN :start_date AND :end_date
              ORDER BY dose_logs.scheduled_for_date DESC, dose_logs.scheduled_time DESC'
         );
-        $statement->execute(['start_date' => $startDate, 'end_date' => $endDate]);
+        $statement->execute(['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
 
         return $statement->fetchAll();
     }
@@ -97,15 +102,17 @@ final class MedicationRepository
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
         $statement = $this->db->prepare(
-            'SELECT scheduled_for_date AS date, scheduled_time AS time,
-                    pain_level, note, status
-             FROM dose_logs
-             WHERE medication_id = :medication_id
-               AND pain_level IS NOT NULL
-               AND scheduled_for_date >= :start_date
-             ORDER BY scheduled_for_date ASC, scheduled_time ASC'
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date >= :start_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
         );
-        $statement->execute(['medication_id' => $medicationId, 'start_date' => $startDate]);
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
 
         return $statement->fetchAll();
     }
@@ -113,15 +120,17 @@ final class MedicationRepository
     public function painLevelTrendForDate(int $medicationId, string $date): array
     {
         $statement = $this->db->prepare(
-            'SELECT scheduled_for_date AS date, scheduled_time AS time,
-                    pain_level, note, status
-             FROM dose_logs
-             WHERE medication_id = :medication_id
-               AND pain_level IS NOT NULL
-               AND scheduled_for_date = :date
-             ORDER BY scheduled_time ASC'
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date = :date
+             ORDER BY dl.scheduled_time ASC'
         );
-        $statement->execute(['medication_id' => $medicationId, 'date' => $date]);
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
 
         return $statement->fetchAll();
     }
@@ -129,9 +138,9 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND active = 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id AND active = 1'
         );
-        $statement->execute(['id' => $id]);
+        $statement->execute(['id' => $id, 'user_id' => $this->userId]);
         $row = $statement->fetch();
 
         if (!is_array($row)) {
@@ -228,12 +237,13 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                'INSERT INTO medications (user_id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
+                 VALUES (:user_id, :name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
+                'user_id' => $this->userId,
                 'name' => $name,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
@@ -318,10 +328,11 @@ final class MedicationRepository
                      ) THEN :starting_quantity ELSE starting_quantity END,
                      current_quantity = :current_quantity,
                      quantity_per_dose = :quantity_per_dose
-                 WHERE id = :id'
+                 WHERE id = :id AND user_id = :user_id'
             );
             $statement->execute([
                 'id' => $id,
+                'user_id' => $this->userId,
                 'refill_check_id' => $id,
                 'refill_check_id2' => $id,
                 'starting_pill_count' => 0,
@@ -565,12 +576,14 @@ final class MedicationRepository
     public function calendarMarkersForMonth(string $monthStart, string $monthEnd): array
     {
         $statement = $this->db->prepare(
-            'SELECT scheduled_for_date, status, COUNT(*) AS count
+            'SELECT dose_logs.scheduled_for_date, dose_logs.status, COUNT(*) AS count
              FROM dose_logs
-             WHERE scheduled_for_date BETWEEN :month_start AND :month_end
-             GROUP BY scheduled_for_date, status'
+             INNER JOIN medications ON medications.id = dose_logs.medication_id
+             WHERE medications.user_id = :user_id
+               AND dose_logs.scheduled_for_date BETWEEN :month_start AND :month_end
+             GROUP BY dose_logs.scheduled_for_date, dose_logs.status'
         );
-        $statement->execute(['month_start' => $monthStart, 'month_end' => $monthEnd]);
+        $statement->execute(['user_id' => $this->userId, 'month_start' => $monthStart, 'month_end' => $monthEnd]);
 
         $markers = [];
         foreach ($statement->fetchAll() as $row) {
@@ -586,20 +599,20 @@ final class MedicationRepository
 
     public function deactivateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id');
-        $statement->execute(['id' => $medicationId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id');
+        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
     }
 
     public function activateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id');
-        $statement->execute(['id' => $medicationId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id');
+        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
     }
 
     public function getMissedGraceMinutes(): int
     {
-        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key LIMIT 1');
-        $statement->execute(['key' => 'missed_grace_minutes']);
+        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1');
+        $statement->execute(['user_id' => $this->userId, 'key' => 'missed_grace_minutes']);
         $value = (string) ($statement->fetchColumn() ?: '60');
         $minutes = (int) $value;
 
@@ -608,8 +621,8 @@ final class MedicationRepository
 
     public function getSnoozeMinutes(): int
     {
-        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key LIMIT 1');
-        $statement->execute(['key' => 'snooze_minutes']);
+        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1');
+        $statement->execute(['user_id' => $this->userId, 'key' => 'snooze_minutes']);
         $value = (string) ($statement->fetchColumn() ?: '15');
         $minutes = (int) $value;
 
@@ -624,18 +637,19 @@ final class MedicationRepository
 
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO app_settings (setting_key, setting_value)
-               VALUES (:key, :value)
-               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value'
-            : 'INSERT INTO app_settings (setting_key, setting_value)
-               VALUES (:key, :insert_value)
+            ? 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :value)
+               ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+            : 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :insert_value)
                ON DUPLICATE KEY UPDATE setting_value = :update_value';
         $statement = $this->db->prepare($sql);
         if ($driver === 'sqlite') {
-            $statement->execute(['key' => 'snooze_minutes', 'value' => (string) $minutes]);
+            $statement->execute(['user_id' => $this->userId, 'key' => 'snooze_minutes', 'value' => (string) $minutes]);
             return;
         }
         $statement->execute([
+            'user_id'      => $this->userId,
             'key'          => 'snooze_minutes',
             'insert_value' => (string) $minutes,
             'update_value' => (string) $minutes,
@@ -650,19 +664,20 @@ final class MedicationRepository
 
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO app_settings (setting_key, setting_value)
-               VALUES (:key, :value)
-               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value'
-            : 'INSERT INTO app_settings (setting_key, setting_value)
-               VALUES (:key, :insert_value)
+            ? 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :value)
+               ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+            : 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :insert_value)
                ON DUPLICATE KEY UPDATE setting_value = :update_value';
         $statement = $this->db->prepare($sql);
         if ($driver === 'sqlite') {
-            $statement->execute(['key' => 'missed_grace_minutes', 'value' => (string) $minutes]);
+            $statement->execute(['user_id' => $this->userId, 'key' => 'missed_grace_minutes', 'value' => (string) $minutes]);
             return;
         }
         $statement->execute([
-            'key' => 'missed_grace_minutes',
+            'user_id'      => $this->userId,
+            'key'          => 'missed_grace_minutes',
             'insert_value' => (string) $minutes,
             'update_value' => (string) $minutes,
         ]);
@@ -826,18 +841,19 @@ final class MedicationRepository
 
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO push_subscriptions (endpoint, p256dh_key, auth_key, user_agent, created_at, updated_at)
-               VALUES (:endpoint, :p256dh_key, :auth_key, :user_agent, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ? 'INSERT INTO push_subscriptions (user_id, endpoint, p256dh_key, auth_key, user_agent, created_at, updated_at)
+               VALUES (:user_id, :endpoint, :p256dh_key, :auth_key, :user_agent, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                ON CONFLICT(endpoint)
                DO UPDATE SET p256dh_key = excluded.p256dh_key, auth_key = excluded.auth_key, user_agent = excluded.user_agent, updated_at = CURRENT_TIMESTAMP'
-            : 'INSERT INTO push_subscriptions (endpoint, p256dh_key, auth_key, user_agent)
-               VALUES (:endpoint, :p256dh_key, :auth_key, :user_agent)
-               ON DUPLICATE KEY UPDATE p256dh_key = VALUES(p256dh_key), auth_key = VALUES(auth_key), user_agent = VALUES(user_agent), updated_at = CURRENT_TIMESTAMP';
+            : 'INSERT INTO push_subscriptions (user_id, endpoint, p256dh_key, auth_key, user_agent)
+               VALUES (:user_id, :endpoint, :p256dh_key, :auth_key, :user_agent)
+               ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), p256dh_key = VALUES(p256dh_key), auth_key = VALUES(auth_key), user_agent = VALUES(user_agent), updated_at = CURRENT_TIMESTAMP';
         $statement = $this->db->prepare($sql);
         $statement->execute([
-            'endpoint' => $endpoint,
+            'user_id'    => $this->userId,
+            'endpoint'   => $endpoint,
             'p256dh_key' => $publicKey,
-            'auth_key' => $authToken,
+            'auth_key'   => $authToken,
             'user_agent' => $userAgent ?? '',
         ]);
     }
@@ -853,8 +869,19 @@ final class MedicationRepository
 
     public function pushSubscriptions(): array
     {
-        $statement = $this->db->query('SELECT endpoint, p256dh_key, auth_key FROM push_subscriptions ORDER BY id ASC');
+        $statement = $this->db->prepare('SELECT endpoint, p256dh_key, auth_key FROM push_subscriptions WHERE user_id = :user_id ORDER BY id ASC');
+        $statement->execute(['user_id' => $this->userId]);
         return $statement->fetchAll();
+    }
+
+    public function userIdsWithPushSubscriptions(): array
+    {
+        try {
+            $statement = $this->db->query('SELECT DISTINCT user_id FROM push_subscriptions WHERE user_id IS NOT NULL');
+            return array_column($statement->fetchAll(), 'user_id');
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     public function markPushSentForReminderItems(array $items, DateTimeImmutable $sentAt): void
@@ -976,8 +1003,8 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND active = 1');
-            $stmt->execute(['id' => $medicationId]);
+            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id AND active = 1');
+            $stmt->execute(['id' => $medicationId, 'user_id' => $this->userId]);
             $current = $stmt->fetchColumn();
             if ($current === false) {
                 throw new RuntimeException('Medication not found.');
@@ -985,12 +1012,13 @@ final class MedicationRepository
             $newCount = (float) $current + $amount;
 
             $update = $this->db->prepare(
-                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id'
+                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id'
             );
             $update->execute([
                 'current_quantity' => $newCount,
                 'starting_quantity' => $amount,
                 'id' => $medicationId,
+                'user_id' => $this->userId,
             ]);
 
             $insert = $this->db->prepare(
@@ -1367,9 +1395,10 @@ final class MedicationRepository
     public function allGroups(): array
     {
         try {
-            $statement = $this->db->query(
-                'SELECT id, name, scheduled_time, active FROM medication_groups ORDER BY scheduled_time ASC, name ASC'
+            $statement = $this->db->prepare(
+                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE user_id = :user_id ORDER BY scheduled_time ASC, name ASC'
             );
+            $statement->execute(['user_id' => $this->userId]);
             $groups = $statement->fetchAll();
         } catch (Throwable) {
             return [];
@@ -1407,9 +1436,9 @@ final class MedicationRepository
     public function createGroup(string $name, string $scheduledTime): int
     {
         $statement = $this->db->prepare(
-            'INSERT INTO medication_groups (name, scheduled_time) VALUES (:name, :scheduled_time)'
+            'INSERT INTO medication_groups (user_id, name, scheduled_time) VALUES (:user_id, :name, :scheduled_time)'
         );
-        $statement->execute(['name' => $name, 'scheduled_time' => $scheduledTime]);
+        $statement->execute(['user_id' => $this->userId, 'name' => $name, 'scheduled_time' => $scheduledTime]);
 
         return (int) $this->db->lastInsertId();
     }
@@ -1476,13 +1505,14 @@ final class MedicationRepository
     public function ungroupedActiveMedications(): array
     {
         try {
-            $statement = $this->db->query(
+            $statement = $this->db->prepare(
                 'SELECT m.id, m.name, m.dose, m.dose_amount, m.dose_unit
                  FROM medications m
                  LEFT JOIN medication_group_members mgm ON mgm.medication_id = m.id
-                 WHERE m.active = 1 AND mgm.medication_id IS NULL
+                 WHERE m.active = 1 AND m.user_id = :user_id AND mgm.medication_id IS NULL
                  ORDER BY m.name ASC'
             );
+            $statement->execute(['user_id' => $this->userId]);
             $rows = $statement->fetchAll();
             foreach ($rows as &$row) {
                 $row['dose'] = formattedDose($row);
@@ -1515,14 +1545,15 @@ final class MedicationRepository
     private function allGroupMembersByGroupId(): array
     {
         try {
-            $statement = $this->db->query(
+            $statement = $this->db->prepare(
                 'SELECT mgm.group_id, m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
                         m.track_dose_feedback, mgm.sort_order
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
-                 WHERE m.active = 1
+                 WHERE m.active = 1 AND m.user_id = :user_id
                  ORDER BY mgm.group_id ASC, mgm.sort_order ASC, m.name ASC'
             );
+            $statement->execute(['user_id' => $this->userId]);
             $rows = $statement->fetchAll();
         } catch (Throwable) {
             return [];
@@ -1539,11 +1570,13 @@ final class MedicationRepository
     private function medicationGroupMap(): array
     {
         try {
-            $statement = $this->db->query(
+            $statement = $this->db->prepare(
                 'SELECT mgm.medication_id, g.id AS group_id, g.name AS group_name
                  FROM medication_group_members mgm
-                 INNER JOIN medication_groups g ON g.id = mgm.group_id'
+                 INNER JOIN medication_groups g ON g.id = mgm.group_id
+                 WHERE g.user_id = :user_id'
             );
+            $statement->execute(['user_id' => $this->userId]);
             $map = [];
             foreach ($statement->fetchAll() as $row) {
                 $map[(int) $row['medication_id']] = [

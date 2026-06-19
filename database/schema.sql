@@ -60,16 +60,6 @@ CREATE TABLE IF NOT EXISTS dose_logs (
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS app_settings (
-    setting_key VARCHAR(120) PRIMARY KEY,
-    setting_value VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
-
-INSERT INTO app_settings (setting_key, setting_value)
-VALUES ('missed_grace_minutes', '60')
-ON DUPLICATE KEY UPDATE setting_value = setting_value;
-
 CREATE TABLE IF NOT EXISTS dose_postpones (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
@@ -176,3 +166,45 @@ SET current_quantity  = pill_count,
     starting_quantity = starting_pill_count,
     inventory_unit    = 'tablets'
 WHERE current_quantity IS NULL;
+
+-- User authentication tables
+CREATE TABLE IF NOT EXISTS users (
+    id                     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    email                  VARCHAR(255) NOT NULL UNIQUE,
+    password_hash          VARCHAR(255) NOT NULL,
+    display_name           VARCHAR(100),
+    reset_token            VARCHAR(64),
+    reset_token_expires_at DATETIME,
+    created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id        INT UNSIGNED NOT NULL,
+    session_token  VARCHAR(64) NOT NULL UNIQUE,
+    user_agent     VARCHAR(255),
+    ip_address     VARCHAR(45),
+    expires_at     DATETIME NOT NULL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_session_token (session_token)
+) ENGINE=InnoDB;
+
+-- Per-user settings (composite PK replaces single-key design)
+CREATE TABLE IF NOT EXISTS app_settings (
+    user_id       INT UNSIGNED NOT NULL,
+    setting_key   VARCHAR(120) NOT NULL,
+    setting_value VARCHAR(255) NOT NULL,
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, setting_key),
+    CONSTRAINT fk_app_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Add user_id to existing tables (idempotent)
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id;
+ALTER TABLE medication_groups
+    ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id;
+ALTER TABLE push_subscriptions
+    ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL AFTER id;
