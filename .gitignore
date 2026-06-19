@@ -1,5 +1,6 @@
 .env
 .htaccess
+.htaccess.example
 .DS_Store
 *.log
 /vendor
