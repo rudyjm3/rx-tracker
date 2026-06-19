@@ -86,7 +86,7 @@ final class AuthService
 
     public function requireLogin(): void
     {
-        if ($this->currentUserId() > 0) {
+        if ($this->currentUser() !== null) {
             return;
         }
         $redirect = (string) ($_SERVER['REQUEST_URI'] ?? '');
@@ -109,7 +109,11 @@ final class AuthService
         );
         $stmt->execute(['id' => $userId]);
         $row = $stmt->fetch();
-        return is_array($row) ? $row : null;
+        if (!is_array($row)) {
+            unset($_SESSION['user_id']);
+            return null;
+        }
+        return $row;
     }
 
     public function currentUserId(): int
