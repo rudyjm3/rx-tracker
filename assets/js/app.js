@@ -485,6 +485,7 @@ document.addEventListener('submit', async (e) => {
         const row = document.createElement('div');
         row.className = 'medication-row';
         row.dataset.inactiveMedId = medId;
+        row.dataset.medType = activeCard?.dataset.medType ?? 'prescription';
         row.innerHTML = `<div><strong>${escHtml(name)}</strong><p>${escHtml(dose)}</p></div>
           <div class="row-actions">
             <form method="post" action="index.php" data-activate-form>
