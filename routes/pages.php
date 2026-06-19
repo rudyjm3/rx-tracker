@@ -811,7 +811,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <?php endif; ?>
             </td>
             <td><?= e((string) ($med['instructions'] ?: '—')) ?></td>
-            <td><?= e((string) ($med['current_quantity'] ?? $med['pill_count'] ?? 0)) ?> <?= e((string) ($med['inventory_unit'] ?? 'tablets')) ?></td>
+            <?php
+              $exportQty = (float) ($med['current_quantity'] ?? $med['pill_count'] ?? 0);
+              $exportQtyDisplay = $exportQty == (int) $exportQty ? (string) (int) $exportQty : rtrim(rtrim(number_format($exportQty, 3), '0'), '.');
+            ?>
+            <td><?= e($exportQtyDisplay) ?> <?= e((string) ($med['inventory_unit'] ?? 'tablets')) ?></td>
             <td><?= e((string) $med['low_supply_threshold']) ?></td>
             <td>
               <?php if ($exportDays !== null): ?>
@@ -874,7 +878,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php foreach ($exportLogs as $log): ?>
           <tr>
             <td><?= e((string) $log['scheduled_for_date']) ?></td>
-            <td><?= e((string) $log['name']) ?></td>
+            <td><?= e((string) $log['name']) ?><?= !empty($log['dose']) ? ' — ' . e((string) $log['dose']) : '' ?></td>
             <td><?= e(to12h((string) $log['scheduled_time'])) ?></td>
             <td><?= e(ucfirst((string) $log['status'])) ?></td>
             <td><?= (isset($log['pain_level']) && $log['pain_level'] !== null) ? e((string) $log['pain_level']) . '/10' : '&mdash;' ?></td>
