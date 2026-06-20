@@ -202,11 +202,20 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.nav-user-btn {
+  background: #e9ecef;
+  border-color: #ced4da;
+}
+
 .nav-bell-btn:hover,
 .nav-user-btn:hover {
   background: var(--rx-border);
   box-shadow: none;
   transform: none;
+}
+
+.nav-user-btn i {
+  font-size: 1.15rem;
 }
 
 .nav-bell-btn svg,
@@ -4149,11 +4158,40 @@ a.nav-user-btn.is-active {
 
 .profile-page-header {
   margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .profile-page-header h1 {
   font-size: 1.4rem;
   margin: 0;
+}
+
+.profile-signout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: color 160ms, border-color 160ms, background 160ms;
+}
+
+.profile-signout-btn:hover {
+  color: var(--rx-danger);
+  border-color: var(--rx-danger);
+  background: #fef2f2;
+  box-shadow: none;
+  transform: none;
 }
 
 .profile-flash {
