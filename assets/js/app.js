@@ -2434,12 +2434,41 @@ groupForm?.addEventListener('submit', async (e) => {
   }
 });
 
-document.querySelectorAll('[data-edit-group]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const { groupId = '', groupName = '', groupTime = '' } = btn.dataset;
-    openGroupForm('edit', groupId, groupName, groupTime);
-    btn.closest('.group-card')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+const closeAllGroupMenus = () => {
+  document.querySelectorAll('[data-group-actions-menu]').forEach((menu) => {
+    const dropdown = menu.querySelector('[data-group-actions-dropdown]');
+    const trigger = menu.querySelector('[data-group-actions-trigger]');
+    if (dropdown) dropdown.hidden = true;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
   });
+};
+
+document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', (e) => {
+  const trigger = e.target.closest('[data-group-actions-trigger]');
+  if (trigger) {
+    e.stopPropagation();
+    const menu = trigger.closest('[data-group-actions-menu]');
+    const dropdown = menu?.querySelector('[data-group-actions-dropdown]');
+    if (!dropdown) return;
+    const isOpen = !dropdown.hidden;
+    closeAllGroupMenus();
+    if (!isOpen) {
+      dropdown.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+    return;
+  }
+
+  const editBtn = e.target.closest('[data-edit-group]');
+  if (editBtn) {
+    const { groupId = '', groupName = '', groupTime = '' } = editBtn.dataset;
+    const card = editBtn.closest('.group-card');
+    closeAllGroupMenus();
+    openGroupForm('edit', groupId, groupName, groupTime);
+    const addForm = card?.querySelector('.group-add-med-form');
+    if (addForm) addForm.hidden = false;
+    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 });
 
 const escHtml = (str) =>
@@ -2457,7 +2486,7 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
   card.dataset.groupCardId = String(groupId);
 
   const addMedFormHtml = ungrouped.length > 0
-    ? `<form class="group-add-med-form" method="post" action="index.php" data-ajax-add>
+    ? `<form class="group-add-med-form" method="post" action="index.php" data-ajax-add hidden>
         <input type="hidden" name="action" value="add_medication_to_group">
         <input type="hidden" name="group_id" value="${groupId}">
         <select name="medication_id" class="group-add-select">
@@ -2478,17 +2507,28 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
         <span class="group-time-badge" data-group-card-time>${escHtml(groupTimeDisplay)}</span>
         <span class="count-badge" data-group-card-count>0 meds</span>
       </div>
-      <div class="row-actions">
-        <button type="button" class="secondary" data-edit-group
-          data-group-id="${groupId}"
-          data-group-name="${escHtml(groupName)}"
-          data-group-time="${escHtml(groupTimeDisplay)}">Edit</button>
-        <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
-          <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
-          <input type="hidden" name="action" value="delete_group">
-          <input type="hidden" name="group_id" value="${groupId}">
-          <button type="submit" class="secondary">Delete</button>
-        </form>
+      <div class="med-actions-menu" data-group-actions-menu>
+        <button type="button" class="icon-button med-actions-trigger" data-group-actions-trigger aria-expanded="false" aria-haspopup="true">
+          <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+        </button>
+        <div class="med-actions-dropdown" data-group-actions-dropdown hidden>
+          <button type="button" class="med-actions-item" data-edit-group
+            data-group-id="${groupId}"
+            data-group-name="${escHtml(groupName)}"
+            data-group-time="${escHtml(groupTimeDisplay)}">
+            <i class="fa-solid fa-pen" aria-hidden="true"></i>
+            Edit
+          </button>
+          <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
+            <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
+            <input type="hidden" name="action" value="delete_group">
+            <input type="hidden" name="group_id" value="${groupId}">
+            <button type="submit" class="med-actions-item med-actions-item--danger">
+              <i class="fa-solid fa-trash" aria-hidden="true"></i>
+              Delete
+            </button>
+          </form>
+        </div>
       </div>
     </div>
     <div class="group-members-list" data-group-members>
@@ -2498,11 +2538,6 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
 
   card.querySelector('[data-confirm]')?.addEventListener('submit', (e) => {
     if (!window.confirm(e.currentTarget.getAttribute('data-confirm') ?? '')) e.preventDefault();
-  });
-
-  card.querySelector('[data-edit-group]')?.addEventListener('click', () => {
-    openGroupForm('edit', String(groupId), groupName, groupTimeDisplay);
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
   return card;
@@ -3165,9 +3200,9 @@ document.querySelectorAll('[data-med-actions-trigger]').forEach((trigger) => {
   });
 });
 
-document.addEventListener('click', closeAllMedMenus);
+document.addEventListener('click', () => { closeAllMedMenus(); closeAllGroupMenus(); });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeAllMedMenus();
+  if (event.key === 'Escape') { closeAllMedMenus(); closeAllGroupMenus(); }
 });
 
 initPushStatusPanel();

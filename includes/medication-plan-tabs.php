@@ -231,14 +231,28 @@
             <span class="group-time-badge" data-group-card-time><?= e(to12h($group['scheduled_time'])) ?></span>
             <span class="count-badge" data-group-card-count><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
           </div>
-          <div class="row-actions">
-            <button type="button" class="secondary" data-edit-group data-group-id="<?= e((string) $group['id']) ?>" data-group-name="<?= e($group['name']) ?>" data-group-time="<?= e(to12h($group['scheduled_time'])) ?>">Edit</button>
-            <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="delete_group">
-              <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
-              <button type="submit" class="secondary">Delete</button>
-            </form>
+          <div class="med-actions-menu" data-group-actions-menu>
+            <button type="button" class="icon-button med-actions-trigger" data-group-actions-trigger aria-expanded="false" aria-haspopup="true">
+              <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
+            </button>
+            <div class="med-actions-dropdown" data-group-actions-dropdown hidden>
+              <button type="button" class="med-actions-item" data-edit-group
+                data-group-id="<?= e((string) $group['id']) ?>"
+                data-group-name="<?= e($group['name']) ?>"
+                data-group-time="<?= e(to12h($group['scheduled_time'])) ?>">
+                <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                Edit
+              </button>
+              <form method="post" action="index.php" data-confirm="Delete this group? Medications will become individual.">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="delete_group">
+                <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
+                <button type="submit" class="med-actions-item med-actions-item--danger">
+                  <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                  Delete
+                </button>
+              </form>
+            </div>
           </div>
         </div>
 
@@ -272,7 +286,7 @@
 
         <?php $eligibleToAdd = $repository->ungroupedActiveMedications((int) $group['id']); ?>
         <?php if ($eligibleToAdd !== []): ?>
-          <form class="group-add-med-form" method="post" action="index.php" data-ajax-add>
+          <form class="group-add-med-form" method="post" action="index.php" data-ajax-add hidden>
             <?= csrf_field() ?>
             <input type="hidden" name="json_response" value="1">
             <input type="hidden" name="action" value="add_medication_to_group">
