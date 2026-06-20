@@ -249,7 +249,12 @@
           <?php foreach ($group['members'] as $member): ?>
             <div class="group-member-row">
               <span class="group-member-name"><?= e((string) $member['name']) ?></span>
-              <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
+              <?php if ($member['group_quantity_per_dose'] !== null): ?>
+                <?php $overrideUnit = (string) ($member['inventory_unit'] ?? 'tablets'); ?>
+                <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?> <?= e($overrideUnit) ?> <em class="group-dose-override-hint">(override)</em></span>
+              <?php else: ?>
+                <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
+              <?php endif; ?>
               <?php if ((int) $member['track_dose_feedback'] === 1): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
               <?php endif; ?>
@@ -257,6 +262,7 @@
                 <?= csrf_field() ?>
                 <input type="hidden" name="json_response" value="1">
                 <input type="hidden" name="action" value="remove_medication_from_group">
+                <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
                 <input type="hidden" name="medication_id" value="<?= e((string) $member['medication_id']) ?>">
                 <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
               </form>
@@ -264,11 +270,7 @@
           <?php endforeach; ?>
         </div>
 
-        <?php
-          $eligibleToAdd = array_values(array_filter($ungroupedMedications, static fn(array $m): bool =>
-              !in_array((int) $m['id'], array_column($group['members'], 'medication_id'), true)
-          ));
-        ?>
+        <?php $eligibleToAdd = $repository->ungroupedActiveMedications((int) $group['id']); ?>
         <?php if ($eligibleToAdd !== []): ?>
           <form class="group-add-med-form" method="post" action="index.php" data-ajax-add>
             <?= csrf_field() ?>
@@ -277,11 +279,15 @@
             <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
             <select name="medication_id" class="group-add-select">
               <option value="">Add a medication&hellip;</option>
-              <?php foreach ($eligibleToAdd as $ungrouped): ?>
-                <?php $ungroupedDose = formattedDose($ungrouped); ?>
-                <option value="<?= e((string) $ungrouped['id']) ?>" data-name="<?= e((string) $ungrouped['name']) ?>" data-dose="<?= e($ungroupedDose) ?>"><?= e((string) $ungrouped['name']) ?><?= $ungroupedDose !== '' ? ' &mdash; ' . e($ungroupedDose) : '' ?></option>
+              <?php foreach ($eligibleToAdd as $eligible): ?>
+                <?php $eligibleDose = formattedDose($eligible); ?>
+                <?php $existingGroups = (string) ($eligible['existing_groups'] ?? ''); ?>
+                <option value="<?= e((string) $eligible['id']) ?>" data-name="<?= e((string) $eligible['name']) ?>" data-dose="<?= e($eligibleDose) ?>"><?= e((string) $eligible['name']) ?><?= $eligibleDose !== '' ? ' &mdash; ' . e($eligibleDose) : '' ?><?= $existingGroups !== '' ? ' (also in: ' . e($existingGroups) . ')' : '' ?></option>
               <?php endforeach; ?>
             </select>
+            <label class="group-dose-override-label">Dose qty for this group <span class="field-optional">(optional — leave blank to use default)</span>
+              <input type="number" name="quantity_per_dose" min="0.25" step="0.25" placeholder="e.g. 2" class="group-dose-override-input">
+            </label>
             <button type="submit" class="secondary group-add-btn">Add</button>
           </form>
         <?php endif; ?>

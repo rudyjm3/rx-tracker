@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS medication_schedule_times (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
     reminder_time TIME NOT NULL,
+    quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_schedule_medication_time (medication_id, reminder_time),
     INDEX idx_schedule_time (reminder_time),
@@ -107,8 +108,8 @@ CREATE TABLE IF NOT EXISTS medication_group_members (
     group_id INT UNSIGNED NOT NULL,
     medication_id INT UNSIGNED NOT NULL,
     sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL,
     PRIMARY KEY (group_id, medication_id),
-    UNIQUE KEY uq_medication_one_group (medication_id),
     CONSTRAINT fk_group_members_group
         FOREIGN KEY (group_id) REFERENCES medication_groups (id)
         ON DELETE CASCADE,
@@ -208,3 +209,15 @@ ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id;
 ALTER TABLE push_subscriptions
     ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL AFTER id;
+
+-- Multi-group support: drop one-group constraint, add per-group dose override
+-- Create non-unique index first so the FK (which uses it as its index) isn't broken.
+CREATE INDEX IF NOT EXISTS idx_mgm_medication_id ON medication_group_members (medication_id);
+ALTER TABLE medication_group_members
+    DROP INDEX IF EXISTS uq_medication_one_group;
+ALTER TABLE medication_group_members
+    ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;
+
+-- Per-slot dose override for non-grouped medications
+ALTER TABLE medication_schedule_times
+    ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;
