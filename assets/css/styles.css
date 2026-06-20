@@ -3649,6 +3649,10 @@ details.med-detail-section[open] .med-detail-section-title::after {
   padding: 0.65rem 1rem;
 }
 
+.group-dose-override-label {
+  white-space: nowrap;
+}
+
 .group-add-select {
   flex: 1;
   font-size: 0.85rem;

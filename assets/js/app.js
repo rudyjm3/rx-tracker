@@ -2493,8 +2493,9 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
           <option value="">Add a medication&hellip;</option>
           ${buildMedOptions(ungrouped)}
         </select>
-        <label class="group-dose-override-label">Dose qty for this group <span class="field-optional">(optional)</span>
+        <label class="group-dose-override-label">Dose qty for this group
           <input type="number" name="quantity_per_dose" min="0.25" step="0.25" placeholder="e.g. 2" class="group-dose-override-input">
+          <span class="field-optional">(optional)</span>
         </label>
         <button type="submit" class="secondary group-add-btn">Add</button>
       </form>`

@@ -299,8 +299,9 @@
                 <option value="<?= e((string) $eligible['id']) ?>" data-name="<?= e((string) $eligible['name']) ?>" data-dose="<?= e($eligibleDose) ?>"><?= e((string) $eligible['name']) ?><?= $eligibleDose !== '' ? ' &mdash; ' . e($eligibleDose) : '' ?><?= $existingGroups !== '' ? ' (also in: ' . e($existingGroups) . ')' : '' ?></option>
               <?php endforeach; ?>
             </select>
-            <label class="group-dose-override-label">Dose qty for this group <span class="field-optional">(optional — leave blank to use default)</span>
+            <label class="group-dose-override-label">Dose qty for this group
               <input type="number" name="quantity_per_dose" min="0.25" step="0.25" placeholder="e.g. 2" class="group-dose-override-input">
+              <span class="field-optional">(optional — leave blank to use default)</span>
             </label>
             <button type="submit" class="secondary group-add-btn">Add</button>
           </form>
