@@ -15,6 +15,7 @@ final class MedicationRepository
         $this->ensurePainLevelColumn();
         $this->ensureSetIdColumn();
         $this->ensureGroupTables();
+        $this->ensureGroupMembersUpgrade();
         $this->ensureRefillsTable();
         $this->ensurePushActionNonceColumn();
         $this->ensureMedicationTypeColumn();
@@ -365,7 +366,7 @@ final class MedicationRepository
         }
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null): void
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
@@ -373,6 +374,17 @@ final class MedicationRepository
 
         if ($painLevel !== null && ($painLevel < 1 || $painLevel > 10)) {
             throw new RuntimeException('Pain level must be between 1 and 10.');
+        }
+
+        $groupDoseQty = null;
+        if ($groupId !== null && $status === 'taken') {
+            $stmt = $this->db->prepare(
+                'SELECT quantity_per_dose FROM medication_group_members
+                 WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
+            );
+            $stmt->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
+            $val = $stmt->fetchColumn();
+            $groupDoseQty = ($val !== false && $val !== null) ? (float) $val : null;
         }
 
         $this->db->beginTransaction();
@@ -411,7 +423,7 @@ final class MedicationRepository
                 $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
                 $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
-                    $this->deductInventory($medicationId);
+                    $this->deductInventory($medicationId, $groupDoseQty);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -432,7 +444,7 @@ final class MedicationRepository
                     'taken_at' => $takenAt,
                 ]);
                 if ($status === 'taken') {
-                    $this->deductInventory($medicationId);
+                    $this->deductInventory($medicationId, $groupDoseQty);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -523,10 +535,11 @@ final class MedicationRepository
 
         foreach ($medications as $medication) {
             $times = $this->timesForDate($medication);
-            $medGroup = $groupMap[(int) $medication['id']] ?? null;
+            $medGroupsByTime = $groupMap[(int) $medication['id']] ?? [];
             foreach ($times as $time) {
                 $key = (int) $medication['id'] . '|' . $time;
                 $log = $logs[$key] ?? null;
+                $medGroup = $medGroupsByTime[$time] ?? null;
                 $schedule[] = [
                     'medication_id' => (int) $medication['id'],
                     'name' => (string) $medication['name'],
@@ -1297,17 +1310,29 @@ final class MedicationRepository
         return sprintf('%02d:%02d', $hour, $minute);
     }
 
-    private function deductInventory(int $medicationId): void
+    private function deductInventory(int $medicationId, ?float $quantityOverride = null): void
     {
-        $this->db->prepare(
-            'UPDATE medications
-             SET current_quantity = CASE
-                 WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
-                 WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
-                 ELSE 0
-             END
-             WHERE id = :id'
-        )->execute(['id' => $medicationId]);
+        if ($quantityOverride !== null) {
+            $this->db->prepare(
+                'UPDATE medications
+                 SET current_quantity = CASE
+                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
+                     WHEN current_quantity >= :qty THEN current_quantity - :qty2
+                     ELSE 0
+                 END
+                 WHERE id = :id'
+            )->execute(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId]);
+        } else {
+            $this->db->prepare(
+                'UPDATE medications
+                 SET current_quantity = CASE
+                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
+                     WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
+                     ELSE 0
+                 END
+                 WHERE id = :id'
+            )->execute(['id' => $medicationId]);
+        }
     }
 
     private function nextDueDateTime(int $medicationId): ?DateTimeImmutable
@@ -1457,26 +1482,31 @@ final class MedicationRepository
         $statement->execute(['id' => $id]);
     }
 
-    public function addMedicationToGroup(int $groupId, int $medicationId): void
+    public function addMedicationToGroup(int $groupId, int $medicationId, ?float $quantityPerDose = null): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO medication_group_members (group_id, medication_id)
-               VALUES (:group_id, :medication_id)
-               ON CONFLICT(medication_id) DO UPDATE SET group_id = excluded.group_id'
-            : 'INSERT INTO medication_group_members (group_id, medication_id)
-               VALUES (:group_id, :medication_id)
-               ON DUPLICATE KEY UPDATE group_id = VALUES(group_id)';
+            ? 'INSERT OR IGNORE INTO medication_group_members (group_id, medication_id, quantity_per_dose)
+               VALUES (:group_id, :medication_id, :quantity_per_dose)'
+            : 'INSERT IGNORE INTO medication_group_members (group_id, medication_id, quantity_per_dose)
+               VALUES (:group_id, :medication_id, :quantity_per_dose)';
         $statement = $this->db->prepare($sql);
-        $statement->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
+        $statement->execute(['group_id' => $groupId, 'medication_id' => $medicationId, 'quantity_per_dose' => $quantityPerDose]);
     }
 
-    public function removeMedicationFromGroup(int $medicationId): void
+    public function removeMedicationFromGroup(int $medicationId, ?int $groupId = null): void
     {
-        $statement = $this->db->prepare(
-            'DELETE FROM medication_group_members WHERE medication_id = :medication_id'
-        );
-        $statement->execute(['medication_id' => $medicationId]);
+        if ($groupId !== null) {
+            $statement = $this->db->prepare(
+                'DELETE FROM medication_group_members WHERE medication_id = :medication_id AND group_id = :group_id'
+            );
+            $statement->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
+        } else {
+            $statement = $this->db->prepare(
+                'DELETE FROM medication_group_members WHERE medication_id = :medication_id'
+            );
+            $statement->execute(['medication_id' => $medicationId]);
+        }
     }
 
     public function groupForMedication(int $medicationId): ?array
@@ -1502,17 +1532,22 @@ final class MedicationRepository
         return $row;
     }
 
-    public function ungroupedActiveMedications(): array
+    public function ungroupedActiveMedications(int $excludeGroupId = 0): array
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT m.id, m.name, m.dose, m.dose_amount, m.dose_unit
+                'SELECT m.id, m.name, m.dose, m.dose_amount, m.dose_unit,
+                        GROUP_CONCAT(mg.name) AS existing_groups
                  FROM medications m
-                 LEFT JOIN medication_group_members mgm ON mgm.medication_id = m.id
-                 WHERE m.active = 1 AND m.user_id = :user_id AND mgm.medication_id IS NULL
+                 LEFT JOIN medication_group_members mgm_this
+                        ON mgm_this.medication_id = m.id AND mgm_this.group_id = :exclude_group_id
+                 LEFT JOIN medication_group_members mgm_all ON mgm_all.medication_id = m.id
+                 LEFT JOIN medication_groups mg ON mg.id = mgm_all.group_id
+                 WHERE m.active = 1 AND m.user_id = :user_id AND mgm_this.medication_id IS NULL
+                 GROUP BY m.id, m.name, m.dose, m.dose_amount, m.dose_unit
                  ORDER BY m.name ASC'
             );
-            $statement->execute(['user_id' => $this->userId]);
+            $statement->execute(['user_id' => $this->userId, 'exclude_group_id' => $excludeGroupId]);
             $rows = $statement->fetchAll();
             foreach ($rows as &$row) {
                 $row['dose'] = formattedDose($row);
@@ -1528,7 +1563,8 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit, m.track_dose_feedback, mgm.sort_order
+                'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
+                        m.track_dose_feedback, mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE mgm.group_id = :group_id AND m.active = 1
@@ -1547,7 +1583,7 @@ final class MedicationRepository
         try {
             $statement = $this->db->prepare(
                 'SELECT mgm.group_id, m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
-                        m.track_dose_feedback, mgm.sort_order
+                        m.track_dose_feedback, mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE m.active = 1 AND m.user_id = :user_id
@@ -1571,7 +1607,7 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT mgm.medication_id, g.id AS group_id, g.name AS group_name
+                'SELECT mgm.medication_id, g.id AS group_id, g.name AS group_name, g.scheduled_time AS group_time
                  FROM medication_group_members mgm
                  INNER JOIN medication_groups g ON g.id = mgm.group_id
                  WHERE g.user_id = :user_id'
@@ -1579,7 +1615,8 @@ final class MedicationRepository
             $statement->execute(['user_id' => $this->userId]);
             $map = [];
             foreach ($statement->fetchAll() as $row) {
-                $map[(int) $row['medication_id']] = [
+                $timeKey = substr((string) $row['group_time'], 0, 5);
+                $map[(int) $row['medication_id']][$timeKey] = [
                     'group_id' => (int) $row['group_id'],
                     'group_name' => (string) $row['group_name'],
                 ];
@@ -1612,8 +1649,8 @@ final class MedicationRepository
                         group_id INT UNSIGNED NOT NULL,
                         medication_id INT UNSIGNED NOT NULL,
                         sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                        quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL,
                         PRIMARY KEY (group_id, medication_id),
-                        UNIQUE KEY uq_medication_one_group (medication_id),
                         CONSTRAINT fk_group_members_group
                             FOREIGN KEY (group_id) REFERENCES medication_groups (id) ON DELETE CASCADE,
                         CONSTRAINT fk_group_members_medication
@@ -1639,13 +1676,82 @@ final class MedicationRepository
                         group_id INTEGER NOT NULL,
                         medication_id INTEGER NOT NULL,
                         sort_order INTEGER NOT NULL DEFAULT 0,
-                        PRIMARY KEY (group_id, medication_id),
-                        UNIQUE (medication_id)
+                        quantity_per_dose REAL NULL DEFAULT NULL,
+                        PRIMARY KEY (group_id, medication_id)
                     )"
                 );
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureGroupMembersUpgrade(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                // Drop the one-group-per-medication unique constraint if it still exists.
+                $idx = $this->db->query(
+                    "SELECT COUNT(*) FROM information_schema.statistics
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'medication_group_members'
+                       AND index_name = 'uq_medication_one_group'"
+                );
+                if ($idx !== false && (int) $idx->fetchColumn() > 0) {
+                    $this->db->exec('ALTER TABLE medication_group_members DROP INDEX uq_medication_one_group');
+                }
+                // Add quantity_per_dose column if missing.
+                $col = $this->db->query("SHOW COLUMNS FROM medication_group_members LIKE 'quantity_per_dose'");
+                if ($col !== false && $col->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE medication_group_members ADD COLUMN quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL');
+                }
+                return;
+            }
+
+            if ($driver === 'sqlite') {
+                $info = $this->db->query("PRAGMA table_info(medication_group_members)");
+                if ($info === false) {
+                    return;
+                }
+                $columns = array_column($info->fetchAll(), 'name');
+                if (in_array('quantity_per_dose', $columns, true)) {
+                    // Column exists; check if old UNIQUE constraint needs removal by attempting
+                    // a benign cross-group duplicate that the PRIMARY KEY allows.
+                    // We detect the old schema by inspecting the CREATE TABLE SQL.
+                    $sqlRow = $this->db->query(
+                        "SELECT sql FROM sqlite_master WHERE type='table' AND name='medication_group_members'"
+                    );
+                    if ($sqlRow === false) return;
+                    $createSql = (string) ($sqlRow->fetchColumn() ?: '');
+                    if (stripos($createSql, 'UNIQUE (medication_id)') === false &&
+                        stripos($createSql, 'UNIQUE(medication_id)') === false) {
+                        return; // already upgraded
+                    }
+                }
+                // Recreate the table without the UNIQUE(medication_id) constraint and with
+                // the quantity_per_dose column. Use a transaction for safety.
+                $this->db->beginTransaction();
+                $this->db->exec(
+                    "CREATE TABLE medication_group_members_new (
+                        group_id INTEGER NOT NULL,
+                        medication_id INTEGER NOT NULL,
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        quantity_per_dose REAL NULL DEFAULT NULL,
+                        PRIMARY KEY (group_id, medication_id)
+                    )"
+                );
+                $this->db->exec(
+                    "INSERT INTO medication_group_members_new (group_id, medication_id, sort_order, quantity_per_dose)
+                     SELECT group_id, medication_id, sort_order, NULL FROM medication_group_members"
+                );
+                $this->db->exec('DROP TABLE medication_group_members');
+                $this->db->exec('ALTER TABLE medication_group_members_new RENAME TO medication_group_members');
+                $this->db->commit();
+            }
+        } catch (Throwable) {
+            try { $this->db->rollBack(); } catch (Throwable) {}
+            // Keep app booting even if migration fails.
         }
     }
 

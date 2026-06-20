@@ -1415,6 +1415,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="alarm-actions">
       <button type="button" class="alarm-take-btn" data-alarm-take>Take Now</button>
       <button type="button" class="secondary alarm-skip-btn" data-alarm-skip>Skip</button>
+      <button type="button" class="secondary alarm-individual-btn" data-alarm-individual hidden>Manage Each</button>
       <div class="alarm-snooze-row">
         <select data-alarm-snooze-minutes class="alarm-snooze-select">
           <option value="5"<?= $snoozeMinutes === 5 ? ' selected' : '' ?>>5 min</option>
@@ -1425,6 +1426,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button type="button" class="secondary" data-alarm-snooze>Snooze</button>
       </div>
     </div>
+    <template id="alarm-item-actions-tpl">
+      <div class="alarm-item-actions">
+        <button type="button" class="alarm-item-take-btn" data-item-take>Take</button>
+        <button type="button" class="secondary" data-item-skip>Skip</button>
+        <button type="button" class="secondary" data-item-snooze>Snooze</button>
+      </div>
+    </template>
   </div>
 </div>
 <nav class="bottom-nav" aria-label="Main navigation">

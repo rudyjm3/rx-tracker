@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS medication_group_members (
     group_id INT UNSIGNED NOT NULL,
     medication_id INT UNSIGNED NOT NULL,
     sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL,
     PRIMARY KEY (group_id, medication_id),
-    UNIQUE KEY uq_medication_one_group (medication_id),
     CONSTRAINT fk_group_members_group
         FOREIGN KEY (group_id) REFERENCES medication_groups (id)
         ON DELETE CASCADE,
@@ -208,3 +208,9 @@ ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id;
 ALTER TABLE push_subscriptions
     ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL AFTER id;
+
+-- Multi-group support: drop one-group constraint, add per-group dose override
+ALTER TABLE medication_group_members
+    DROP INDEX IF EXISTS uq_medication_one_group;
+ALTER TABLE medication_group_members
+    ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;

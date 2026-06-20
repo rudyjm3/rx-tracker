@@ -110,7 +110,7 @@ try {
                 'group_id' => $newGroupId,
                 'group_name' => $groupName,
                 'group_time_display' => to12h($parsedTime),
-                'ungrouped' => $repository->ungroupedActiveMedications(),
+                'ungrouped' => $repository->ungroupedActiveMedications($newGroupId),
             ], JSON_THROW_ON_ERROR);
             exit;
         }
@@ -150,12 +150,15 @@ try {
     }
 
     if ($action === 'add_medication_to_group') {
-        $repository->addMedicationToGroup((int) post_string('group_id'), (int) post_string('medication_id'));
+        $targetGroupId = (int) post_string('group_id');
+        $qpdRaw = post_string('quantity_per_dose');
+        $qpdOverride = $qpdRaw !== '' && (float) $qpdRaw > 0 ? (float) $qpdRaw : null;
+        $repository->addMedicationToGroup($targetGroupId, (int) post_string('medication_id'), $qpdOverride);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'ok' => true,
-                'ungrouped' => $repository->ungroupedActiveMedications(),
+                'ungrouped' => $repository->ungroupedActiveMedications($targetGroupId),
             ], JSON_THROW_ON_ERROR);
             exit;
         }
@@ -164,13 +167,14 @@ try {
 
     if ($action === 'remove_medication_from_group') {
         $medId = (int) post_string('medication_id');
-        $repository->removeMedicationFromGroup($medId);
+        $targetGroupId = post_string('group_id') !== '' ? (int) post_string('group_id') : null;
+        $repository->removeMedicationFromGroup($medId, $targetGroupId);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'ok' => true,
                 'medication_id' => $medId,
-                'ungrouped' => $repository->ungroupedActiveMedications(),
+                'ungrouped' => $repository->ungroupedActiveMedications($targetGroupId ?? 0),
             ], JSON_THROW_ON_ERROR);
             exit;
         }
@@ -180,7 +184,9 @@ try {
     if ($action === 'mark_dose') {
         $rawPainLevel = post_string('pain_level');
         $painLevel = $rawPainLevel !== '' ? (int) $rawPainLevel : null;
-        $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel);
+        $rawGroupId = post_string('group_id');
+        $groupId = $rawGroupId !== '' && (int) $rawGroupId > 0 ? (int) $rawGroupId : null;
+        $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
