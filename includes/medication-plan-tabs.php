@@ -242,7 +242,7 @@
           </div>
         </div>
 
-        <div class="group-members-list">
+        <div class="group-members-list" data-group-members>
           <?php if ($group['members'] === []): ?>
             <p class="group-empty-hint">No medications in this group yet.</p>
           <?php endif; ?>
