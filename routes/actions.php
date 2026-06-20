@@ -15,7 +15,29 @@ try {
         $name = post_string('name');
         $instructions = post_string('instructions');
         $scheduleMode = post_string('schedule_mode');
-        $doseTimes = parseDoseTimes(post_string('dose_times'));
+        $doseTimesPost = $_POST['dose_times'] ?? '';
+        $doseQtysPost  = $_POST['dose_qtys'] ?? [];
+        $doseQtysRaw   = is_array($doseQtysPost) ? array_values($doseQtysPost) : [];
+        if (is_array($doseTimesPost)) {
+            $seenTimes = [];
+            $doseTimes = [];
+            $doseQtys  = [];
+            foreach ($doseTimesPost as $i => $t) {
+                $t = trim((string) $t);
+                if ($t === '') {
+                    continue;
+                }
+                $parsed = parseTimeValue($t);
+                if (!in_array($parsed, $seenTimes, true)) {
+                    $seenTimes[] = $parsed;
+                    $doseTimes[] = $parsed;
+                    $doseQtys[]  = $doseQtysRaw[$i] ?? '';
+                }
+            }
+        } else {
+            $doseTimes = parseDoseTimes((string) $doseTimesPost);
+            $doseQtys  = $doseQtysRaw;
+        }
         $intervalHoursRaw = post_string('interval_hours');
         $intervalHours = $intervalHoursRaw === '' ? null : max(1, (int) $intervalHoursRaw);
         $firstDoseRaw = post_string('first_dose_time');
@@ -73,13 +95,13 @@ try {
         }
 
         if ($action === 'add_medication') {
-            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose);
+            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys);
             $newMedicationId = $repository->lastInsertedMedicationId();
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
             }
         } else {
-            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose);
+            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys);
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $id);
             } else {

@@ -21,6 +21,7 @@ final class MedicationRepository
         $this->ensureMedicationTypeColumn();
         $this->ensureDoseStructuredColumns();
         $this->ensureInventoryColumns();
+        $this->ensureScheduleTimeDoseColumn();
     }
 
     public function activeMedications(): array
@@ -31,10 +32,12 @@ final class MedicationRepository
         $statement->execute(['user_id' => $this->userId]);
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
-        $allTimes   = $this->scheduleTimesByMedicationIds($ids);
-        $allRefills = $this->lastRefillsByMedicationIds($ids);
+        $allTimes     = $this->scheduleTimesByMedicationIds($ids);
+        $allTimeDoses = $this->scheduleTimeDosesByMedicationIds($ids);
+        $allRefills   = $this->lastRefillsByMedicationIds($ids);
         foreach ($medications as &$medication) {
             $medication['times']       = $allTimes[(int) $medication['id']] ?? [];
+            $medication['time_doses']  = $allTimeDoses[(int) $medication['id']] ?? [];
             $medication['last_refill'] = $allRefills[(int) $medication['id']] ?? null;
         }
         unset($medication);
@@ -50,9 +53,11 @@ final class MedicationRepository
         $statement->execute(['user_id' => $this->userId]);
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
-        $allTimes = $this->scheduleTimesByMedicationIds($ids);
+        $allTimes     = $this->scheduleTimesByMedicationIds($ids);
+        $allTimeDoses = $this->scheduleTimeDosesByMedicationIds($ids);
         foreach ($medications as &$medication) {
-            $medication['times'] = $allTimes[(int) $medication['id']] ?? [];
+            $medication['times']      = $allTimes[(int) $medication['id']] ?? [];
+            $medication['time_doses'] = $allTimeDoses[(int) $medication['id']] ?? [];
         }
         unset($medication);
 
@@ -148,7 +153,8 @@ final class MedicationRepository
             return null;
         }
 
-        $row['times'] = $this->scheduleTimesForMedication($id);
+        $row['times']      = $this->scheduleTimesForMedication($id);
+        $row['time_doses'] = $this->scheduleTimeDosesForMedication($id);
 
         return $row;
     }
@@ -164,6 +170,23 @@ final class MedicationRepository
         $statement->execute(['medication_id' => $medicationId]);
 
         return array_map(static fn (string $time): string => substr($time, 0, 5), array_column($statement->fetchAll(), 'reminder_time'));
+    }
+
+    private function scheduleTimeDosesForMedication(int $medicationId): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT reminder_time, quantity_per_dose
+             FROM medication_schedule_times
+             WHERE medication_id = :medication_id
+             ORDER BY reminder_time ASC'
+        );
+        $statement->execute(['medication_id' => $medicationId]);
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $time = substr((string) $row['reminder_time'], 0, 5);
+            $result[$time] = $row['quantity_per_dose'] !== null ? (float) $row['quantity_per_dose'] : null;
+        }
+        return $result;
     }
 
     private function scheduleTimesByMedicationIds(array $ids): array
@@ -182,6 +205,27 @@ final class MedicationRepository
         $result = [];
         foreach ($statement->fetchAll() as $row) {
             $result[(int) $row['medication_id']][] = substr((string) $row['reminder_time'], 0, 5);
+        }
+        return $result;
+    }
+
+    private function scheduleTimeDosesByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT medication_id, reminder_time, quantity_per_dose
+             FROM medication_schedule_times
+             WHERE medication_id IN ({$placeholders})
+             ORDER BY medication_id ASC, reminder_time ASC"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $time = substr((string) $row['reminder_time'], 0, 5);
+            $result[(int) $row['medication_id']][$time] = $row['quantity_per_dose'] !== null ? (float) $row['quantity_per_dose'] : null;
         }
         return $result;
     }
@@ -227,7 +271,8 @@ final class MedicationRepository
         ?string $doseForm = null,
         string $inventoryType = 'pills',
         float $startingQuantity = 0.0,
-        float $quantityPerDose = 1.0
+        float $quantityPerDose = 1.0,
+        array $doseQtys = []
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
@@ -267,7 +312,7 @@ final class MedicationRepository
             ]);
 
             $medicationId = (int) $this->db->lastInsertId();
-            $this->replaceScheduleTimes($medicationId, $doseTimes);
+            $this->replaceScheduleTimes($medicationId, $doseTimes, $doseQtys);
             $this->db->commit();
         } catch (Throwable $exception) {
             $this->db->rollBack();
@@ -293,7 +338,8 @@ final class MedicationRepository
         ?string $doseForm = null,
         string $inventoryType = 'pills',
         float $startingQuantity = 0.0,
-        float $quantityPerDose = 1.0
+        float $quantityPerDose = 1.0,
+        array $doseQtys = []
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
@@ -358,7 +404,7 @@ final class MedicationRepository
                 'quantity_per_dose' => $quantityPerDose,
             ]);
 
-            $this->replaceScheduleTimes($id, $doseTimes);
+            $this->replaceScheduleTimes($id, $doseTimes, $doseQtys);
             $this->db->commit();
         } catch (Throwable $exception) {
             $this->db->rollBack();
@@ -376,15 +422,25 @@ final class MedicationRepository
             throw new RuntimeException('Pain level must be between 1 and 10.');
         }
 
-        $groupDoseQty = null;
-        if ($groupId !== null && $status === 'taken') {
-            $stmt = $this->db->prepare(
-                'SELECT quantity_per_dose FROM medication_group_members
-                 WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
-            );
-            $stmt->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
-            $val = $stmt->fetchColumn();
-            $groupDoseQty = ($val !== false && $val !== null) ? (float) $val : null;
+        $doseQtyOverride = null;
+        if ($status === 'taken') {
+            if ($groupId !== null) {
+                $stmt = $this->db->prepare(
+                    'SELECT quantity_per_dose FROM medication_group_members
+                     WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
+                );
+                $stmt->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
+                $val = $stmt->fetchColumn();
+                $doseQtyOverride = ($val !== false && $val !== null) ? (float) $val : null;
+            } else {
+                $stmt = $this->db->prepare(
+                    'SELECT quantity_per_dose FROM medication_schedule_times
+                     WHERE medication_id = :medication_id AND reminder_time = :reminder_time LIMIT 1'
+                );
+                $stmt->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
+                $val = $stmt->fetchColumn();
+                $doseQtyOverride = ($val !== false && $val !== null) ? (float) $val : null;
+            }
         }
 
         $this->db->beginTransaction();
@@ -423,7 +479,7 @@ final class MedicationRepository
                 $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
                 $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
-                    $this->deductInventory($medicationId, $groupDoseQty);
+                    $this->deductInventory($medicationId, $doseQtyOverride);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -444,7 +500,7 @@ final class MedicationRepository
                     'taken_at' => $takenAt,
                 ]);
                 if ($status === 'taken') {
-                    $this->deductInventory($medicationId, $groupDoseQty);
+                    $this->deductInventory($medicationId, $doseQtyOverride);
                 }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
@@ -536,6 +592,7 @@ final class MedicationRepository
         foreach ($medications as $medication) {
             $times = $this->timesForDate($medication);
             $medGroupsByTime = $groupMap[(int) $medication['id']] ?? [];
+            $timeDoses = $medication['time_doses'] ?? [];
             foreach ($times as $time) {
                 $key = (int) $medication['id'] . '|' . $time;
                 $log = $logs[$key] ?? null;
@@ -562,6 +619,7 @@ final class MedicationRepository
                     'postponed_until' => $postpones[$key] ?? null,
                     'group_id' => $medGroup !== null ? (int) $medGroup['group_id'] : null,
                     'group_name' => $medGroup !== null ? (string) $medGroup['group_name'] : null,
+                    'slot_qty_override' => array_key_exists($time, $timeDoses) ? $timeDoses[$time] : null,
                 ];
             }
         }
@@ -1183,16 +1241,21 @@ final class MedicationRepository
         }
     }
 
-    private function replaceScheduleTimes(int $medicationId, array $doseTimes): void
+    private function replaceScheduleTimes(int $medicationId, array $doseTimes, array $doseQtys = []): void
     {
         $delete = $this->db->prepare('DELETE FROM medication_schedule_times WHERE medication_id = :medication_id');
         $delete->execute(['medication_id' => $medicationId]);
         if ($doseTimes === []) {
             return;
         }
-        $insert = $this->db->prepare('INSERT INTO medication_schedule_times (medication_id, reminder_time) VALUES (:medication_id, :reminder_time)');
-        foreach ($doseTimes as $time) {
-            $insert->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
+        $insert = $this->db->prepare(
+            'INSERT INTO medication_schedule_times (medication_id, reminder_time, quantity_per_dose)
+             VALUES (:medication_id, :reminder_time, :quantity_per_dose)'
+        );
+        foreach ($doseTimes as $i => $time) {
+            $rawQty = $doseQtys[$i] ?? '';
+            $qty = ($rawQty !== '' && (float) $rawQty > 0) ? (float) $rawQty : null;
+            $insert->execute(['medication_id' => $medicationId, 'reminder_time' => $time, 'quantity_per_dose' => $qty]);
         }
     }
 
@@ -2233,6 +2296,32 @@ final class MedicationRepository
                          inventory_unit    = 'tablets'
                      WHERE current_quantity IS NULL"
                 );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureScheduleTimeDoseColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medication_schedule_times LIKE 'quantity_per_dose'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medication_schedule_times)");
+                if ($check === false) {
+                    return;
+                }
+                $columns = array_column($check->fetchAll(), 'name');
+                if (!in_array('quantity_per_dose', $columns, true)) {
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN quantity_per_dose REAL NULL DEFAULT NULL');
+                }
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails.

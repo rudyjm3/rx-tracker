@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS medication_schedule_times (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
     reminder_time TIME NOT NULL,
+    quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_schedule_medication_time (medication_id, reminder_time),
     INDEX idx_schedule_time (reminder_time),
@@ -213,4 +214,8 @@ ALTER TABLE push_subscriptions
 ALTER TABLE medication_group_members
     DROP INDEX IF EXISTS uq_medication_one_group;
 ALTER TABLE medication_group_members
+    ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;
+
+-- Per-slot dose override for non-grouped medications
+ALTER TABLE medication_schedule_times
     ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;

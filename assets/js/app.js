@@ -1672,10 +1672,11 @@ const medicationForm = document.querySelector('.medication-form');
 
 if (medicationForm) {
   const scheduleMode = medicationForm.querySelector('select[name="schedule_mode"]');
-  const doseTimesInput = medicationForm.querySelector('input[name="dose_times"]');
+  const doseTimesSection = medicationForm.querySelector('[data-dose-times-section]');
+  const doseTimeRows = medicationForm.querySelector('[data-dose-time-rows]');
+  const addDoseTimeBtn = medicationForm.querySelector('[data-add-dose-time]');
   const intervalHoursInput = medicationForm.querySelector('input[name="interval_hours"]');
   const firstDoseInput = medicationForm.querySelector('input[name="first_dose_time"]');
-  const doseTimesLabel = doseTimesInput?.closest('label');
   const intervalLabel = intervalHoursInput?.closest('label');
   const firstDoseLabel = firstDoseInput?.closest('label');
 
@@ -1729,12 +1730,47 @@ if (medicationForm) {
     return normalized.join(', ');
   };
 
+  const buildDoseTimeRow = () => {
+    const row = document.createElement('div');
+    row.className = 'dose-time-row';
+    row.innerHTML = `
+      <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off">
+      <input type="number" name="dose_qtys[]" min="0.25" step="0.25" placeholder="Qty (default)" class="dose-qty-field">
+      <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
+    `;
+    const timeInput = row.querySelector('.dose-time-field');
+    if (timeInput) setupTimeAutoColon(timeInput, false);
+    return row;
+  };
+
+  if (addDoseTimeBtn && doseTimeRows) {
+    addDoseTimeBtn.addEventListener('click', () => {
+      doseTimeRows.appendChild(buildDoseTimeRow());
+    });
+  }
+
+  if (doseTimeRows) {
+    doseTimeRows.addEventListener('click', (e) => {
+      const btn = e.target.closest('.remove-dose-time');
+      if (!btn) return;
+      const rows = doseTimeRows.querySelectorAll('.dose-time-row');
+      if (rows.length <= 1) {
+        const timeInput = btn.closest('.dose-time-row')?.querySelector('.dose-time-field');
+        const qtyInput = btn.closest('.dose-time-row')?.querySelector('.dose-qty-field');
+        if (timeInput) timeInput.value = '';
+        if (qtyInput) qtyInput.value = '';
+      } else {
+        btn.closest('.dose-time-row')?.remove();
+      }
+    });
+
+  }
+
   const applyScheduleVisibility = () => {
     const intervalMode = scheduleMode?.value === 'interval';
-    if (doseTimesLabel) doseTimesLabel.style.display = intervalMode ? 'none' : '';
+    if (doseTimesSection) doseTimesSection.style.display = intervalMode ? 'none' : '';
     if (intervalLabel) intervalLabel.style.display = intervalMode ? '' : 'none';
     if (firstDoseLabel) firstDoseLabel.style.display = intervalMode ? '' : 'none';
-    if (doseTimesInput) doseTimesInput.required = !intervalMode;
     if (intervalHoursInput) intervalHoursInput.required = intervalMode;
     if (firstDoseInput) firstDoseInput.required = intervalMode;
   };
@@ -1746,14 +1782,24 @@ if (medicationForm) {
   medicationForm.addEventListener('submit', (event) => {
     const intervalMode = scheduleMode?.value === 'interval';
 
-    if (!intervalMode && doseTimesInput && doseTimesInput.value.trim() !== '') {
-      const normalized = normalizeCommaTimes(doseTimesInput.value);
-      if (!normalized) {
+    if (!intervalMode && doseTimeRows) {
+      const timeFields = doseTimeRows.querySelectorAll('.dose-time-field');
+      const filledFields = [...timeFields].filter((f) => f.value.trim() !== '');
+      if (filledFields.length === 0) {
         event.preventDefault();
-        window.alert('Invalid dose times. Use h:MM AM/PM format (e.g. 8:00 AM, 2:30 PM).');
+        window.alert('Add at least one dose time, or switch to "Every X hours" schedule.');
         return;
       }
-      doseTimesInput.value = normalized;
+      for (const field of filledFields) {
+        const normalized = normalizeToken(field.value.trim());
+        if (!normalized) {
+          event.preventDefault();
+          window.alert('Invalid dose time "' + field.value + '". Use h:MM AM/PM format (e.g. 8:00 AM).');
+          field.focus();
+          return;
+        }
+        field.value = normalized;
+      }
     }
 
     if (intervalMode && firstDoseInput && firstDoseInput.value.trim() !== '') {
@@ -3042,8 +3088,9 @@ const setupTimeAutoColon = (input, isMulti = false) => {
 document.querySelectorAll('[name="first_dose_time"], [data-group-form-time]').forEach((el) => {
   setupTimeAutoColon(el, false);
 });
-const doseTimesInput = document.querySelector('[name="dose_times"]');
-if (doseTimesInput) setupTimeAutoColon(doseTimesInput, true);
+document.querySelectorAll('[data-dose-time-rows] .dose-time-field').forEach((el) => {
+  setupTimeAutoColon(el, false);
+});
 
 // Medication type filter (handles multiple panels independently)
 document.querySelectorAll('[data-med-type-filter]').forEach((filterBar) => {

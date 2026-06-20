@@ -324,9 +324,31 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="interval" <?= (($editing['schedule_mode'] ?? '') === 'interval') ? 'selected' : '' ?>>Every X hours</option>
           </select>
         </label>
-        <label>Fixed dose times (comma separated)
-          <input name="dose_times" placeholder="8:00 AM, 2:00 PM, 9:00 PM" value="<?= e(isset($editing['times']) ? implode(', ', array_map('to12h', $editing['times'])) : '') ?>">
-        </label>
+        <div data-dose-times-section>
+          <div class="dose-times-label">Dose times <span class="field-optional">(one per row)</span></div>
+          <div data-dose-time-rows>
+          <?php
+          $editingTimes     = $editing['times']      ?? [];
+          $editingTimeDoses = $editing['time_doses']  ?? [];
+          if ($editingTimes === []):
+          ?>
+            <div class="dose-time-row">
+              <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off">
+              <input type="number" name="dose_qtys[]" min="0.25" step="0.25" placeholder="Qty (default)" class="dose-qty-field">
+              <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
+            </div>
+          <?php else: ?>
+            <?php foreach ($editingTimes as $t): ?>
+            <div class="dose-time-row">
+              <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off" value="<?= e(to12h($t)) ?>">
+              <input type="number" name="dose_qtys[]" min="0.25" step="0.25" placeholder="Qty (default)" class="dose-qty-field" value="<?= e((string) ($editingTimeDoses[$t] ?? '')) ?>">
+              <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
+            </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+          </div>
+          <button type="button" class="btn-text" data-add-dose-time>+ Add time</button>
+        </div>
         <label>Interval hours
           <input type="number" min="1" max="24" name="interval_hours" value="<?= e((string) ($editing['interval_hours'] ?? '')) ?>">
         </label>
