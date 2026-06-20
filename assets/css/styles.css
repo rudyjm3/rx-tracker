@@ -1290,6 +1290,64 @@ details[open] .form-disclosure-toggle::before {
   margin-top: 0.5rem;
 }
 
+[data-dose-times-section] {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.dose-times-label {
+  color: var(--rx-text-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.dose-time-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dose-time-field {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.dose-qty-field {
+  flex: 0 0 7rem;
+  min-width: 0;
+}
+
+.btn-icon {
+  background: none;
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.3rem 0.55rem;
+}
+
+.btn-icon:hover {
+  background: var(--rx-bg-alt);
+  color: var(--rx-danger);
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--rx-brand);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.1rem 0;
+  text-align: left;
+}
+
+.btn-text:hover {
+  text-decoration: underline;
+}
+
 label {
   color: var(--rx-text-muted);
   display: grid;
@@ -1895,6 +1953,10 @@ textarea:focus,
 
 .alarm-overlay.is-active {
   display: flex;
+}
+
+.alarm-overlay.is-behind-modal {
+  z-index: 900;
 }
 
 .alarm-dialog {
@@ -4375,4 +4437,42 @@ a.nav-user-btn.is-active {
   .profile-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Password visibility toggle ────────────────────────────────────────────── */
+
+.password-input-wrapper {
+  position: relative;
+}
+
+.password-input-wrapper input {
+  padding-right: 2.75rem !important;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  color: var(--rx-text-muted, #888);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.password-toggle:hover {
+  color: var(--rx-text);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid var(--rx-blue);
+  outline-offset: 1px;
 }
