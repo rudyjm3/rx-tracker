@@ -1849,10 +1849,11 @@ if (medicationForm) {
 // ── Inventory type dynamic fields ────────────────────────────────────────────
 
 if (medicationForm) {
-  const doseFormSelect  = medicationForm.querySelector('[data-dailymed-dose-form]');
-  const invQtyLabel     = medicationForm.querySelector('[data-inv-qty-label]');
-  const invLiquidLabel  = medicationForm.querySelector('[data-inv-liquid-label]');
-  const invUnitLabels   = medicationForm.querySelectorAll('[data-inv-unit-label]');
+  const doseFormSelect    = medicationForm.querySelector('[data-dailymed-dose-form]');
+  const invQtyLabel       = medicationForm.querySelector('[data-inv-qty-label]');
+  const invLiquidLabel    = medicationForm.querySelector('[data-inv-liquid-label]');
+  const invUnitLabels     = medicationForm.querySelectorAll('[data-inv-unit-label]');
+  const bottleUnitSelect  = medicationForm.querySelector('[data-bottle-unit-select]');
 
   const DOSE_FORM_TO_INV = {
     tablet: 'pills', capsule: 'pills',
@@ -1875,11 +1876,12 @@ if (medicationForm) {
     const isLiquid = invType === 'liquid';
     if (invQtyLabel)    invQtyLabel.style.display    = isLiquid ? 'none' : '';
     if (invLiquidLabel) invLiquidLabel.style.display = isLiquid ? ''     : 'none';
-    const unit = inventoryUnits[invType] ?? 'units';
+    const unit = isLiquid ? (bottleUnitSelect?.value ?? 'mL') : (inventoryUnits[invType] ?? 'units');
     invUnitLabels.forEach((el) => { el.textContent = unit; });
   };
 
   doseFormSelect?.addEventListener('change', applyInventoryVisibility);
+  bottleUnitSelect?.addEventListener('change', applyInventoryVisibility);
   applyInventoryVisibility();
 }
 
