@@ -250,7 +250,8 @@
             <div class="group-member-row">
               <span class="group-member-name"><?= e((string) $member['name']) ?></span>
               <?php if ($member['group_quantity_per_dose'] !== null): ?>
-                <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?><?= $member['dose_unit'] !== null && $member['dose_unit'] !== '' ? ' ' . e((string) $member['dose_unit']) : '' ?> <em class="group-dose-override-hint">(override)</em></span>
+                <?php $overrideUnit = (string) ($member['inventory_unit'] ?? 'tablets'); ?>
+                <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?> <?= e($overrideUnit) ?> <em class="group-dose-override-hint">(override)</em></span>
               <?php else: ?>
                 <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
               <?php endif; ?>

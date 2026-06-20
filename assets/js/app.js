@@ -273,6 +273,9 @@ postponeModal?.addEventListener('click', (event) => {
 // ── Dose feedback modal ───────────────────────────────────────────────────────
 
 let feedbackAlarmContext = false;
+// When Take is pressed in Manage Each mode for a feedback-tracked med, this holds
+// the callback to call after the user submits (or skips) the feedback modal.
+let manageEachFeedbackMeta = null;
 
 const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showPain, fromAlarm = false) => {
   if (!doseFeedbackModal) return;
@@ -295,6 +298,11 @@ const closeDoseFeedbackModal = (cancelQueue = false) => {
   if (!doseFeedbackModal) return;
   if (!doseFeedbackModal.classList.contains('is-open')) return;
   doseFeedbackModal.classList.remove('is-open');
+  // Restore alarm overlay if it was lowered for manage-each feedback.
+  if (alarmOverlay) alarmOverlay.classList.remove('is-behind-modal');
+  if (manageEachFeedbackMeta && cancelQueue) {
+    manageEachFeedbackMeta = null;
+  }
   if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
   if (cancelQueue && feedbackQueueMode) {
     feedbackQueue = [];
@@ -328,6 +336,18 @@ feedbackForm?.addEventListener('submit', async (event) => {
     const note = feedbackNoteEl?.value ?? '';
     const painLevel = feedbackPainLevelEl?.value ?? '';
     await submitCurrentQueueItem(note, painLevel);
+  } else if (manageEachFeedbackMeta) {
+    event.preventDefault();
+    const note = feedbackNoteEl?.value ?? '';
+    const painLevel = feedbackPainLevelEl?.value ?? '';
+    const meta = manageEachFeedbackMeta;
+    manageEachFeedbackMeta = null;
+    closeDoseFeedbackModal();
+    const medId = feedbackMedicationIdEl?.value ?? '';
+    const date = feedbackScheduledDateEl?.value ?? '';
+    const time = feedbackScheduledTimeEl?.value ?? '';
+    await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId);
+    meta.markDone('Taken ✓');
   } else if (feedbackAlarmContext) {
     event.preventDefault();
     await submitFeedbackAsAlarmAction();
@@ -337,6 +357,15 @@ feedbackForm?.addEventListener('submit', async (event) => {
 skipFeedbackBtn?.addEventListener('click', async () => {
   if (feedbackQueueMode) {
     await submitCurrentQueueItem('', '');
+  } else if (manageEachFeedbackMeta) {
+    const meta = manageEachFeedbackMeta;
+    manageEachFeedbackMeta = null;
+    const medId = feedbackMedicationIdEl?.value ?? '';
+    const date = feedbackScheduledDateEl?.value ?? '';
+    const time = feedbackScheduledTimeEl?.value ?? '';
+    closeDoseFeedbackModal();
+    await postDose(medId, date, time, 'taken', '', '', meta.groupId);
+    meta.markDone('Taken ✓');
   } else if (feedbackAlarmContext) {
     closeDoseFeedbackModal();
     await alarmAction('mark_dose', { status: 'taken', note: '' });
@@ -1393,11 +1422,14 @@ alarmIndividualBtn?.addEventListener('click', () => {
     takeBtn?.addEventListener('click', async () => {
       if (trackFeedback) {
         stopAlarmAudio();
+        // Lower the alarm overlay so the feedback modal (z-index 1000) is visible.
+        if (alarmOverlay) alarmOverlay.classList.add('is-behind-modal');
+        manageEachFeedbackMeta = { groupId, markDone };
         openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
-        markDone('Feedback requested');
+        // markDone is deferred until feedback is submitted or skipped.
       } else {
         await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
-        markDone('Taken');
+        markDone('Taken ✓');
       }
     });
 

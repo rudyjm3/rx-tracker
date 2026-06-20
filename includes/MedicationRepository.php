@@ -1627,7 +1627,8 @@ final class MedicationRepository
         try {
             $statement = $this->db->prepare(
                 'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
-                        m.track_dose_feedback, mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
+                        m.inventory_unit, m.track_dose_feedback,
+                        mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE mgm.group_id = :group_id AND m.active = 1
@@ -1646,7 +1647,8 @@ final class MedicationRepository
         try {
             $statement = $this->db->prepare(
                 'SELECT mgm.group_id, m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
-                        m.track_dose_feedback, mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
+                        m.inventory_unit, m.track_dose_feedback,
+                        mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
                  WHERE m.active = 1 AND m.user_id = :user_id
@@ -1762,6 +1764,18 @@ final class MedicationRepository
                        AND index_name = 'uq_medication_one_group'"
                 );
                 if ($idx !== false && (int) $idx->fetchColumn() > 0) {
+                    // MySQL requires an index with medication_id as its leftmost column
+                    // to support fk_group_members_medication. The unique key IS that index,
+                    // so we must create a non-unique replacement before dropping it.
+                    $hasReplacement = $this->db->query(
+                        "SELECT COUNT(*) FROM information_schema.statistics
+                         WHERE table_schema = DATABASE()
+                           AND table_name = 'medication_group_members'
+                           AND index_name = 'idx_mgm_medication_id'"
+                    );
+                    if ($hasReplacement !== false && (int) $hasReplacement->fetchColumn() === 0) {
+                        $this->db->exec('ALTER TABLE medication_group_members ADD INDEX idx_mgm_medication_id (medication_id)');
+                    }
                     $this->db->exec('ALTER TABLE medication_group_members DROP INDEX uq_medication_one_group');
                 }
                 // Add quantity_per_dose column if missing.

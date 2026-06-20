@@ -1946,6 +1946,10 @@ textarea:focus,
   display: flex;
 }
 
+.alarm-overlay.is-behind-modal {
+  z-index: 900;
+}
+
 .alarm-dialog {
   background: var(--rx-card);
   border-radius: var(--rx-radius-md);

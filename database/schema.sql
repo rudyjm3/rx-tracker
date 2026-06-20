@@ -211,6 +211,8 @@ ALTER TABLE push_subscriptions
     ADD COLUMN IF NOT EXISTS user_id INT UNSIGNED NULL AFTER id;
 
 -- Multi-group support: drop one-group constraint, add per-group dose override
+-- Create non-unique index first so the FK (which uses it as its index) isn't broken.
+CREATE INDEX IF NOT EXISTS idx_mgm_medication_id ON medication_group_members (medication_id);
 ALTER TABLE medication_group_members
     DROP INDEX IF EXISTS uq_medication_one_group;
 ALTER TABLE medication_group_members
