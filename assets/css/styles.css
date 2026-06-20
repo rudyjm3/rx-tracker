@@ -1336,7 +1336,7 @@ details[open] .form-disclosure-toggle::before {
 .btn-text {
   background: none;
   border: none;
-  color: var(--rx-brand);
+  color: var(--rx-deep-blue);
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1345,7 +1345,9 @@ details[open] .form-disclosure-toggle::before {
 }
 
 .btn-text:hover {
-  text-decoration: underline;
+  background: none;
+  box-shadow: none;
+  transform: none;
 }
 
 label {
