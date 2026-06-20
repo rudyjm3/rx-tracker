@@ -412,7 +412,7 @@ final class MedicationRepository
         }
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null): void
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
@@ -445,20 +445,7 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            if ($status === 'taken') {
-                $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time);
-                if (!$scheduledAt instanceof DateTimeImmutable) {
-                    throw new RuntimeException('Invalid scheduled dose time.');
-                }
-                // Skip the interval check for snoozed doses — the snooze itself is
-                // explicit user intent to take the dose later, so the original slot
-                // time should not block it.
-                $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
-                if (!$isSnoozed) {
-                    $this->assertIntervalAllowed($medicationId, $scheduledAt);
-                }
-            }
-
+            // Fetch existing record first so we can skip the interval check for missed→taken updates.
             $existing = $this->db->prepare(
                 'SELECT id, status
                  FROM dose_logs
@@ -474,8 +461,24 @@ final class MedicationRepository
             ]);
             $row = $existing->fetch();
 
+            if ($status === 'taken') {
+                $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $date . ' ' . $time);
+                if (!$scheduledAt instanceof DateTimeImmutable) {
+                    throw new RuntimeException('Invalid scheduled dose time.');
+                }
+                // Skip the interval check for snoozed doses — the snooze itself is
+                // explicit user intent to take the dose later, so the original slot
+                // time should not block it. Also skip for missed→taken retroactive updates.
+                $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
+                $isMissedRetroactive = is_array($row) && (string) $row['status'] === 'missed';
+                if (!$isSnoozed && !$isMissedRetroactive) {
+                    $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                }
+            }
+
+            $takenAt = $customTakenAt ?? (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+
             if (is_array($row)) {
-                $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
                 $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
                 $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
@@ -489,7 +492,6 @@ final class MedicationRepository
                     'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, taken_at)
                      VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :taken_at)'
                 );
-                $takenAt = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
                 $insert->execute([
                     'medication_id' => $medicationId,
                     'scheduled_for_date' => $date,
@@ -517,12 +519,10 @@ final class MedicationRepository
     public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false): void
     {
         $now = new DateTimeImmutable('now');
-        $this->assertIntervalAllowed($medicationId, $now);
-
         $date = $now->format('Y-m-d');
 
         if ($scheduledTime !== null) {
-            $time   = $scheduledTime . ':00';
+            $time    = $scheduledTime . ':00';
             $takenAt = $takenOnTime
                 ? new DateTimeImmutable($date . ' ' . $scheduledTime)
                 : $now;
@@ -535,8 +535,11 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
+            // Check for an existing record first — allows us to update missed slots
+            // without triggering the "already logged" error, and to skip the interval
+            // check when retroactively logging a missed dose.
             $existing = $this->db->prepare(
-                'SELECT id
+                'SELECT id, status
                  FROM dose_logs
                  WHERE medication_id = :medication_id
                    AND scheduled_for_date = :scheduled_for_date
@@ -548,23 +551,42 @@ final class MedicationRepository
                 'scheduled_for_date' => $date,
                 'scheduled_time' => $time,
             ]);
+            $row = $existing->fetch();
 
-            if ($existing->fetchColumn() !== false) {
-                throw new RuntimeException('Dose already logged at this exact time.');
+            if ($row !== false && (string) $row['status'] !== 'missed') {
+                throw new RuntimeException('Dose already logged. Please refresh to see the latest history.');
             }
 
-            $insert = $this->db->prepare(
-                'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
-                 VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
-            );
-            $insert->execute([
-                'medication_id' => $medicationId,
-                'scheduled_for_date' => $date,
-                'scheduled_time' => $time,
-                'status' => 'taken',
-                'note' => $note !== '' ? $note : 'Logged now',
-                'taken_at' => $takenAt->format('Y-m-d H:i:s'),
-            ]);
+            // Skip interval check when retroactively updating a missed record; only
+            // enforce it for fresh insertions.
+            if ($row === false) {
+                $this->assertIntervalAllowed($medicationId, $now);
+            }
+
+            if ($row !== false) {
+                $update = $this->db->prepare(
+                    'UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at WHERE id = :id'
+                );
+                $update->execute([
+                    'status'   => 'taken',
+                    'note'     => $note !== '' ? $note : 'Logged now',
+                    'taken_at' => $takenAt->format('Y-m-d H:i:s'),
+                    'id'       => (int) $row['id'],
+                ]);
+            } else {
+                $insert = $this->db->prepare(
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
+                );
+                $insert->execute([
+                    'medication_id'      => $medicationId,
+                    'scheduled_for_date' => $date,
+                    'scheduled_time'     => $time,
+                    'status'             => 'taken',
+                    'note'               => $note !== '' ? $note : 'Logged now',
+                    'taken_at'           => $takenAt->format('Y-m-d H:i:s'),
+                ]);
+            }
 
             $this->deductInventory($medicationId);
             $this->clearPostponeForDose($medicationId, $date, $time);

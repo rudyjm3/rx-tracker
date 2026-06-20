@@ -88,6 +88,16 @@ const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
 const slotPickerModal   = document.querySelector('[data-slot-picker-modal]');
 const slotPickerTitle   = document.querySelector('[data-slot-picker-title]');
 const slotPickerList    = document.querySelector('[data-slot-picker-list]');
+
+// ── Missed dose modal ─────────────────────────────────────────────────────────
+
+const missedDoseModal      = document.querySelector('[data-missed-dose-modal]');
+const missedDoseTitle      = document.querySelector('[data-missed-dose-title]');
+const missedDoseMedId      = document.querySelector('[data-missed-dose-med-id]');
+const missedDoseDate       = document.querySelector('[data-missed-dose-date]');
+const missedDoseSchedTime  = document.querySelector('[data-missed-dose-sched-time]');
+const missedDoseActualTime = document.querySelector('[data-missed-dose-actual-time]');
+const missedDoseForm       = document.querySelector('[data-missed-dose-form]');
 const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
 const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
 
@@ -117,7 +127,7 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
     slots.forEach((slot) => {
       const [h, m] = slot.time.split(':').map(Number);
       const slotMinutes = h * 60 + m;
-      const isLogged   = slot.status === 'taken' || slot.status === 'skipped' || slot.status === 'missed';
+      const isLogged   = slot.status === 'taken' || slot.status === 'skipped';
       const isOverdue  = !isLogged && slotMinutes < nowMinutes && (nowMinutes - slotMinutes) > graceMinutes;
       const isUpcoming = slotMinutes > nowMinutes;
 
@@ -270,6 +280,49 @@ postponeModal?.addEventListener('click', (event) => {
   }
 });
 
+// ── Missed dose modal ─────────────────────────────────────────────────────────
+
+const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime }) => {
+  if (!missedDoseModal) return;
+  if (missedDoseTitle) missedDoseTitle.textContent = `Log missed dose — ${medicationName}`;
+  if (missedDoseMedId) missedDoseMedId.value = medicationId;
+  if (missedDoseDate) missedDoseDate.value = scheduledDate;
+  if (missedDoseSchedTime) missedDoseSchedTime.value = scheduledTime;
+  // Pre-fill the time input with the scheduled time, stripping seconds ("HH:MM:SS" → "HH:MM")
+  if (missedDoseActualTime) missedDoseActualTime.value = scheduledTime.substring(0, 5);
+  missedDoseModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeMissedDoseModal = () => {
+  if (!missedDoseModal) return;
+  missedDoseModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-close-missed-dose-modal]').forEach((btn) =>
+  btn.addEventListener('click', closeMissedDoseModal)
+);
+missedDoseModal?.addEventListener('click', (e) => {
+  if (e.target === missedDoseModal) closeMissedDoseModal();
+});
+
+missedDoseModal?.querySelector('[data-missed-dose-confirm]')?.addEventListener('click', async () => {
+  const confirmBtn = missedDoseModal.querySelector('[data-missed-dose-confirm]');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Logging…'; }
+  try {
+    const fd = new FormData(missedDoseForm);
+    const res = await fetch('index.php', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error('Failed to log dose.');
+    closeMissedDoseModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Log dose'; }
+  }
+});
+
 // ── Dose feedback modal ───────────────────────────────────────────────────────
 
 let feedbackAlarmContext = false;
@@ -393,9 +446,20 @@ doseFeedbackModal?.addEventListener('click', (event) => {
 
 document.querySelectorAll('[data-take-dose]').forEach((btn) => {
   btn.addEventListener('click', (event) => {
-    if (btn.dataset.trackDoseFeedback === '1' && !btn.disabled) {
+    if (btn.disabled) return;
+    if (btn.dataset.doseStatus === 'missed') {
       event.preventDefault();
-      const medicationId = btn.dataset.medicationId ?? '';
+      openMissedDoseModal({
+        medicationId:   btn.dataset.medicationId ?? '',
+        medicationName: btn.dataset.medicationName ?? 'medication',
+        scheduledDate:  btn.dataset.scheduledDate ?? '',
+        scheduledTime:  btn.dataset.scheduledTime ?? '',
+      });
+      return;
+    }
+    if (btn.dataset.trackDoseFeedback === '1') {
+      event.preventDefault();
+      const medicationId  = btn.dataset.medicationId ?? '';
       const scheduledDate = btn.dataset.scheduledDate ?? '';
       const scheduledTime = btn.dataset.scheduledTime ?? '';
       if (!medicationId || !scheduledDate || !scheduledTime) return;
@@ -1193,7 +1257,7 @@ const hideAlarmOverlay = () => {
 
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
-   imageLightbox, medDetailModal, refillModal, refillHistoryModal]
+   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open'));
 

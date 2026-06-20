@@ -1202,7 +1202,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable((string) $dose['postponed_until']))->format('H:i'))) ?></span>
               <?php endif; ?>
               <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
                 <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
                 <?php if (!$isCompleted): ?>
                   <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Snooze</button>
@@ -1407,6 +1407,37 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-footer slot-picker-footer">
       <button type="button" class="secondary" data-close-slot-picker>Cancel</button>
       <button type="button" data-slot-picker-confirm disabled>Log dose</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-missed-dose-modal>
+  <div class="modal-dialog slot-picker-dialog">
+    <div class="modal-header">
+      <h2 class="modal-title" data-missed-dose-title>Log missed dose</h2>
+      <button type="button" class="modal-close" data-close-missed-dose-modal aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body slot-picker-body">
+      <p class="slot-picker-hint">When did you take this dose?</p>
+      <form method="post" action="index.php" data-missed-dose-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="action"         value="mark_dose">
+        <input type="hidden" name="status"         value="taken">
+        <input type="hidden" name="json_response"  value="1">
+        <input type="hidden" name="note"           value="Marked taken (was missed)">
+        <input type="hidden" name="medication_id"  data-missed-dose-med-id     value="">
+        <input type="hidden" name="scheduled_date" data-missed-dose-date        value="">
+        <input type="hidden" name="scheduled_time" data-missed-dose-sched-time  value="">
+        <div class="form-row" style="margin-top:1rem;">
+          <label for="missed-dose-actual-time" class="form-label">Time taken</label>
+          <input type="time" id="missed-dose-actual-time" name="actual_taken_time"
+                 data-missed-dose-actual-time class="form-control" style="margin-top:.375rem;width:100%;">
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer slot-picker-footer">
+      <button type="button" class="secondary" data-close-missed-dose-modal>Cancel</button>
+      <button type="button" data-missed-dose-confirm>Log dose</button>
     </div>
   </div>
 </div>
