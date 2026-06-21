@@ -89,6 +89,29 @@ const slotPickerModal   = document.querySelector('[data-slot-picker-modal]');
 const slotPickerTitle   = document.querySelector('[data-slot-picker-title]');
 const slotPickerList    = document.querySelector('[data-slot-picker-list]');
 
+// ── Required doses modal ──────────────────────────────────────────────────────
+
+const requiredDosesModal = document.querySelector('[data-required-doses-modal]');
+
+const openRequiredDosesModal = () => {
+  if (!requiredDosesModal) return;
+  requiredDosesModal.classList.add('is-open');
+  lockBodyScroll();
+};
+const closeRequiredDosesModal = () => {
+  if (!requiredDosesModal) return;
+  requiredDosesModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelector('[data-open-required-doses-modal]')
+  ?.addEventListener('click', openRequiredDosesModal);
+document.querySelectorAll('[data-close-required-doses-modal]')
+  .forEach((btn) => btn.addEventListener('click', closeRequiredDosesModal));
+requiredDosesModal?.addEventListener('click', (e) => {
+  if (e.target === requiredDosesModal) closeRequiredDosesModal();
+});
+
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
 const missedDoseModal      = document.querySelector('[data-missed-dose-modal]');
@@ -447,21 +470,36 @@ doseFeedbackModal?.addEventListener('click', (event) => {
 document.querySelectorAll('[data-take-dose]').forEach((btn) => {
   btn.addEventListener('click', (event) => {
     if (btn.disabled) return;
-    if (btn.dataset.doseStatus === 'missed') {
+
+    const doseStatus    = btn.dataset.doseStatus ?? '';
+    const scheduledDate = btn.dataset.scheduledDate ?? '';
+    const scheduledTime = btn.dataset.scheduledTime ?? '';
+    const graceMinutes  = parseInt(btn.dataset.graceMinutes || '30', 10);
+
+    const isEffectivelyMissed = (() => {
+      if (doseStatus === 'missed') return true;
+      if (!scheduledDate || !scheduledTime) return false;
+      const [y, mo, d] = scheduledDate.split('-').map(Number);
+      const [h, m]     = scheduledTime.split(':').map(Number);
+      const scheduled  = new Date(y, mo - 1, d, h, m, 0);
+      const cutoff     = new Date(scheduled.getTime() + graceMinutes * 60_000);
+      return Date.now() > cutoff.getTime();
+    })();
+
+    if (isEffectivelyMissed) {
       event.preventDefault();
       openMissedDoseModal({
         medicationId:   btn.dataset.medicationId ?? '',
         medicationName: btn.dataset.medicationName ?? 'medication',
-        scheduledDate:  btn.dataset.scheduledDate ?? '',
-        scheduledTime:  btn.dataset.scheduledTime ?? '',
+        scheduledDate,
+        scheduledTime,
       });
       return;
     }
+
     if (btn.dataset.trackDoseFeedback === '1') {
       event.preventDefault();
-      const medicationId  = btn.dataset.medicationId ?? '';
-      const scheduledDate = btn.dataset.scheduledDate ?? '';
-      const scheduledTime = btn.dataset.scheduledTime ?? '';
+      const medicationId = btn.dataset.medicationId ?? '';
       if (!medicationId || !scheduledDate || !scheduledTime) return;
       openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
     }
@@ -966,6 +1004,30 @@ historyToggle?.addEventListener('click', () => {
   if (!historyPanel || !historyList) return;
   const expanded = historyPanel.classList.toggle('is-expanded');
   historyToggle.textContent = expanded ? 'View less' : 'View more';
+});
+
+const historySort     = document.querySelector('[data-history-sort]');
+const historySortIcon = historySort?.querySelector('i');
+let   historySortDir  = 'desc';
+
+historySort?.addEventListener('click', () => {
+  historySortDir = historySortDir === 'desc' ? 'asc' : 'desc';
+  const label = historySortDir === 'desc' ? 'Sort: newest first' : 'Sort: oldest first';
+  historySort.setAttribute('aria-label', label);
+  historySort.setAttribute('title', label);
+  if (historySortIcon) {
+    historySortIcon.className = historySortDir === 'desc'
+      ? 'fa-solid fa-arrow-down-wide-short'
+      : 'fa-solid fa-arrow-up-wide-short';
+  }
+  if (!historyList) return;
+  const items = Array.from(historyList.querySelectorAll('li'));
+  items.sort((a, b) => {
+    const ta = a.dataset.sortTime ?? '';
+    const tb = b.dataset.sortTime ?? '';
+    return historySortDir === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb);
+  });
+  items.forEach((item) => historyList.appendChild(item));
 });
 
 // ── Alarm engine ──────────────────────────────────────────────────────────────

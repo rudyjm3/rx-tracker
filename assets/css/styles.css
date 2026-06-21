@@ -879,6 +879,28 @@ h1 {
   border-bottom: none;
 }
 
+button.medications-overview-row {
+  background: none;
+  border-radius: 0;
+  color: inherit;
+  font-weight: inherit;
+  padding: 0.65rem 0;
+  width: 100%;
+}
+
+.medications-overview-row--link {
+  color: var(--rx-deep-blue);
+}
+
+.medications-overview-row--link:hover {
+  background: var(--rx-hover, rgba(7, 84, 168, 0.04));
+}
+
+.medications-overview-row-chevron {
+  color: var(--rx-muted);
+  font-size: 0.72rem;
+}
+
 .medications-overview-value {
   font-size: 0.95rem;
   font-weight: 800;
@@ -1023,6 +1045,32 @@ h1 {
   font-size: 0.8rem;
   font-weight: 400;
   opacity: 0.6;
+}
+
+.panel-heading-right {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.history-sort-btn {
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--rx-deep-blue);
+  font-size: 1.2rem;
+  font-weight: inherit;
+  padding: 0;
+  transition: none;
+  vertical-align: middle;
+}
+
+.history-sort-btn:hover,
+.history-sort-btn:active {
+  background: none;
+  box-shadow: none;
+  transform: none;
 }
 
 .medication-list-panel {
@@ -2353,6 +2401,87 @@ textarea:focus,
 
 .slot-picker-dialog {
   max-width: 440px;
+}
+
+/* ── Required doses modal ───────────────────────────────────────────────────── */
+
+.required-doses-dialog {
+  max-width: 480px;
+}
+
+.required-doses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.required-doses-details {
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  overflow: hidden;
+}
+
+.required-doses-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  list-style: none;
+  padding: 0.65rem 0.85rem;
+  user-select: none;
+}
+.required-doses-summary::-webkit-details-marker { display: none; }
+
+.required-doses-details[open] .required-doses-summary {
+  border-bottom: 1px solid var(--rx-border);
+}
+
+.required-doses-med-name {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.required-doses-view-label {
+  color: var(--rx-link, var(--rx-deep-blue));
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.required-doses-chevron {
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.required-doses-details[open] .required-doses-chevron {
+  transform: rotate(180deg);
+}
+
+.required-doses-times {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.required-doses-time-row {
+  align-items: center;
+  border-top: 1px solid var(--rx-border);
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.5rem 0.85rem;
+}
+.required-doses-time-row:first-child { border-top: none; }
+
+.required-doses-time {
+  color: var(--rx-muted);
+  font-size: 0.88rem;
+  min-width: 4.5rem;
 }
 
 .slot-picker-body {
@@ -4458,27 +4587,31 @@ a.nav-user-btn.is-active {
 }
 
 .password-toggle {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--rx-text-muted, #888);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: inherit;
+  line-height: 1;
+  padding: 0;
   position: absolute;
   right: 0.65rem;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem;
-  color: var(--rx-text-muted, #888);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  border-radius: 4px;
+  transition: none;
 }
 
-.password-toggle:hover {
-  color: var(--rx-text);
+.password-toggle:hover,
+.password-toggle:active {
+  background: none;
+  box-shadow: none;
+  transform: translateY(-50%);
 }
 
 .password-toggle:focus-visible {
   outline: 2px solid var(--rx-blue);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
