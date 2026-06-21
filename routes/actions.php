@@ -209,7 +209,17 @@ try {
         $rawGroupId = post_string('group_id');
         $groupId = $rawGroupId !== '' && (int) $rawGroupId > 0 ? (int) $rawGroupId : null;
         $actualTakenTime = post_string('actual_taken_time');
-        $customTakenAt = $actualTakenTime !== '' ? post_string('scheduled_date') . ' ' . $actualTakenTime . ':00' : null;
+        $customTakenAt = null;
+        if ($actualTakenTime !== '') {
+            if (!preg_match('/^\d{2}:\d{2}$/', $actualTakenTime)) {
+                throw new RuntimeException('Invalid time format.');
+            }
+            $candidateAt = new DateTimeImmutable(post_string('scheduled_date') . ' ' . $actualTakenTime . ':00');
+            if ($candidateAt > new DateTimeImmutable('now')) {
+                throw new RuntimeException('Taken time cannot be in the future.');
+            }
+            $customTakenAt = $candidateAt->format('Y-m-d H:i:s');
+        }
         $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
