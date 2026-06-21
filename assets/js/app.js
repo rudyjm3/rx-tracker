@@ -1030,6 +1030,67 @@ historySort?.addEventListener('click', () => {
   items.forEach((item) => historyList.appendChild(item));
 });
 
+// ── Calendar day modal ────────────────────────────────────────────────────────
+
+const calendarDayModal      = document.querySelector('[data-calendar-day-modal]');
+const calendarDayModalTitle = document.querySelector('[data-calendar-day-modal-title]');
+const calendarDayModalBody  = document.querySelector('[data-calendar-day-modal-body]');
+
+const closeCalendarDayModal = () => {
+  if (!calendarDayModal) return;
+  calendarDayModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-close-calendar-day-modal]')
+  .forEach((btn) => btn.addEventListener('click', closeCalendarDayModal));
+calendarDayModal?.addEventListener('click', (e) => {
+  if (e.target === calendarDayModal) closeCalendarDayModal();
+});
+
+document.querySelectorAll('[data-calendar-day]').forEach((cell) => {
+  cell.addEventListener('click', () => {
+    const dateStr = cell.dataset.date;
+    const day = (typeof calendarDayData !== 'undefined') && calendarDayData[dateStr];
+    if (!day || !calendarDayModal) return;
+    calendarDayModalTitle.textContent =
+      `${day.dayName}, ${day.displayDate} — Medications: ${day.medications.length}`;
+    calendarDayModalBody.innerHTML = buildCalendarDayHtml(day.medications);
+    calendarDayModal.classList.add('is-open');
+    lockBodyScroll();
+  });
+});
+
+function buildCalendarDayHtml(meds) {
+  if (!meds.length) return '<p class="empty-state-text">No dose data for this day.</p>';
+  return '<ul class="cal-day-med-list">' + meds.map((med) => {
+    const doseStr = med.doseFormatted
+      ? ` <span class="dose-inline">${escHtml(med.doseFormatted)}</span>`
+      : '';
+    const slots = med.slots.map((slot) => {
+      let badge = '';
+      if (slot.status === 'taken' && slot.isLate) {
+        badge = `<span class="warn-pill">Taken (${escHtml(slot.lateLabel)})</span>`;
+      } else if (slot.status === 'taken') {
+        badge = '<span class="done-pill">Taken</span>';
+      } else if (slot.status === 'skipped') {
+        badge = '<span class="warn-pill">Skipped</span>';
+      } else if (slot.status === 'missed') {
+        badge = '<span class="alert-pill">Missed</span>';
+      }
+      return `<li class="cal-day-slot-row"><span class="cal-day-slot-time">${escHtml(slot.displayTime)}</span>${badge}</li>`;
+    }).join('');
+    return `<li class="cal-day-med-item">
+      <div class="cal-day-med-name"><strong>${escHtml(med.name)}</strong>${doseStr}</div>
+      <div class="cal-day-med-summary">Total doses ${med.total} — Taken: ${med.taken} / Late: ${med.late} — Skipped: ${med.skipped} — Missed: ${med.missed}</div>
+      <details class="cal-day-med-details">
+        <summary class="cal-day-med-view-label">View details <i class="fa-solid fa-chevron-down cal-day-chevron" aria-hidden="true"></i></summary>
+        <ul class="cal-day-slots">${slots}</ul>
+      </details>
+    </li>`;
+  }).join('') + '</ul>';
+}
+
 // ── Alarm engine ──────────────────────────────────────────────────────────────
 
 const alarmOverlay = document.querySelector('[data-alarm-overlay]');
@@ -2493,6 +2554,22 @@ const closeGroupForm = () => {
   if (groupFormWrap) groupFormWrap.classList.remove('is-open');
 };
 
+const exitGroupEditMode = (card) => {
+  if (!card) return;
+  card.classList.remove('is-editing');
+  const nameView   = card.querySelector('[data-group-card-name]');
+  const nameInput  = card.querySelector('[data-group-name-input]');
+  if (nameView)  nameView.hidden  = false;
+  if (nameInput) {
+    nameInput.hidden = true;
+    nameInput.value  = nameView?.textContent ?? nameInput.value;
+  }
+  const addForm     = card.querySelector('.group-add-med-form');
+  const editActions = card.querySelector('[data-group-edit-actions]');
+  if (addForm)     addForm.hidden     = true;
+  if (editActions) editActions.hidden = true;
+};
+
 document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {
   btn.addEventListener('click', () => {
     setPlanTab('groups');
@@ -2587,13 +2664,59 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
 
   const editBtn = e.target.closest('[data-edit-group]');
   if (editBtn) {
-    const { groupId = '', groupName = '', groupTime = '' } = editBtn.dataset;
     const card = editBtn.closest('.group-card');
     closeAllGroupMenus();
-    openGroupForm('edit', groupId, groupName, groupTime);
-    const addForm = card?.querySelector('.group-add-med-form');
-    if (addForm) addForm.hidden = false;
+    card?.classList.add('is-editing');
+    const nameView  = card?.querySelector('[data-group-card-name]');
+    const nameInput = card?.querySelector('[data-group-name-input]');
+    if (nameView)  nameView.hidden  = true;
+    if (nameInput) { nameInput.hidden = false; nameInput.focus(); nameInput.select(); }
+    const addForm     = card?.querySelector('.group-add-med-form');
+    const editActions = card?.querySelector('[data-group-edit-actions]');
+    if (addForm)     addForm.hidden     = false;
+    if (editActions) editActions.hidden = false;
     card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+
+  const cancelEditBtn = e.target.closest('[data-group-cancel-edit]');
+  if (cancelEditBtn) {
+    exitGroupEditMode(cancelEditBtn.closest('.group-card'));
+    return;
+  }
+
+  const saveEditBtn = e.target.closest('[data-group-save-edit]');
+  if (saveEditBtn) {
+    const card    = saveEditBtn.closest('.group-card');
+    const groupId = saveEditBtn.dataset.groupId ?? '';
+    const name    = (card?.querySelector('[data-group-name-input]')?.value ?? '').trim();
+    const time    = card?.querySelector('[data-group-time-hidden]')?.value ?? '';
+    if (!name) { card?.querySelector('[data-group-name-input]')?.focus(); return; }
+    saveEditBtn.disabled = true;
+    const params = new URLSearchParams();
+    params.set('action', 'update_group');
+    params.set('csrf_token', getCsrfToken());
+    params.set('json_response', '1');
+    params.set('group_id', groupId);
+    params.set('group_name', name);
+    params.set('group_time', time);
+    fetch('index.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json.ok) throw new Error(json.error ?? 'Save failed.');
+        const nameView    = card?.querySelector('[data-group-card-name]');
+        const nameInput   = card?.querySelector('[data-group-name-input]');
+        const editDataBtn = card?.querySelector('[data-edit-group]');
+        if (nameView)    nameView.textContent          = json.group_name;
+        if (nameInput)   nameInput.value               = json.group_name;
+        if (editDataBtn) editDataBtn.dataset.groupName = json.group_name;
+        exitGroupEditMode(card);
+      })
+      .catch((err) => {
+        alert(err.message ?? 'Something went wrong.');
+        saveEditBtn.disabled = false;
+      });
+    return;
   }
 });
 
@@ -2796,7 +2919,7 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('submit',
       if (existingAddForm && json.ungrouped.length > 0) {
         const select = existingAddForm.querySelector('.group-add-select');
         if (select) select.innerHTML = `<option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}`;
-        existingAddForm.hidden = false;
+        existingAddForm.hidden = !card?.classList.contains('is-editing');
       } else if (!existingAddForm && json.ungrouped.length > 0 && card) {
         const groupId = card.dataset.groupCardId ?? '';
         const newForm = document.createElement('form');
@@ -2804,13 +2927,15 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('submit',
         newForm.setAttribute('method', 'post');
         newForm.setAttribute('action', 'index.php');
         newForm.dataset.ajaxAdd = '';
+        newForm.hidden = !card.classList.contains('is-editing');
         newForm.innerHTML = `<input type="hidden" name="action" value="add_medication_to_group">
           <input type="hidden" name="group_id" value="${escHtml(groupId)}">
           <select name="medication_id" class="group-add-select">
             <option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}
           </select>
           <button type="submit" class="secondary group-add-btn">Add</button>`;
-        card.appendChild(newForm);
+        const editActionsEl = card.querySelector('[data-group-edit-actions]');
+        editActionsEl ? card.insertBefore(newForm, editActionsEl) : card.appendChild(newForm);
       }
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
@@ -3289,17 +3414,73 @@ document.querySelectorAll('[data-dose-time-rows] .dose-time-field').forEach((el)
 });
 
 // Medication type filter (handles multiple panels independently)
-document.querySelectorAll('[data-med-type-filter]').forEach((filterBar) => {
-  const panel = filterBar.closest('.plan-tab-panel');
+document.querySelectorAll('[data-med-type-filter]').forEach((filterWrap) => {
+  const panel    = filterWrap.closest('.plan-tab-panel');
   if (!panel) return;
-  const applyFilter = () => {
-    const checked = [...filterBar.querySelectorAll('input[type="checkbox"]:checked')].map((el) => el.value);
-    panel.querySelectorAll('[data-med-type]').forEach((row) => {
-      const hide = checked.length > 0 && !checked.includes(row.dataset.medType ?? '');
-      row.style.display = hide ? 'none' : '';
-    });
+
+  const trigger  = filterWrap.querySelector('[data-med-filter-trigger]');
+  const dropdown = filterWrap.querySelector('[data-med-filter-dropdown]');
+  const options  = filterWrap.querySelectorAll('[data-filter-value]');
+  const applyBtn = filterWrap.querySelector('[data-med-type-apply]');
+
+  const closeDropdown = () => {
+    dropdown.hidden = true;
+    trigger?.setAttribute('aria-expanded', 'false');
   };
-  filterBar.querySelector('[data-med-type-apply]')?.addEventListener('click', applyFilter);
+
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opening = dropdown.hidden;
+    dropdown.hidden = !opening;
+    trigger.setAttribute('aria-expanded', String(opening));
+  });
+
+  options.forEach((opt) => {
+    opt.addEventListener('click', () => opt.classList.toggle('is-selected'));
+  });
+
+  const listContainer = filterWrap.nextElementSibling;
+
+  applyBtn?.addEventListener('click', () => {
+    const selected = [...options]
+      .filter((o) => o.classList.contains('is-selected'))
+      .map((o) => o.dataset.filterValue ?? '');
+
+    const rows = panel.querySelectorAll('[data-med-type]');
+    let visibleCount = 0;
+    rows.forEach((row) => {
+      const hide = selected.length > 0 && !selected.includes(row.dataset.medType ?? '');
+      row.style.display = hide ? 'none' : '';
+      if (!hide) visibleCount++;
+    });
+
+    let emptyMsg = listContainer?.querySelector('.med-filter-empty-msg');
+    if (visibleCount === 0 && rows.length > 0) {
+      if (!emptyMsg && listContainer) {
+        emptyMsg = document.createElement('p');
+        emptyMsg.className = 'med-filter-empty-msg';
+        listContainer.appendChild(emptyMsg);
+      }
+      if (emptyMsg) {
+        emptyMsg.textContent = 'No medications match the selected filter.';
+        emptyMsg.hidden = false;
+      }
+      if (listContainer) listContainer.style.minHeight = '200px';
+    } else {
+      if (emptyMsg) emptyMsg.hidden = true;
+      if (listContainer) listContainer.style.minHeight = '';
+    }
+
+    closeDropdown();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!filterWrap.contains(e.target)) closeDropdown();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDropdown();
+  });
 });
 
 // Medication card action menu (ellipsis trigger)

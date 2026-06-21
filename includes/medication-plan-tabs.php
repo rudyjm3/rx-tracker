@@ -4,18 +4,27 @@
 //          $inactiveMedications, $ungroupedMedications to be in scope.
 ?>
 <div class="plan-tab-panel" id="active-medications-panel" data-plan-panel="active" role="tabpanel" aria-labelledby="active-medications-tab">
-  <div class="med-type-filter" role="group" aria-label="Filter by medication type" data-med-type-filter>
-    <span class="med-type-filter-label">Show:</span>
-    <label class="med-type-filter-pill med-type-filter-pill--prescription">
-      <input type="checkbox" value="prescription" checked> Rx
-    </label>
-    <label class="med-type-filter-pill med-type-filter-pill--otc">
-      <input type="checkbox" value="otc" checked> OTC
-    </label>
-    <label class="med-type-filter-pill med-type-filter-pill--supplement">
-      <input type="checkbox" value="supplement" checked> Vitamin / Supplement
-    </label>
-    <button type="button" class="med-type-filter-apply" data-med-type-apply>Apply</button>
+  <div class="med-filter-wrap" data-med-type-filter>
+    <button type="button" class="med-filter-trigger" data-med-filter-trigger aria-label="Filter medications" aria-expanded="false">
+      <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+    </button>
+    <div class="med-filter-dropdown" data-med-filter-dropdown hidden>
+      <ul class="med-filter-list">
+        <li class="med-filter-option is-selected" data-filter-value="prescription">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          Rx
+        </li>
+        <li class="med-filter-option is-selected" data-filter-value="otc">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          OTC
+        </li>
+        <li class="med-filter-option is-selected" data-filter-value="supplement">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          Vitamin / Supplement
+        </li>
+      </ul>
+      <button type="button" class="med-filter-apply" data-med-type-apply>Apply filters</button>
+    </div>
   </div>
   <div class="medication-list">
     <?php if ($medicationPlanCount === 0): ?>
@@ -156,18 +165,27 @@
 </div>
 
 <div class="plan-tab-panel" id="inactive-medications-panel" data-plan-panel="inactive" role="tabpanel" aria-labelledby="inactive-medications-tab" hidden>
-  <div class="med-type-filter" role="group" aria-label="Filter by medication type" data-med-type-filter>
-    <span class="med-type-filter-label">Show:</span>
-    <label class="med-type-filter-pill med-type-filter-pill--prescription">
-      <input type="checkbox" value="prescription" checked> Rx
-    </label>
-    <label class="med-type-filter-pill med-type-filter-pill--otc">
-      <input type="checkbox" value="otc" checked> OTC
-    </label>
-    <label class="med-type-filter-pill med-type-filter-pill--supplement">
-      <input type="checkbox" value="supplement" checked> Vitamin / Supplement
-    </label>
-    <button type="button" class="med-type-filter-apply" data-med-type-apply>Apply</button>
+  <div class="med-filter-wrap" data-med-type-filter>
+    <button type="button" class="med-filter-trigger" data-med-filter-trigger aria-label="Filter medications" aria-expanded="false">
+      <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+    </button>
+    <div class="med-filter-dropdown" data-med-filter-dropdown hidden>
+      <ul class="med-filter-list">
+        <li class="med-filter-option is-selected" data-filter-value="prescription">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          Rx
+        </li>
+        <li class="med-filter-option is-selected" data-filter-value="otc">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          OTC
+        </li>
+        <li class="med-filter-option is-selected" data-filter-value="supplement">
+          <i class="fa-solid fa-check med-filter-check" aria-hidden="true"></i>
+          Vitamin / Supplement
+        </li>
+      </ul>
+      <button type="button" class="med-filter-apply" data-med-type-apply>Apply filters</button>
+    </div>
   </div>
   <div class="inactive-list">
     <?php if ($inactiveMedications === []): ?>
@@ -228,9 +246,11 @@
         <div class="group-card-header">
           <div class="group-card-title">
             <strong data-group-card-name><?= e($group['name']) ?></strong>
+            <input type="text" class="group-name-input" data-group-name-input value="<?= e($group['name']) ?>" aria-label="Group name" hidden>
             <span class="group-time-badge" data-group-card-time><?= e(to12h($group['scheduled_time'])) ?></span>
             <span class="count-badge" data-group-card-count><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
           </div>
+          <input type="hidden" data-group-time-hidden value="<?= e($group['scheduled_time']) ?>">
           <div class="med-actions-menu" data-group-actions-menu>
             <button type="button" class="icon-button med-actions-trigger" data-group-actions-trigger aria-expanded="false" aria-haspopup="true">
               <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
@@ -306,6 +326,10 @@
             <button type="submit" class="secondary group-add-btn">Add</button>
           </form>
         <?php endif; ?>
+        <div class="group-card-edit-actions" data-group-edit-actions hidden>
+          <button type="button" class="secondary" data-group-cancel-edit>Cancel</button>
+          <button type="button" data-group-save-edit data-group-id="<?= e((string) $group['id']) ?>">Save changes</button>
+        </div>
       </div>
     <?php endforeach; ?>
   </div>

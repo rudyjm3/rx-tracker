@@ -690,6 +690,22 @@ final class MedicationRepository
         return $markers;
     }
 
+    public function calendarLogsForMonth(string $start, string $end): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dose_logs.medication_id, dose_logs.status,
+                    dose_logs.scheduled_for_date, dose_logs.scheduled_time, dose_logs.taken_at,
+                    medications.name, medications.dose_amount, medications.dose_unit, medications.dose_form
+             FROM dose_logs
+             INNER JOIN medications ON medications.id = dose_logs.medication_id
+             WHERE medications.user_id = :user_id
+               AND dose_logs.scheduled_for_date BETWEEN :start AND :end
+             ORDER BY dose_logs.scheduled_for_date, medications.name, dose_logs.scheduled_time'
+        );
+        $statement->execute(['user_id' => $this->userId, 'start' => $start, 'end' => $end]);
+        return $statement->fetchAll();
+    }
+
     public function deactivateMedication(int $medicationId): void
     {
         $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id');
