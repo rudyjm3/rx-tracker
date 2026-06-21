@@ -27,7 +27,7 @@ final class MedicationRepository
     public function activeMedications(): array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 AND user_id = :user_id ORDER BY name ASC'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 AND user_id = :user_id ORDER BY sort_order ASC, name ASC'
         );
         $statement->execute(['user_id' => $this->userId]);
         $medications = $statement->fetchAll();
@@ -1522,7 +1522,7 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE user_id = :user_id ORDER BY scheduled_time ASC, name ASC'
+                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE user_id = :user_id ORDER BY sort_order ASC, name ASC'
             );
             $statement->execute(['user_id' => $this->userId]);
             $groups = $statement->fetchAll();
@@ -1557,6 +1557,28 @@ final class MedicationRepository
         $row['members'] = $this->groupMembers($id);
 
         return $row;
+    }
+
+    /** @param int[] $orderedIds */
+    public function reorderMedications(array $orderedIds): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE medications SET sort_order = :sort_order WHERE id = :id AND user_id = :user_id'
+        );
+        foreach ($orderedIds as $pos => $id) {
+            $stmt->execute(['sort_order' => $pos, 'id' => (int) $id, 'user_id' => $this->userId]);
+        }
+    }
+
+    /** @param int[] $orderedIds */
+    public function reorderGroups(array $orderedIds): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE medication_groups SET sort_order = :sort_order WHERE id = :id AND user_id = :user_id'
+        );
+        foreach ($orderedIds as $pos => $id) {
+            $stmt->execute(['sort_order' => $pos, 'id' => (int) $id, 'user_id' => $this->userId]);
+        }
     }
 
     public function createGroup(string $name, string $scheduledTime): int

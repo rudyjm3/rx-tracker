@@ -24,7 +24,7 @@ $todaySlotStatusMap = [];
 foreach ($todaySchedule as $slot) {
     $todaySlotStatusMap[(int) $slot['medication_id']][$slot['reminder_time']] = (string) ($slot['status'] ?? '');
 }
-$recentLogs = $repository->recentLogs(null, 50);
+$recentLogs = $repository->recentLogs($today, 50);
 $missedCount = $repository->missedDoseCount($today, $currentTime);
 
 $requiredRows = array_filter($todaySchedule, static fn(array $row): bool => !$row['as_needed']);
@@ -524,6 +524,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <?php include dirname(__DIR__) . '/includes/medication-plan-tabs.php'; ?>
   </section>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <?php endif; ?>
 
   <?php if ($page === 'pain-tracking'): ?>
@@ -1324,26 +1325,16 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <section class="panel history-panel" data-history-panel>
     <div class="panel-heading">
-      <h2>Recent history <button type="button" class="history-sort-btn" data-history-sort aria-label="Sort: newest first" title="Sort: newest first"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i></button></h2>
+      <h2>Today's history <button type="button" class="history-sort-btn" data-history-sort aria-label="Sort: newest first" title="Sort: newest first"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i></button></h2>
       <a href="index.php?page=calendar" class="panel-heading-link">View all history</a>
     </div>
     <ol class="history-list" data-history-list>
-      <?php
-        $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
-      ?>
+      <?php if ($recentLogs === []): ?>
+        <li class="history-empty">No doses logged today yet.</li>
+      <?php endif; ?>
       <?php foreach ($recentLogs as $log): ?>
-        <?php
-          $logDate = (string) $log['scheduled_for_date'];
-          if ($logDate === $today) {
-              $dateLabel = 'TODAY';
-          } elseif ($logDate === $yesterday) {
-              $dateLabel = 'YESTERDAY';
-          } else {
-              $dateLabel = strtoupper((new DateTimeImmutable($logDate))->format('M j'));
-          }
-        ?>
         <li data-sort-time="<?= e((string) $log['scheduled_for_date'] . ' ' . (string) $log['scheduled_time']) ?>">
-          <span><span class="history-date"><?= e($dateLabel) ?></span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
+          <span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
           <div>
             <strong><?= e((string) $log['name']) ?></strong><?php if (formattedDose($log) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($log)) ?></span><?php endif; ?>
             <p>

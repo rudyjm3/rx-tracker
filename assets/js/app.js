@@ -2817,6 +2817,9 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
     if (!window.confirm(e.currentTarget.getAttribute('data-confirm') ?? '')) e.preventDefault();
   });
 
+  const timeInput = card.querySelector('[data-group-time-input]');
+  if (timeInput) setupTimeAutoColon(timeInput, false);
+
   return card;
 };
 
@@ -3433,7 +3436,7 @@ const setupTimeAutoColon = (input, isMulti = false) => {
   });
 };
 
-document.querySelectorAll('[name="first_dose_time"], [data-group-form-time]').forEach((el) => {
+document.querySelectorAll('[name="first_dose_time"], [data-group-form-time], [data-group-time-input]').forEach((el) => {
   setupTimeAutoColon(el, false);
 });
 document.querySelectorAll('[data-dose-time-rows] .dose-time-field').forEach((el) => {

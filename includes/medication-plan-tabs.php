@@ -32,7 +32,8 @@
     <?php endif; ?>
     <?php foreach ($medications as $medication): ?>
       <?php $daysLeft = daysUntilRunout($medication); ?>
-      <div class="medication-row medication-row-plan" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>">
+      <div class="medication-row medication-row-plan" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>" data-med-id="<?= e((string) $medication['id']) ?>">
+        <button type="button" class="drag-handle" aria-label="Drag to reorder" tabindex="-1"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></button>
         <div class="product-label-wrap"
              data-product-label-wrap
              data-medication-id="<?= e((string) $medication['id']) ?>"
@@ -241,16 +242,19 @@
       <div class="empty-state groups-empty-state"><p>No groups yet. Create a group to bundle medications taken at the same time.</p></div>
     <?php endif; ?>
 
+    <div class="groups-sortable-list" data-groups-sortable>
     <?php foreach ($groups as $group): ?>
       <div class="group-card" data-group-card-id="<?= e((string) $group['id']) ?>">
+        <button type="button" class="drag-handle drag-handle--group" aria-label="Drag to reorder" tabindex="-1"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></button>
+        <div class="group-card-body">
         <div class="group-card-header">
           <div class="group-card-title">
             <strong data-group-card-name><?= e($group['name']) ?></strong>
             <input type="text" class="group-name-input" data-group-name-input value="<?= e($group['name']) ?>" aria-label="Group name" hidden>
             <span class="group-time-badge" data-group-card-time><?= e(to12h($group['scheduled_time'])) ?></span>
+            <input type="text" class="group-time-input" data-group-time-input value="<?= e(to12h($group['scheduled_time'])) ?>" aria-label="Scheduled time (e.g. 8:00 AM)" placeholder="e.g. 8:00 AM" hidden>
             <span class="count-badge" data-group-card-count><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
           </div>
-          <input type="hidden" data-group-time-hidden value="<?= e($group['scheduled_time']) ?>">
           <div class="med-actions-menu" data-group-actions-menu>
             <button type="button" class="icon-button med-actions-trigger" data-group-actions-trigger aria-expanded="false" aria-haspopup="true">
               <i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i>
@@ -330,7 +334,9 @@
           <button type="button" class="secondary" data-group-cancel-edit>Cancel</button>
           <button type="button" data-group-save-edit data-group-id="<?= e((string) $group['id']) ?>">Save changes</button>
         </div>
+        </div><!-- /.group-card-body -->
       </div>
     <?php endforeach; ?>
+    </div><!-- /.groups-sortable-list -->
   </div>
 </div>
