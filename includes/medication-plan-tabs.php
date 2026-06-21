@@ -1,7 +1,14 @@
 <?php
 // Shared partial: medication plan tab panels.
-// Expects: $medicationPlanCount, $inactiveMedicationCount, $groups, $medications,
-//          $inactiveMedications, $ungroupedMedications to be in scope.
+// Expects the following variables to be in scope via include from pages.php:
+/** @var int $medicationPlanCount */
+/** @var int $inactiveMedicationCount */
+/** @var array<int, array<string, mixed>> $medications */
+/** @var array<int, array<string, mixed>> $inactiveMedications */
+/** @var array<int, array<string, mixed>> $groups */
+/** @var array<int, array<string, mixed>> $ungroupedMedications */
+/** @var \MedicationRepository $repository */
+/** @var int $graceMinutes */
 ?>
 <div class="plan-tab-panel" id="active-medications-panel" data-plan-panel="active" role="tabpanel" aria-labelledby="active-medications-tab">
   <div class="med-filter-wrap" data-med-type-filter>
