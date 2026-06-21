@@ -24,7 +24,7 @@ $todaySlotStatusMap = [];
 foreach ($todaySchedule as $slot) {
     $todaySlotStatusMap[(int) $slot['medication_id']][$slot['reminder_time']] = (string) ($slot['status'] ?? '');
 }
-$recentLogs = $repository->recentLogs(null, 50);
+$recentLogs = $repository->recentLogs($today, 50);
 $missedCount = $repository->missedDoseCount($today, $currentTime);
 
 $requiredRows = array_filter($todaySchedule, static fn(array $row): bool => !$row['as_needed']);
@@ -524,6 +524,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <?php include dirname(__DIR__) . '/includes/medication-plan-tabs.php'; ?>
   </section>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <?php endif; ?>
 
   <?php if ($page === 'pain-tracking'): ?>
@@ -736,6 +737,45 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     $calMonthDt = new DateTimeImmutable($monthStart);
     $monthEnd = $calMonthDt->modify('last day of this month')->format('Y-m-d');
     $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
+    $calendarDayData = [];
+    foreach ($repository->calendarLogsForMonth($monthStart, $monthEnd) as $log) {
+        $cdDate  = (string) $log['scheduled_for_date'];
+        $cdMedId = (int) $log['medication_id'];
+        if (!isset($calendarDayData[$cdDate])) {
+            $cdDt = new DateTimeImmutable($cdDate);
+            $calendarDayData[$cdDate] = [
+                'dayName'     => $cdDt->format('l'),
+                'displayDate' => $cdDt->format('F j, Y'),
+                'medications' => [],
+            ];
+        }
+        if (!isset($calendarDayData[$cdDate]['medications'][$cdMedId])) {
+            $calendarDayData[$cdDate]['medications'][$cdMedId] = [
+                'name'          => (string) $log['name'],
+                'doseFormatted' => formattedDose($log),
+                'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
+                'slots' => [],
+            ];
+        }
+        $cdStatus  = (string) $log['status'];
+        $cdLateMin = $cdStatus === 'taken' ? minutesLate($log, $graceMinutes) : null;
+        $cdMed = &$calendarDayData[$cdDate]['medications'][$cdMedId];
+        $cdMed['total']++;
+        if ($cdStatus === 'taken') { $cdMed['taken']++; if ($cdLateMin !== null) $cdMed['late']++; }
+        elseif ($cdStatus === 'skipped') $cdMed['skipped']++;
+        elseif ($cdStatus === 'missed')  $cdMed['missed']++;
+        $cdMed['slots'][] = [
+            'displayTime' => to12h((string) $log['scheduled_time']),
+            'status'      => $cdStatus,
+            'isLate'      => $cdLateMin !== null,
+            'lateLabel'   => $cdLateMin !== null ? formatLate($cdLateMin) : null,
+        ];
+        unset($cdMed);
+    }
+    foreach ($calendarDayData as &$cdDay) {
+        $cdDay['medications'] = array_values($cdDay['medications']);
+    }
+    unset($cdDay);
     $prevMonth = $calMonthDt->modify('-1 month')->format('Y-m');
     $nextMonth = $calMonthDt->modify('+1 month')->format('Y-m');
     $monthLabel = $calMonthDt->format('F Y');
@@ -775,7 +815,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               $dayClass = 'calendar-day--empty';
           }
         ?>
-        <div class="calendar-day <?= e($dayClass) ?><?= $isToday ? ' calendar-day--today' : '' ?>">
+        <?php $cdHasData = isset($calendarDayData[$dateStr]); ?>
+        <div class="calendar-day <?= e($dayClass) ?><?= $isToday ? ' calendar-day--today' : '' ?>"<?= (!$isFuture && $cdHasData) ? ' data-calendar-day data-date="' . e($dateStr) . '"' : '' ?>>
           <strong><?= e((string) $day) ?></strong>
           <?php if (!$isFuture && ($marker['taken'] > 0 || $marker['skipped'] > 0 || $marker['missed'] > 0)): ?>
             <small>
@@ -793,6 +834,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <span class="legend-item"><span class="legend-dot legend-dot--missed"></span>Missed</span>
     </div>
   </section>
+  <script>const calendarDayData = <?= json_encode($calendarDayData, JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
   <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 <nav class="bottom-nav" aria-label="Main navigation">
@@ -830,6 +872,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </a>
   </div>
 </div>
+
+<div class="modal-overlay" data-calendar-day-modal>
+  <div class="modal-dialog calendar-day-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-day-modal-title">
+    <div class="modal-header">
+      <h2 id="calendar-day-modal-title" data-calendar-day-modal-title></h2>
+      <button type="button" class="modal-close" data-close-calendar-day-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <div class="modal-scroll" data-calendar-day-modal-body></div>
+  </div>
+</div>
+
 </body>
 </html>
 <?php exit; ?>
@@ -1272,26 +1325,16 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <section class="panel history-panel" data-history-panel>
     <div class="panel-heading">
-      <h2>Recent history <button type="button" class="history-sort-btn" data-history-sort aria-label="Sort: newest first" title="Sort: newest first"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i></button></h2>
+      <h2>Today's history <button type="button" class="history-sort-btn" data-history-sort aria-label="Sort: newest first" title="Sort: newest first"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i></button></h2>
       <a href="index.php?page=calendar" class="panel-heading-link">View all history</a>
     </div>
     <ol class="history-list" data-history-list>
-      <?php
-        $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
-      ?>
+      <?php if ($recentLogs === []): ?>
+        <li class="history-empty">No doses logged today yet.</li>
+      <?php endif; ?>
       <?php foreach ($recentLogs as $log): ?>
-        <?php
-          $logDate = (string) $log['scheduled_for_date'];
-          if ($logDate === $today) {
-              $dateLabel = 'TODAY';
-          } elseif ($logDate === $yesterday) {
-              $dateLabel = 'YESTERDAY';
-          } else {
-              $dateLabel = strtoupper((new DateTimeImmutable($logDate))->format('M j'));
-          }
-        ?>
         <li data-sort-time="<?= e((string) $log['scheduled_for_date'] . ' ' . (string) $log['scheduled_time']) ?>">
-          <span><span class="history-date"><?= e($dateLabel) ?></span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
+          <span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
           <div>
             <strong><?= e((string) $log['name']) ?></strong><?php if (formattedDose($log) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($log)) ?></span><?php endif; ?>
             <p>
@@ -1401,7 +1444,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog">
     <div class="modal-header">
       <h2 class="modal-title" data-slot-picker-title>Log dose</h2>
-      <button type="button" class="modal-close" data-close-slot-picker aria-label="Close">&times;</button>
+      <button type="button" class="modal-close" data-close-slot-picker aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">Select which scheduled dose you are logging:</p>
@@ -1423,7 +1466,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog">
     <div class="modal-header">
       <h2 class="modal-title" data-missed-dose-title>Log missed dose</h2>
-      <button type="button" class="modal-close" data-close-missed-dose-modal aria-label="Close">&times;</button>
+      <button type="button" class="modal-close" data-close-missed-dose-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">When did you take this dose?</p>
@@ -1454,7 +1497,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog required-doses-dialog" role="dialog" aria-modal="true" aria-labelledby="required-doses-modal-title">
     <div class="modal-header">
       <h2 id="required-doses-modal-title" class="modal-title"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Required doses — today</h2>
-      <button type="button" class="modal-close" data-close-required-doses-modal aria-label="Close">&times;</button>
+      <button type="button" class="modal-close" data-close-required-doses-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
     <div class="modal-scroll">
       <?php if (empty($requiredByMed)): ?>

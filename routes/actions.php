@@ -203,6 +203,26 @@ try {
         redirect_home();
     }
 
+    if ($action === 'reorder_medications') {
+        $ids = json_decode(post_string('ids'), true);
+        if (is_array($ids)) {
+            $repository->reorderMedications(array_map('intval', $ids));
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'reorder_groups') {
+        $ids = json_decode(post_string('ids'), true);
+        if (is_array($ids)) {
+            $repository->reorderGroups(array_map('intval', $ids));
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     if ($action === 'mark_dose') {
         $rawPainLevel = post_string('pain_level');
         $painLevel = $rawPainLevel !== '' ? (int) $rawPainLevel : null;
