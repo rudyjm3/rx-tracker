@@ -2564,6 +2564,13 @@ const exitGroupEditMode = (card) => {
     nameInput.hidden = true;
     nameInput.value  = nameView?.textContent ?? nameInput.value;
   }
+  const timeBadge = card.querySelector('[data-group-card-time]');
+  const timeInput = card.querySelector('[data-group-time-input]');
+  if (timeBadge) timeBadge.hidden = false;
+  if (timeInput) {
+    timeInput.hidden = true;
+    timeInput.value  = timeBadge?.textContent ?? timeInput.value;
+  }
   const addForm     = card.querySelector('.group-add-med-form');
   const editActions = card.querySelector('[data-group-edit-actions]');
   if (addForm)     addForm.hidden     = true;
@@ -2671,6 +2678,10 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
     const nameInput = card?.querySelector('[data-group-name-input]');
     if (nameView)  nameView.hidden  = true;
     if (nameInput) { nameInput.hidden = false; nameInput.focus(); nameInput.select(); }
+    const timeBadge = card?.querySelector('[data-group-card-time]');
+    const timeInput = card?.querySelector('[data-group-time-input]');
+    if (timeBadge) timeBadge.hidden = true;
+    if (timeInput) timeInput.hidden = false;
     const addForm     = card?.querySelector('.group-add-med-form');
     const editActions = card?.querySelector('[data-group-edit-actions]');
     if (addForm)     addForm.hidden     = false;
@@ -2690,8 +2701,9 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
     const card    = saveEditBtn.closest('.group-card');
     const groupId = saveEditBtn.dataset.groupId ?? '';
     const name    = (card?.querySelector('[data-group-name-input]')?.value ?? '').trim();
-    const time    = card?.querySelector('[data-group-time-hidden]')?.value ?? '';
+    const time    = (card?.querySelector('[data-group-time-input]')?.value ?? '').trim();
     if (!name) { card?.querySelector('[data-group-name-input]')?.focus(); return; }
+    if (!time) { card?.querySelector('[data-group-time-input]')?.focus(); return; }
     saveEditBtn.disabled = true;
     const params = new URLSearchParams();
     params.set('action', 'update_group');
@@ -2706,14 +2718,20 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
         if (!json.ok) throw new Error(json.error ?? 'Save failed.');
         const nameView    = card?.querySelector('[data-group-card-name]');
         const nameInput   = card?.querySelector('[data-group-name-input]');
+        const timeBadge   = card?.querySelector('[data-group-card-time]');
+        const timeInput   = card?.querySelector('[data-group-time-input]');
         const editDataBtn = card?.querySelector('[data-edit-group]');
         if (nameView)    nameView.textContent          = json.group_name;
         if (nameInput)   nameInput.value               = json.group_name;
+        if (timeBadge)   timeBadge.textContent         = json.group_time_display;
+        if (timeInput)   timeInput.value               = json.group_time_display;
         if (editDataBtn) editDataBtn.dataset.groupName = json.group_name;
         exitGroupEditMode(card);
       })
       .catch((err) => {
         alert(err.message ?? 'Something went wrong.');
+      })
+      .finally(() => {
         saveEditBtn.disabled = false;
       });
     return;
@@ -2751,10 +2769,14 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
     : '';
 
   card.innerHTML = `
+    <button type="button" class="drag-handle drag-handle--group" aria-label="Drag to reorder" tabindex="-1"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></button>
+    <div class="group-card-body">
     <div class="group-card-header">
       <div class="group-card-title">
         <strong data-group-card-name>${escHtml(groupName)}</strong>
+        <input type="text" class="group-name-input" data-group-name-input value="${escHtml(groupName)}" aria-label="Group name" hidden>
         <span class="group-time-badge" data-group-card-time>${escHtml(groupTimeDisplay)}</span>
+        <input type="text" class="group-time-input" data-group-time-input value="${escHtml(groupTimeDisplay)}" aria-label="Scheduled time (e.g. 8:00 AM)" placeholder="e.g. 8:00 AM" hidden>
         <span class="count-badge" data-group-card-count>0 meds</span>
       </div>
       <div class="med-actions-menu" data-group-actions-menu>
@@ -2784,7 +2806,12 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
     <div class="group-members-list" data-group-members>
       <p class="group-empty-hint">No medications in this group yet.</p>
     </div>
-    ${addMedFormHtml}`;
+    ${addMedFormHtml}
+    <div class="group-card-edit-actions" data-group-edit-actions hidden>
+      <button type="button" class="secondary" data-group-cancel-edit>Cancel</button>
+      <button type="button" data-group-save-edit data-group-id="${groupId}">Save changes</button>
+    </div>
+    </div>`;
 
   card.querySelector('[data-confirm]')?.addEventListener('submit', (e) => {
     if (!window.confirm(e.currentTarget.getAttribute('data-confirm') ?? '')) e.preventDefault();
@@ -3520,7 +3547,7 @@ initPushStatusPanel();
 document.querySelectorAll('.password-toggle').forEach((btn) => {
   btn.addEventListener('click', () => {
     const wrapper = btn.closest('.password-input-wrapper');
-    const input = wrapper.querySelector('input');
+    const input = wrapper?.querySelector('input');
     const isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
     btn.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
@@ -3528,3 +3555,42 @@ document.querySelectorAll('.password-toggle').forEach((btn) => {
     btn.querySelector('.pw-eye-off').style.display = isHidden ? '' : 'none';
   });
 });
+
+// ── Drag-and-drop reordering (Medication Plan page only) ──────────────────────
+if (typeof Sortable !== 'undefined') {
+  const postReorder = (action, ids) => {
+    const params = new URLSearchParams();
+    params.set('action', action);
+    params.set('csrf_token', getCsrfToken());
+    params.set('ids', JSON.stringify(ids));
+    fetch('index.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
+      .catch(() => {});
+  };
+
+  const medList = document.querySelector('[data-plan-panel="active"] .medication-list');
+  if (medList) {
+    Sortable.create(medList, {
+      handle: '.drag-handle',
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      filter: '.empty-state',
+      onEnd() {
+        const ids = [...medList.querySelectorAll('[data-med-id]')].map((el) => el.dataset.medId);
+        postReorder('reorder_medications', ids);
+      },
+    });
+  }
+
+  const groupsList = document.querySelector('[data-groups-sortable]');
+  if (groupsList) {
+    Sortable.create(groupsList, {
+      handle: '.drag-handle--group',
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      onEnd() {
+        const ids = [...groupsList.querySelectorAll('[data-group-card-id]')].map((el) => el.dataset.groupCardId);
+        postReorder('reorder_groups', ids);
+      },
+    });
+  }
+}
