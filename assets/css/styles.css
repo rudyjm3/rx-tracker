@@ -1599,7 +1599,7 @@ textarea:focus,
   align-items: flex-start;
   display: grid;
   gap: 0 0.75rem;
-  grid-template-columns: 1.5rem 3rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
 }
 
 .medication-actions-top {
@@ -1607,7 +1607,7 @@ textarea:focus,
   align-self: flex-start;
   display: flex;
   gap: 0.4rem;
-  grid-column: 4;
+  grid-column: 3;
   justify-content: flex-end;
 }
 
@@ -1666,7 +1666,7 @@ textarea:focus,
 
 .medication-actions-bottom {
   border-top: 1px solid var(--rx-border);
-  grid-column: 3 / span 2;
+  grid-column: 2 / span 2;
   grid-row: 2;
   align-self: center;
   justify-content: flex-start;
@@ -2825,7 +2825,7 @@ textarea:focus,
   }
 
   .medication-actions-bottom {
-    grid-column: 3 / span 2;
+    grid-column: 2 / span 2;
     grid-row: auto;
   }
 
@@ -2835,13 +2835,13 @@ textarea:focus,
   }
 
   .medication-actions-top {
-    grid-column: 4;
+    grid-column: 3;
     justify-content: flex-end;
     margin-top: 0;
   }
 
   .medication-row-plan {
-    grid-template-columns: 1.5rem 3rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
   }
 
   .dashboard-grid {
@@ -3466,12 +3466,7 @@ textarea:focus,
 /* ── Product label image in medication plan ──────────────────────────────── */
 
 .product-label-wrap {
-  align-items: center;
-  display: flex;
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  justify-content: center;
-  padding-top: 0.1rem;
+  display: none;
 }
 
 .product-label-wrap img {
@@ -3490,6 +3485,7 @@ textarea:focus,
 }
 
 .product-label-placeholder {
+  display: none;
   align-items: center;
   background: rgba(7, 84, 168, 0.10);
   border-radius: 50%;
