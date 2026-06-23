@@ -2648,7 +2648,13 @@ const closeAllGroupMenus = () => {
   document.querySelectorAll('[data-group-actions-menu]').forEach((menu) => {
     const dropdown = menu.querySelector('[data-group-actions-dropdown]');
     const trigger = menu.querySelector('[data-group-actions-trigger]');
-    if (dropdown) dropdown.hidden = true;
+    if (dropdown) {
+      dropdown.hidden = true;
+      dropdown.style.top = '';
+      dropdown.style.bottom = '';
+      dropdown.style.right = '';
+      dropdown.style.left = '';
+    }
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
   });
 };
@@ -2662,7 +2668,9 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
     if (!dropdown) return;
     const isOpen = !dropdown.hidden;
     closeAllGroupMenus();
+    closeAllMedMenus();
     if (!isOpen) {
+      positionDropdownFixed(trigger, dropdown);
       dropdown.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
     }
@@ -3514,11 +3522,37 @@ document.querySelectorAll('[data-med-type-filter]').forEach((filterWrap) => {
 });
 
 // Medication card action menu (ellipsis trigger)
+
+// Position a dropdown using fixed coords so it escapes overflow:hidden clipping.
+// Opens downward by default; flips upward when there isn't enough space below.
+function positionDropdownFixed(trigger, dropdown) {
+  const rect = trigger.getBoundingClientRect();
+  const estimatedHeight = dropdown.querySelectorAll('.med-actions-item').length * 44 + 8;
+  const spaceBelow = window.innerHeight - rect.bottom;
+
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  dropdown.style.left = 'auto';
+
+  if (spaceBelow < estimatedHeight && rect.top > spaceBelow) {
+    dropdown.style.top = 'auto';
+    dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  } else {
+    dropdown.style.top = (rect.bottom + 4) + 'px';
+    dropdown.style.bottom = 'auto';
+  }
+}
+
 const closeAllMedMenus = () => {
   document.querySelectorAll('[data-med-actions-menu]').forEach((menu) => {
     const dropdown = menu.querySelector('[data-med-actions-dropdown]');
     const trigger = menu.querySelector('[data-med-actions-trigger]');
-    if (dropdown) dropdown.hidden = true;
+    if (dropdown) {
+      dropdown.hidden = true;
+      dropdown.style.top = '';
+      dropdown.style.bottom = '';
+      dropdown.style.right = '';
+      dropdown.style.left = '';
+    }
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
   });
 };
@@ -3531,7 +3565,9 @@ document.querySelectorAll('[data-med-actions-trigger]').forEach((trigger) => {
     if (!dropdown) return;
     const isOpen = !dropdown.hidden;
     closeAllMedMenus();
+    closeAllGroupMenus();
     if (!isOpen) {
+      positionDropdownFixed(trigger, dropdown);
       dropdown.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
     }
@@ -3542,6 +3578,7 @@ document.addEventListener('click', () => { closeAllMedMenus(); closeAllGroupMenu
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') { closeAllMedMenus(); closeAllGroupMenus(); }
 });
+document.addEventListener('scroll', () => { closeAllMedMenus(); closeAllGroupMenus(); }, true);
 
 initPushStatusPanel();
 
