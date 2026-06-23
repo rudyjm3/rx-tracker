@@ -11,6 +11,7 @@ final class MedicationRepository
         $this->ensureStartingPillCountColumn();
         $this->ensureTimeFormatColumn();
         $this->ensureSupportTables();
+        $this->ensureAppSettingsPerUser();
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
         $this->ensureSetIdColumn();
@@ -22,6 +23,7 @@ final class MedicationRepository
         $this->ensureDoseStructuredColumns();
         $this->ensureInventoryColumns();
         $this->ensureScheduleTimeDoseColumn();
+        $this->ensureSortOrderColumns();
     }
 
     public function activeMedications(): array
@@ -1962,6 +1964,48 @@ final class MedicationRepository
         }
     }
 
+    private function ensureAppSettingsPerUser(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM app_settings LIKE 'user_id'");
+                if ($check === false || $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE app_settings ADD COLUMN user_id INT UNSIGNED NOT NULL DEFAULT 1 FIRST');
+                    $this->db->exec('ALTER TABLE app_settings DROP PRIMARY KEY');
+                    $this->db->exec('ALTER TABLE app_settings ADD PRIMARY KEY (user_id, setting_key)');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(app_settings)");
+                if ($check === false) {
+                    return;
+                }
+                $columns = array_column($check->fetchAll(), 'name');
+                if (!in_array('user_id', $columns, true)) {
+                    $this->db->exec('ALTER TABLE app_settings RENAME TO app_settings_old');
+                    $this->db->exec(
+                        "CREATE TABLE app_settings (
+                            user_id INTEGER NOT NULL DEFAULT 1,
+                            setting_key TEXT NOT NULL,
+                            setting_value TEXT NOT NULL,
+                            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (user_id, setting_key)
+                        )"
+                    );
+                    $this->db->exec(
+                        "INSERT INTO app_settings (user_id, setting_key, setting_value, updated_at)
+                         SELECT 1, setting_key, setting_value, updated_at FROM app_settings_old"
+                    );
+                    $this->db->exec('DROP TABLE app_settings_old');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
     private function ensureSupportTables(): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
@@ -1969,15 +2013,12 @@ final class MedicationRepository
             if ($driver === 'mysql') {
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS app_settings (
-                        setting_key VARCHAR(120) PRIMARY KEY,
+                        user_id INT UNSIGNED NOT NULL DEFAULT 1,
+                        setting_key VARCHAR(120) NOT NULL,
                         setting_value VARCHAR(255) NOT NULL,
-                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, setting_key)
                     ) ENGINE=InnoDB"
-                );
-                $this->db->exec(
-                    "INSERT INTO app_settings (setting_key, setting_value)
-                     VALUES ('missed_grace_minutes', '60')
-                     ON DUPLICATE KEY UPDATE setting_value = setting_value"
                 );
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS dose_postpones (
@@ -2029,15 +2070,12 @@ final class MedicationRepository
             if ($driver === 'sqlite') {
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS app_settings (
-                        setting_key TEXT PRIMARY KEY,
+                        user_id INTEGER NOT NULL DEFAULT 1,
+                        setting_key TEXT NOT NULL,
                         setting_value TEXT NOT NULL,
-                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (user_id, setting_key)
                     )"
-                );
-                $this->db->exec(
-                    "INSERT INTO app_settings (setting_key, setting_value)
-                     VALUES ('missed_grace_minutes', '60')
-                     ON CONFLICT(setting_key) DO NOTHING"
                 );
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS dose_postpones (
@@ -2395,6 +2433,36 @@ final class MedicationRepository
                 $columns = array_column($check->fetchAll(), 'name');
                 if (!in_array('quantity_per_dose', $columns, true)) {
                     $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN quantity_per_dose REAL NULL DEFAULT NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureSortOrderColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                foreach (['medications', 'medication_groups'] as $table) {
+                    $check = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'sort_order'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE {$table} ADD COLUMN sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0");
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                foreach (['medications', 'medication_groups'] as $table) {
+                    $check = $this->db->query("PRAGMA table_info({$table})");
+                    if ($check === false) {
+                        continue;
+                    }
+                    $columns = array_column($check->fetchAll(), 'name');
+                    if (!in_array('sort_order', $columns, true)) {
+                        $this->db->exec("ALTER TABLE {$table} ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+                    }
                 }
             }
         } catch (Throwable) {

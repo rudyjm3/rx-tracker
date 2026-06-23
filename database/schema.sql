@@ -221,3 +221,9 @@ ALTER TABLE medication_group_members
 -- Per-slot dose override for non-grouped medications
 ALTER TABLE medication_schedule_times
     ADD COLUMN IF NOT EXISTS quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL;
+
+-- Drag-and-drop sort order for medications and groups
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE medication_groups
+    ADD COLUMN IF NOT EXISTS sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0;
