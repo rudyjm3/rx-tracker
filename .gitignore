@@ -1,6 +1,10 @@
 .env
+.env.dev
+.env.live
 .htaccess
 .htaccess.example
+.htaccess.dev
+.htaccess.live
 .DS_Store
 *.log
 /vendor

@@ -2685,7 +2685,7 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
     const nameView  = card?.querySelector('[data-group-card-name]');
     const nameInput = card?.querySelector('[data-group-name-input]');
     if (nameView)  nameView.hidden  = true;
-    if (nameInput) { nameInput.hidden = false; nameInput.focus(); nameInput.select(); }
+    if (nameInput) nameInput.hidden = false;
     const timeBadge = card?.querySelector('[data-group-card-time]');
     const timeInput = card?.querySelector('[data-group-time-input]');
     if (timeBadge) timeBadge.hidden = true;
@@ -3530,7 +3530,11 @@ function positionDropdownFixed(trigger, dropdown) {
   const estimatedHeight = dropdown.querySelectorAll('.med-actions-item').length * 44 + 8;
   const spaceBelow = window.innerHeight - rect.bottom;
 
-  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  // Clamp right so the dropdown never overflows the left viewport edge
+  const dropdownWidth = Math.max(dropdown.offsetWidth, 160);
+  const rawRight = window.innerWidth - rect.right;
+  const maxRight = window.innerWidth - dropdownWidth - 8;
+  dropdown.style.right = Math.min(rawRight, maxRight) + 'px';
   dropdown.style.left = 'auto';
 
   if (spaceBelow < estimatedHeight && rect.top > spaceBelow) {

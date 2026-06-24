@@ -4063,8 +4063,11 @@ details.med-detail-section[open] .med-detail-section-title::after {
   }
 
   .group-card-header {
-    flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .med-actions-menu {
+    flex-shrink: 0;
   }
 
   .group-member-row {
@@ -4073,6 +4076,15 @@ details.med-detail-section[open] .med-detail-section-title::after {
 
   .group-remove-btn {
     margin-left: 0;
+  }
+
+  .group-add-med-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .group-dose-override-label {
+    white-space: normal;
   }
 }
 
