@@ -685,7 +685,7 @@ document.addEventListener('submit', async (e) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
-  // Priority cascade: lightbox > refill history > refill modal > detail modal > plan modal
+  // Priority cascade: lightbox > refill history > refill modal > detail modal > plan modal > notif panel
   if (imageLightbox?.classList.contains('is-open')) {
     closeImageLightbox();
   } else if (refillHistoryModal?.classList.contains('is-open')) {
@@ -696,6 +696,8 @@ document.addEventListener('keydown', (event) => {
     closeMedDetailModal();
   } else if (medPlanModal && !medPlanModal.hidden) {
     closeMedPlanModal();
+  } else if (notifPanel && !notifPanel.hidden) {
+    closeNotifPanel();
   }
 });
 
@@ -1382,7 +1384,8 @@ const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal]
     .some((m) => m?.classList.contains('is-open')) ||
-  (groupFormWrap != null && groupFormWrap.classList.contains('is-open'));
+  (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
+  (notifPanel != null && !notifPanel.hidden);
 
 const alarmAction = async (action, extra = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
@@ -3638,3 +3641,116 @@ if (typeof Sortable !== 'undefined') {
     });
   }
 }
+
+// ── Notification panel ────────────────────────────────────────────────────────
+
+const notifPanel     = document.querySelector('[data-notif-panel]');
+const bellBtn        = document.querySelector('[data-bell-btn]');
+const bellBadge      = document.querySelector('.nav-bell-badge');
+
+const updateBellBadge = (count) => {
+  if (!bellBadge) return;
+  bellBadge.textContent = String(count);
+  bellBadge.setAttribute(
+    'aria-label',
+    `${count} notification${count !== 1 ? 's' : ''}`
+  );
+  bellBadge.hidden = count === 0;
+};
+
+const closeNotifPanel = () => {
+  if (!notifPanel) return;
+  notifPanel.hidden = true;
+  bellBtn?.setAttribute('aria-expanded', 'false');
+};
+
+const markAllNotificationsReadAsync = async () => {
+  document.querySelectorAll('.notif-item--unread').forEach((el) => {
+    el.classList.remove('notif-item--unread');
+  });
+  updateBellBadge(0);
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'mark_all_notifications_read',
+    });
+    await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+  } catch {
+    // Non-critical; badge corrects itself on next page load
+  }
+};
+
+if (bellBtn && notifPanel) {
+  bellBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (notifPanel.hidden) {
+      notifPanel.hidden = false;
+      bellBtn.setAttribute('aria-expanded', 'true');
+      markAllNotificationsReadAsync();
+    } else {
+      closeNotifPanel();
+    }
+  });
+}
+
+document.addEventListener('click', (event) => {
+  if (!notifPanel || notifPanel.hidden) return;
+  if (!notifPanel.contains(event.target) && event.target !== bellBtn && !bellBtn?.contains(event.target)) {
+    closeNotifPanel();
+  }
+});
+
+document.querySelector('[data-notif-mark-all]')?.addEventListener('click', (event) => {
+  event.stopPropagation();
+  markAllNotificationsReadAsync();
+});
+
+document.querySelector('[data-notif-panel-body]')?.addEventListener('click', async (event) => {
+  const dismissBtn = event.target.closest('[data-notif-dismiss]');
+  if (!dismissBtn) return;
+
+  const notifId  = dismissBtn.dataset.notifDismiss;
+  const notifItem = dismissBtn.closest('[data-notif-item]');
+
+  notifItem?.remove();
+
+  const remaining = document.querySelectorAll('[data-notif-item]').length;
+  if (remaining === 0) {
+    const body = document.querySelector('[data-notif-panel-body]');
+    if (body) body.innerHTML = '<p class="notif-empty">You\'re all set! No notifications.</p>';
+    document.querySelector('[data-notif-mark-all]')?.remove();
+  }
+
+  const unreadRemaining = document.querySelectorAll('.notif-item--unread').length;
+  updateBellBadge(unreadRemaining);
+
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'dismiss_notification',
+      notification_id: notifId,
+    });
+    await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+  } catch {
+    // Non-critical
+  }
+});
+
+// Close notification panel when Refill button is clicked (refill modal takes over)
+document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (event) => {
+  if (event.target.closest('[data-open-refill-modal]')) {
+    closeNotifPanel();
+  }
+});

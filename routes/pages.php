@@ -94,6 +94,10 @@ $lowSupplyMeds = array_values(array_filter($medications, static fn(array $m): bo
     (float) ($m['current_quantity'] ?? $m['pill_count'] ?? 0) <= (float) ($m['low_supply_threshold'] ?? 0)
 ));
 
+$repository->syncStockNotifications($medications);
+$navNotifications = $repository->getNotificationsForUser();
+$navUnreadCount   = count(array_filter($navNotifications, static fn(array $n): bool => !(bool) $n['is_read']));
+
 $onTimeCount = 0;
 $lateCount = 0;
 foreach ($recentLogs as $log) {
@@ -145,11 +149,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <a href="index.php?page=help"<?= $page === 'help' ? ' class="is-active"' : '' ?>>Help</a>
     </div>
     <div class="nav-actions">
-      <button class="nav-bell-btn" aria-label="Notifications">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <span class="nav-bell-badge" aria-label="0 notifications" hidden>0</span>
-      </button>
       <?php $currentUser = $auth->currentUser(); ?>
+      <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
       <a class="nav-user-btn" href="index.php?page=profile"
          title="<?= e($currentUser['email'] ?? '') ?>"
          aria-label="My profile">

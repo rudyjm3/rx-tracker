@@ -307,6 +307,44 @@ try {
         }
         $repository->logRefill($medicationId, $refillDate, $amount, $note);
         if ($jsonResponse) {
+            $updatedNotifications = $repository->getNotificationsForUser();
+            $unreadCount = count(array_filter($updatedNotifications, static fn(array $n): bool => !(bool) $n['is_read']));
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true, 'unread_count' => $unreadCount], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'mark_all_notifications_read') {
+        $repository->markAllNotificationsRead();
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'dismiss_notification') {
+        $notifId = (int) post_string('notification_id');
+        if ($notifId > 0) {
+            $repository->dismissNotification($notifId);
+        }
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'mark_notification_read') {
+        $notifId = (int) post_string('notification_id');
+        if ($notifId > 0) {
+            $repository->markNotificationRead($notifId);
+        }
+        if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
             exit;

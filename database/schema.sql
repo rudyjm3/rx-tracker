@@ -227,3 +227,19 @@ ALTER TABLE medications
     ADD COLUMN IF NOT EXISTS sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0;
 ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0;
+
+-- In-app low-stock notifications
+CREATE TABLE IF NOT EXISTS user_notifications (
+    id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id       INT UNSIGNED NOT NULL,
+    medication_id INT UNSIGNED NOT NULL,
+    type          ENUM('low_stock','critical_stock','out_of_stock') NOT NULL,
+    is_read       TINYINT(1) NOT NULL DEFAULT 0,
+    is_dismissed  TINYINT(1) NOT NULL DEFAULT 0,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_notif_user_unread (user_id, is_read, is_dismissed),
+    CONSTRAINT fk_notif_medication
+        FOREIGN KEY (medication_id) REFERENCES medications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;

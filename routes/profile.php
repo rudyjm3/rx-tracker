@@ -17,6 +17,10 @@ if (!is_array($userRow)) {
 $flashSuccess = trim((string) ($_GET['success'] ?? ''));
 $flashError   = trim((string) ($_GET['error'] ?? ''));
 
+$profileRepo      = new MedicationRepository(db(), $userId);
+$navNotifications = $profileRepo->getNotificationsForUser();
+$navUnreadCount   = count(array_filter($navNotifications, static fn(array $n): bool => !(bool) $n['is_read']));
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token(post_string('csrf_token'))) {
         header('Location: index.php?page=profile&error=' . urlencode('Session expired. Please try again.'));
@@ -148,10 +152,7 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       <a href="index.php?page=help">Help</a>
     </div>
     <div class="nav-actions">
-      <button class="nav-bell-btn" aria-label="Notifications">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-        <span class="nav-bell-badge" aria-label="0 notifications" hidden>0</span>
-      </button>
+      <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
       <a class="nav-user-btn is-active" href="index.php?page=profile"
          title="<?= e((string) $userRow['email']) ?>"
          aria-label="My profile">
