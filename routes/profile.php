@@ -356,84 +356,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
         </form>
       </div>
 
-      <!-- Active Sessions -->
-      <div class="panel">
-        <div class="panel-heading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-          <h2>Active Sessions</h2>
-        </div>
-
-        <?php if ($activeSessions === []): ?>
-          <p class="muted">No active remember-me sessions. Sessions are created when you check "Remember me" at login.</p>
-        <?php else: ?>
-          <ul class="sessions-list">
-            <?php foreach ($activeSessions as $sess): ?>
-              <?php $isCurrent = $currentToken !== '' && (string) $sess['session_token'] === $currentToken; ?>
-              <li class="session-row">
-                <div class="session-info">
-                  <span class="session-agent"><?= e(substr((string) $sess['user_agent'], 0, 80)) ?></span>
-                  <span class="session-meta">
-                    <?= e((string) $sess['ip_address']) ?>
-                    &middot;
-                    Expires <?= e((new DateTimeImmutable((string) $sess['expires_at']))->format('M j, Y')) ?>
-                  </span>
-                </div>
-                <?php if ($isCurrent): ?>
-                  <span class="session-badge">Current</span>
-                <?php endif; ?>
-              </li>
-            <?php endforeach; ?>
-          </ul>
-
-          <?php $otherCount = count(array_filter($activeSessions, fn($s) => (string) $s['session_token'] !== $currentToken)); ?>
-          <?php if ($otherCount > 0): ?>
-            <form method="post" action="index.php?page=profile" style="margin-top: 1rem;">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="revoke_other_sessions">
-              <button type="submit" class="secondary">Sign out all other devices</button>
-            </form>
-          <?php endif; ?>
-        <?php endif; ?>
-      </div>
-
-      <!-- Data & Privacy -->
-      <div class="panel">
-        <div class="panel-heading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <h2>Data &amp; Privacy</h2>
-        </div>
-
-        <p class="muted" style="margin-bottom: 1rem;">Export a copy of all your medication and dose history data.</p>
-        <a href="index.php?page=export" class="secondary btn-inline">Go to Export</a>
-
-        <hr class="profile-divider">
-
-        <div class="danger-zone">
-          <h3 class="danger-zone-heading">Delete Account</h3>
-          <p class="muted">This permanently deletes your account and all data — medications, dose history, and settings. This cannot be undone.</p>
-
-          <details class="danger-details">
-            <summary class="danger-summary">I want to delete my account</summary>
-            <form method="post" action="index.php?page=profile" class="stacked-form danger-form">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="delete_account">
-              <div class="form-group">
-                <label for="confirm_email">Type your email address to confirm</label>
-                <input
-                  type="email"
-                  id="confirm_email"
-                  name="confirm_email"
-                  placeholder="<?= e((string) $userRow['email']) ?>"
-                  autocomplete="off"
-                  required
-                >
-              </div>
-              <button type="submit" class="btn-danger">Permanently delete my account</button>
-            </form>
-          </details>
-        </div>
-      </div>
-
       <!-- Family Members -->
       <div class="panel">
         <div class="panel-heading">
@@ -563,6 +485,84 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
           </div>
           <button type="submit" class="secondary">Add Family Member</button>
         </form>
+      </div>
+
+      <!-- Data & Privacy -->
+      <div class="panel">
+        <div class="panel-heading">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <h2>Data &amp; Privacy</h2>
+        </div>
+
+        <p class="muted" style="margin-bottom: 1rem;">Export a copy of all your medication and dose history data.</p>
+        <a href="index.php?page=export" class="secondary btn-inline">Go to Export</a>
+
+        <hr class="profile-divider">
+
+        <div class="danger-zone">
+          <h3 class="danger-zone-heading">Delete Account</h3>
+          <p class="muted">This permanently deletes your account and all data — medications, dose history, and settings. This cannot be undone.</p>
+
+          <details class="danger-details">
+            <summary class="danger-summary">I want to delete my account</summary>
+            <form method="post" action="index.php?page=profile" class="stacked-form danger-form">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="delete_account">
+              <div class="form-group">
+                <label for="confirm_email">Type your email address to confirm</label>
+                <input
+                  type="email"
+                  id="confirm_email"
+                  name="confirm_email"
+                  placeholder="<?= e((string) $userRow['email']) ?>"
+                  autocomplete="off"
+                  required
+                >
+              </div>
+              <button type="submit" class="btn-danger">Permanently delete my account</button>
+            </form>
+          </details>
+        </div>
+      </div>
+
+      <!-- Active Sessions -->
+      <div class="panel">
+        <div class="panel-heading">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <h2>Active Sessions</h2>
+        </div>
+
+        <?php if ($activeSessions === []): ?>
+          <p class="muted">No active remember-me sessions. Sessions are created when you check "Remember me" at login.</p>
+        <?php else: ?>
+          <ul class="sessions-list">
+            <?php foreach ($activeSessions as $sess): ?>
+              <?php $isCurrent = $currentToken !== '' && (string) $sess['session_token'] === $currentToken; ?>
+              <li class="session-row">
+                <div class="session-info">
+                  <span class="session-agent"><?= e(substr((string) $sess['user_agent'], 0, 80)) ?></span>
+                  <span class="session-meta">
+                    <?= e((string) $sess['ip_address']) ?>
+                    &middot;
+                    Expires <?= e((new DateTimeImmutable((string) $sess['expires_at']))->format('M j, Y')) ?>
+                  </span>
+                </div>
+                <?php if ($isCurrent): ?>
+                  <span class="session-badge">Current</span>
+                <?php endif; ?>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+
+          <?php $otherCount = count(array_filter($activeSessions, fn($s) => (string) $s['session_token'] !== $currentToken)); ?>
+          <?php if ($otherCount > 0): ?>
+            <form method="post" action="index.php?page=profile" style="margin-top: 1rem;">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="revoke_other_sessions">
+              <button type="submit" class="secondary">Sign out all other devices</button>
+            </form>
+          <?php endif; ?>
+        <?php endif; ?>
       </div>
 
     </div><!-- /.profile-grid -->
