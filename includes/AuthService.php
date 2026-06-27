@@ -132,6 +132,27 @@ final class AuthService
         return 0;
     }
 
+    public function activeProfileId(): ?int
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        $val = $_SESSION['active_profile_id'] ?? null;
+        return ($val === null || (int) $val === 0) ? null : (int) $val;
+    }
+
+    public function setActiveProfile(?int $profileId): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        if ($profileId === null || $profileId <= 0) {
+            unset($_SESSION['active_profile_id']);
+        } else {
+            $_SESSION['active_profile_id'] = $profileId;
+        }
+    }
+
     public function changePassword(int $userId, string $currentPassword, string $newPassword): bool
     {
         $stmt = $this->db->prepare('SELECT password_hash FROM users WHERE id = :id LIMIT 1');

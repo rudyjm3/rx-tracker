@@ -228,6 +228,32 @@ ALTER TABLE medications
 ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0;
 
+-- Family member profiles (Phase 2)
+CREATE TABLE IF NOT EXISTS family_profiles (
+    id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id  INT UNSIGNED NOT NULL,
+    display_name   VARCHAR(100) NOT NULL,
+    avatar_color   VARCHAR(7)   NULL,
+    relationship   VARCHAR(50)  NULL,
+    birth_year     YEAR         NULL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_family_profiles_owner (owner_user_id),
+    CONSTRAINT fk_family_profiles_user
+        FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id,
+    ADD INDEX IF NOT EXISTS idx_medications_profile (profile_id),
+    ADD CONSTRAINT fk_medications_profile
+        FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL;
+
+ALTER TABLE medication_groups
+    ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id,
+    ADD INDEX IF NOT EXISTS idx_medication_groups_profile (profile_id),
+    ADD CONSTRAINT fk_medication_groups_profile
+        FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL;
+
 -- In-app low-stock notifications
 CREATE TABLE IF NOT EXISTS user_notifications (
     id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

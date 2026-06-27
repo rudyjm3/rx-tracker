@@ -6,8 +6,11 @@ final class MedicationRepository
 {
     private const MEDICATION_COLUMNS = 'id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
 
-    public function __construct(private readonly PDO $db, private readonly int $userId = 0)
-    {
+    public function __construct(
+        private readonly PDO $db,
+        private readonly int $userId = 0,
+        private readonly ?int $profileId = null
+    ) {
         $this->ensureStartingPillCountColumn();
         $this->ensureTimeFormatColumn();
         $this->ensureSupportTables();
@@ -25,14 +28,28 @@ final class MedicationRepository
         $this->ensureScheduleTimeDoseColumn();
         $this->ensureSortOrderColumns();
         $this->ensureUserNotificationsTable();
+        $this->ensureFamilyProfilesTable();
+    }
+
+    private function profileSql(string $alias = 'm'): string
+    {
+        $col = $alias !== '' ? "{$alias}.profile_id" : 'profile_id';
+        return $this->profileId === null
+            ? "AND {$col} IS NULL"
+            : "AND {$col} = :profile_id";
+    }
+
+    private function profileParam(): array
+    {
+        return $this->profileId !== null ? ['profile_id' => $this->profileId] : [];
     }
 
     public function activeMedications(): array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 1 AND user_id = :user_id ORDER BY sort_order ASC, name ASC'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.active = 1 AND m.user_id = :user_id ' . $this->profileSql() . ' ORDER BY m.sort_order ASC, m.name ASC'
         );
-        $statement->execute(['user_id' => $this->userId]);
+        $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
         $allTimes     = $this->scheduleTimesByMedicationIds($ids);
@@ -51,9 +68,9 @@ final class MedicationRepository
     public function inactiveMedications(): array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE active = 0 AND user_id = :user_id ORDER BY name ASC'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.active = 0 AND m.user_id = :user_id ' . $this->profileSql() . ' ORDER BY m.name ASC'
         );
-        $statement->execute(['user_id' => $this->userId]);
+        $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
         $medications = $statement->fetchAll();
         $ids = array_column($medications, 'id');
         $allTimes     = $this->scheduleTimesByMedicationIds($ids);
@@ -74,13 +91,16 @@ final class MedicationRepository
                        medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed
                 FROM dose_logs
                 INNER JOIN medications ON medications.id = dose_logs.medication_id
-                WHERE medications.user_id = :user_id';
+                WHERE medications.user_id = :user_id ' . $this->profileSql('medications');
         if ($date !== null && $date !== '') {
             $sql .= ' AND dose_logs.scheduled_for_date = :scheduled_for_date';
         }
         $sql .= ' ORDER BY dose_logs.taken_at DESC LIMIT :limit';
         $statement = $this->db->prepare($sql);
         $statement->bindValue(':user_id', $this->userId, PDO::PARAM_INT);
+        if ($this->profileId !== null) {
+            $statement->bindValue(':profile_id', $this->profileId, PDO::PARAM_INT);
+        }
         if ($date !== null && $date !== '') {
             $statement->bindValue(':scheduled_for_date', $date, PDO::PARAM_STR);
         }
@@ -99,10 +119,11 @@ final class MedicationRepository
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
              WHERE medications.user_id = :user_id
+               ' . $this->profileSql('medications') . '
                AND dose_logs.scheduled_for_date BETWEEN :start_date AND :end_date
              ORDER BY dose_logs.scheduled_for_date DESC, dose_logs.scheduled_time DESC'
         );
-        $statement->execute(['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
+        $statement->execute(array_merge(['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate], $this->profileParam()));
 
         return $statement->fetchAll();
     }
@@ -147,9 +168,9 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id AND active = 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
         );
-        $statement->execute(['id' => $id, 'user_id' => $this->userId]);
+        $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
         $row = $statement->fetch();
 
         if (!is_array($row)) {
@@ -286,13 +307,14 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (user_id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                'INSERT INTO medications (user_id, profile_id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:user_id, :name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
+                 VALUES (:user_id, :profile_id, :name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
-                'user_id' => $this->userId,
+                'user_id'    => $this->userId,
+                'profile_id' => $this->profileId,
                 'name' => $name,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
@@ -378,9 +400,9 @@ final class MedicationRepository
                      ) THEN :starting_quantity ELSE starting_quantity END,
                      current_quantity = :current_quantity,
                      quantity_per_dose = :quantity_per_dose
-                 WHERE id = :id AND user_id = :user_id'
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             );
-            $statement->execute([
+            $statement->execute(array_merge([
                 'id' => $id,
                 'user_id' => $this->userId,
                 'refill_check_id' => $id,
@@ -405,7 +427,7 @@ final class MedicationRepository
                 'starting_quantity' => $startingQuantity,
                 'current_quantity' => $startingQuantity,
                 'quantity_per_dose' => $quantityPerDose,
-            ]);
+            ], $this->profileParam()));
 
             $this->replaceScheduleTimes($id, $doseTimes, $doseQtys);
             $this->db->commit();
@@ -423,6 +445,14 @@ final class MedicationRepository
 
         if ($painLevel !== null && ($painLevel < 1 || $painLevel > 10)) {
             throw new RuntimeException('Pain level must be between 1 and 10.');
+        }
+
+        $ownerCheck = $this->db->prepare(
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
+        );
+        $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if (!$ownerCheck->fetchColumn()) {
+            throw new RuntimeException('Medication not found.');
         }
 
         $doseQtyOverride = null;
@@ -521,6 +551,14 @@ final class MedicationRepository
 
     public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false): void
     {
+        $ownerCheck = $this->db->prepare(
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
+        );
+        $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if (!$ownerCheck->fetchColumn()) {
+            throw new RuntimeException('Medication not found.');
+        }
+
         $now = new DateTimeImmutable('now');
         $date = $now->format('Y-m-d');
 
@@ -676,10 +714,11 @@ final class MedicationRepository
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
              WHERE medications.user_id = :user_id
+               ' . $this->profileSql('medications') . '
                AND dose_logs.scheduled_for_date BETWEEN :month_start AND :month_end
              GROUP BY dose_logs.scheduled_for_date, dose_logs.status'
         );
-        $statement->execute(['user_id' => $this->userId, 'month_start' => $monthStart, 'month_end' => $monthEnd]);
+        $statement->execute(array_merge(['user_id' => $this->userId, 'month_start' => $monthStart, 'month_end' => $monthEnd], $this->profileParam()));
 
         $markers = [];
         foreach ($statement->fetchAll() as $row) {
@@ -702,23 +741,24 @@ final class MedicationRepository
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
              WHERE medications.user_id = :user_id
+               ' . $this->profileSql('medications') . '
                AND dose_logs.scheduled_for_date BETWEEN :start AND :end
              ORDER BY dose_logs.scheduled_for_date, medications.name, dose_logs.scheduled_time'
         );
-        $statement->execute(['user_id' => $this->userId, 'start' => $start, 'end' => $end]);
+        $statement->execute(array_merge(['user_id' => $this->userId, 'start' => $start, 'end' => $end], $this->profileParam()));
         return $statement->fetchAll();
     }
 
     public function deactivateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id');
-        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+        $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function activateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id');
-        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+        $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function getMissedGraceMinutes(): int
@@ -1115,8 +1155,8 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id AND active = 1');
-            $stmt->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1');
+            $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
             $current = $stmt->fetchColumn();
             if ($current === false) {
                 throw new RuntimeException('Medication not found.');
@@ -1124,14 +1164,14 @@ final class MedicationRepository
             $newCount = (float) $current + $amount;
 
             $update = $this->db->prepare(
-                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id'
+                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             );
-            $update->execute([
+            $update->execute(array_merge([
                 'current_quantity' => $newCount,
                 'starting_quantity' => $amount,
                 'id' => $medicationId,
                 'user_id' => $this->userId,
-            ]);
+            ], $this->profileParam()));
 
             $insert = $this->db->prepare(
                 'INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note)
@@ -1426,8 +1466,8 @@ final class MedicationRepository
                      WHEN current_quantity >= :qty THEN current_quantity - :qty2
                      ELSE 0
                  END
-                 WHERE id = :id'
-            )->execute(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId]);
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            )->execute(array_merge(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         } else {
             $this->db->prepare(
                 'UPDATE medications
@@ -1436,8 +1476,8 @@ final class MedicationRepository
                      WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
                      ELSE 0
                  END
-                 WHERE id = :id'
-            )->execute(['id' => $medicationId]);
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            )->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         }
     }
 
@@ -1527,9 +1567,9 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE user_id = :user_id ORDER BY sort_order ASC, name ASC'
+                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE user_id = :user_id ' . $this->profileSql('medication_groups') . ' ORDER BY sort_order ASC, name ASC'
             );
-            $statement->execute(['user_id' => $this->userId]);
+            $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
             $groups = $statement->fetchAll();
         } catch (Throwable) {
             return [];
@@ -1589,9 +1629,9 @@ final class MedicationRepository
     public function createGroup(string $name, string $scheduledTime): int
     {
         $statement = $this->db->prepare(
-            'INSERT INTO medication_groups (user_id, name, scheduled_time) VALUES (:user_id, :name, :scheduled_time)'
+            'INSERT INTO medication_groups (user_id, profile_id, name, scheduled_time) VALUES (:user_id, :profile_id, :name, :scheduled_time)'
         );
-        $statement->execute(['user_id' => $this->userId, 'name' => $name, 'scheduled_time' => $scheduledTime]);
+        $statement->execute(['user_id' => $this->userId, 'profile_id' => $this->profileId, 'name' => $name, 'scheduled_time' => $scheduledTime]);
 
         return (int) $this->db->lastInsertId();
     }
@@ -1671,11 +1711,11 @@ final class MedicationRepository
                         ON mgm_this.medication_id = m.id AND mgm_this.group_id = :exclude_group_id
                  LEFT JOIN medication_group_members mgm_all ON mgm_all.medication_id = m.id
                  LEFT JOIN medication_groups mg ON mg.id = mgm_all.group_id
-                 WHERE m.active = 1 AND m.user_id = :user_id AND mgm_this.medication_id IS NULL
+                 WHERE m.active = 1 AND m.user_id = :user_id ' . $this->profileSql() . ' AND mgm_this.medication_id IS NULL
                  GROUP BY m.id, m.name, m.dose, m.dose_amount, m.dose_unit
                  ORDER BY m.name ASC'
             );
-            $statement->execute(['user_id' => $this->userId, 'exclude_group_id' => $excludeGroupId]);
+            $statement->execute(array_merge(['user_id' => $this->userId, 'exclude_group_id' => $excludeGroupId], $this->profileParam()));
             $rows = $statement->fetchAll();
             foreach ($rows as &$row) {
                 $row['dose'] = formattedDose($row);
@@ -2637,5 +2677,55 @@ final class MedicationRepository
             'DELETE FROM user_notifications WHERE medication_id = :medication_id AND user_id = :user_id'
         );
         $stmt->execute(['medication_id' => $medicationId, 'user_id' => $this->userId]);
+    }
+
+    private function ensureFamilyProfilesTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS family_profiles (
+                        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        owner_user_id  INT UNSIGNED NOT NULL,
+                        display_name   VARCHAR(100) NOT NULL,
+                        avatar_color   VARCHAR(7) NULL,
+                        relationship   VARCHAR(50) NULL,
+                        birth_year     YEAR NULL,
+                        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_family_profiles_owner (owner_user_id),
+                        CONSTRAINT fk_family_profiles_user
+                            FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                $this->db->exec(
+                    "ALTER TABLE medications
+                     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id"
+                );
+                $this->db->exec(
+                    "ALTER TABLE medication_groups
+                     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS family_profiles (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        owner_user_id INTEGER NOT NULL,
+                        display_name  TEXT NOT NULL,
+                        avatar_color  TEXT NULL,
+                        relationship  TEXT NULL,
+                        birth_year    INTEGER NULL,
+                        created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                // SQLite does not support IF NOT EXISTS on ADD COLUMN; swallow the error if the column exists.
+                try { $this->db->exec("ALTER TABLE medications ADD COLUMN profile_id INTEGER NULL"); } catch (Throwable) {}
+                try { $this->db->exec("ALTER TABLE medication_groups ADD COLUMN profile_id INTEGER NULL"); } catch (Throwable) {}
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
+        }
     }
 }

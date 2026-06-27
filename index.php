@@ -8,6 +8,7 @@ require __DIR__ . '/includes/SessionManager.php';
 require __DIR__ . '/includes/AuthService.php';
 require __DIR__ . '/includes/MailService.php';
 require __DIR__ . '/includes/MedicationRepository.php';
+require __DIR__ . '/includes/FamilyProfileRepository.php';
 require __DIR__ . '/includes/PushNotificationService.php';
 if (is_file(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
@@ -37,7 +38,25 @@ if ($page === 'profile') {
     exit;
 }
 
-$repository    = new MedicationRepository(db(), $auth->currentUserId());
+if ($page === 'family') {
+    require __DIR__ . '/routes/family.php';
+    exit;
+}
+
+// Resolve active family profile for this session (validate ownership).
+$familyRepo     = new FamilyProfileRepository(db());
+$activeProfileId = $auth->activeProfileId();
+if ($activeProfileId !== null) {
+    $activeProfile = $familyRepo->findProfile($activeProfileId, $auth->currentUserId());
+    if ($activeProfile === null) {
+        $auth->setActiveProfile(null);
+        $activeProfileId = null;
+    }
+}
+$activeProfile   = $activeProfileId !== null ? ($activeProfile ?? null) : null;
+$familyProfiles  = $familyRepo->profilesForUser($auth->currentUserId());
+
+$repository    = new MedicationRepository(db(), $auth->currentUserId(), $activeProfileId);
 $error         = null;
 $notice        = null;
 $today         = today();

@@ -3754,3 +3754,25 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
     closeNotifPanel();
   }
 });
+
+// Profile switcher dropdown
+(function () {
+  const switcher = document.querySelector('[data-profile-switcher]');
+  if (!switcher) return;
+  const chip     = switcher.querySelector('[data-profile-chip]');
+  const dropdown = switcher.querySelector('[data-profile-dropdown]');
+  if (!chip || !dropdown) return;
+
+  chip.addEventListener('click', () => {
+    const expanded = chip.getAttribute('aria-expanded') === 'true';
+    chip.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    dropdown.hidden = expanded;
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!switcher.contains(e.target)) {
+      chip.setAttribute('aria-expanded', 'false');
+      dropdown.hidden = true;
+    }
+  });
+})();

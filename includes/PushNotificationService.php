@@ -87,7 +87,7 @@ final class PushNotificationService
         return $sent;
     }
 
-    public function sendDueReminders(DateTimeImmutable $now): int
+    public function sendDueReminders(DateTimeImmutable $now, ?string $profileName = null): int
     {
         if (!class_exists(\Minishlink\WebPush\WebPush::class) || !class_exists(\Minishlink\WebPush\Subscription::class)) {
             throw new RuntimeException('Web Push library missing. Run: composer require minishlink/web-push');
@@ -119,7 +119,9 @@ final class PushNotificationService
             $nonce = bin2hex(random_bytes(16));
             $payload = json_encode([
                 'title' => (string) $item['name'] . (isset($item['dose_amount']) ? ' (' . trim((string) $item['dose_amount'] . ' ' . (string) ($item['dose_unit'] ?? '')) . ')' : ''),
-                'body' => (string) ($item['postponed_until'] ? 'Snoozed dose due now' : 'Dose due now'),
+                'body' => $profileName !== null
+                    ? ($item['postponed_until'] ? "Snoozed dose due now for {$profileName}" : "Time for {$profileName}'s dose")
+                    : ($item['postponed_until'] ? 'Snoozed dose due now' : 'Dose due now'),
                 'tag' => 'dose|' . (int) $item['medication_id'] . '|' . (string) $item['scheduled_date'] . '|' . (string) $item['scheduled_time'],
                 'url' => 'index.php',
                 'nonce' => $nonce,
