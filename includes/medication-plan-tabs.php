@@ -95,6 +95,10 @@
                   data-view-details
                   data-medication-name="<?= e((string) $medication['name']) ?>"
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
+          <button type="button" class="secondary log-se-btn"
+                  data-log-se
+                  data-medication-id="<?= e((string) $medication['id']) ?>"
+                  data-medication-name="<?= e((string) $medication['name']) ?>">Log side effect</button>
         </div>
         <div class="row-actions medication-actions-top">
           <?php if ((int) $medication['track_dose_feedback'] === 1): ?>

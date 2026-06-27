@@ -94,14 +94,17 @@ try {
             $doseTimes = [];
         }
 
+        $startDateRaw = post_string('start_date');
+        $startDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDateRaw) ? $startDateRaw : null;
+
         if ($action === 'add_medication') {
-            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys);
+            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate);
             $newMedicationId = $repository->lastInsertedMedicationId();
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
             }
         } else {
-            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys);
+            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate);
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $id);
             } else {
@@ -405,6 +408,64 @@ try {
         $repository->removePushSubscriptionByEndpoint($endpoint);
         echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
         exit;
+    }
+
+    if ($action === 'log_side_effect') {
+        $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
+        $medId  = (int) post_string('medication_id');
+        $seDate = post_string('occurred_date');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $seDate)) {
+            $seDate = date('Y-m-d');
+        }
+        $seDesc = substr(trim(post_string('description')), 0, 255);
+        if ($seDesc === '') {
+            throw new RuntimeException('Description is required.');
+        }
+        $seSeverity = post_string('severity');
+        if (!in_array($seSeverity, ['mild', 'moderate', 'severe'], true)) {
+            $seSeverity = 'mild';
+        }
+        $seNote = substr(trim(post_string('note')), 0, 500);
+        $seRepo->logSideEffect($medId, $seDate, $seDesc, $seSeverity, $seNote);
+        header('Location: index.php?page=medications&notice=' . urlencode('Side effect logged'));
+        exit;
+    }
+
+    if ($action === 'generate_doctor_visit_report') {
+        ini_set('memory_limit', '256M');
+        set_time_limit(60);
+        try {
+            $reportStart = post_string('report_start');
+            $reportEnd   = post_string('report_end');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportStart) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportEnd)) {
+                throw new RuntimeException('Invalid date range.');
+            }
+            if ($reportStart > $reportEnd) {
+                throw new RuntimeException('Start date must be before end date.');
+            }
+            $chartDaysRaw = $_POST['chart_days'] ?? [];
+            $chartDays = [];
+            if (is_array($chartDaysRaw)) {
+                foreach ($chartDaysRaw as $medId => $days) {
+                    $chartDays[(int) $medId] = (int) $days;
+                }
+            }
+            $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
+            $chart  = new PainChartRenderer();
+            $currentUser = $auth->currentUser();
+            $report = new DoctorVisitReport($repository, $seRepo, $chart, (string) ($currentUser['display_name'] ?? 'Patient'));
+            $pdf    = $report->generate($reportStart, $reportEnd, $chartDays);
+
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="doctor-visit-report-' . $reportStart . '.pdf"');
+            header('Cache-Control: private, no-cache');
+            header('Content-Length: ' . strlen($pdf));
+            echo $pdf;
+            exit;
+        } catch (Throwable $e) {
+            $error = 'Could not generate report: ' . $e->getMessage();
+            // fall through so pages.php renders the export page with the error
+        }
     }
 } catch (Throwable $exception) {
     $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription', 'send_test_push'], true);

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class MedicationRepository
 {
-    private const MEDICATION_COLUMNS = 'id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
+    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
 
     public function __construct(
         private readonly PDO $db,
@@ -29,6 +29,7 @@ final class MedicationRepository
         $this->ensureSortOrderColumns();
         $this->ensureUserNotificationsTable();
         $this->ensureFamilyProfilesTable();
+        $this->ensureStartDateColumn();
     }
 
     private function profileSql(string $alias = 'm'): string
@@ -124,6 +125,127 @@ final class MedicationRepository
              ORDER BY dose_logs.scheduled_for_date DESC, dose_logs.scheduled_time DESC'
         );
         $statement->execute(array_merge(['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate], $this->profileParam()));
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * Range-based adherence calculation for the Doctor Visit Report.
+     * Excludes as_needed medications. Returns overall % and per-medication breakdown.
+     */
+    public function adherenceForDateRange(string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.medication_id, m.name, dl.status, COUNT(*) AS n
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE m.user_id = :user_id
+               ' . $this->profileSql('m') . '
+               AND m.as_needed = 0
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
+             GROUP BY dl.medication_id, m.name, dl.status'
+        );
+        $statement->execute(array_merge(
+            ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
+            $this->profileParam()
+        ));
+        $rows = $statement->fetchAll();
+
+        $perMed = [];
+        foreach ($rows as $row) {
+            $id = (int) $row['medication_id'];
+            if (!isset($perMed[$id])) {
+                $perMed[$id] = ['name' => $row['name'], 'taken' => 0, 'missed' => 0, 'skipped' => 0];
+            }
+            $perMed[$id][(string) $row['status']] += (int) $row['n'];
+        }
+
+        $totalTaken   = 0;
+        $totalMissed  = 0;
+        $totalSkipped = 0;
+        $perMedOut    = [];
+
+        foreach ($perMed as $id => $data) {
+            $total     = $data['taken'] + $data['missed'] + $data['skipped'];
+            $pct       = $total > 0 ? (int) round(($data['taken'] / $total) * 100) : 0;
+            $totalTaken   += $data['taken'];
+            $totalMissed  += $data['missed'];
+            $totalSkipped += $data['skipped'];
+            $perMedOut[]   = [
+                'id'      => $id,
+                'name'    => $data['name'],
+                'taken'   => $data['taken'],
+                'missed'  => $data['missed'],
+                'skipped' => $data['skipped'],
+                'total'   => $total,
+                'pct'     => $pct,
+            ];
+        }
+
+        usort($perMedOut, static fn(array $a, array $b): int => strcmp((string) $a['name'], (string) $b['name']));
+
+        $totalScheduled  = $totalTaken + $totalMissed + $totalSkipped;
+        $overallPct      = $totalScheduled > 0
+            ? (int) round(($totalTaken / $totalScheduled) * 100)
+            : 0;
+
+        return [
+            'overall_pct'      => $overallPct,
+            'total_scheduled'  => $totalScheduled,
+            'total_taken'      => $totalTaken,
+            'total_missed'     => $totalMissed,
+            'total_skipped'    => $totalSkipped,
+            'per_medication'   => $perMedOut,
+        ];
+    }
+
+    /**
+     * Pain trend data for an explicit date range (used by the report PDF generator).
+     */
+    public function painLevelTrendForRange(int $medicationId, string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'user_id'       => $this->userId,
+            'start_date'    => $startDate,
+            'end_date'      => $endDate,
+        ]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * Missed and skipped dose logs for the report's detail section.
+     */
+    public function missedAndSkippedForDateRange(string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date, dl.scheduled_time, dl.status,
+                    m.name
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE m.user_id = :user_id
+               ' . $this->profileSql('m') . '
+               AND m.as_needed = 0
+               AND dl.status IN (\'missed\', \'skipped\')
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+        );
+        $statement->execute(array_merge(
+            ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
+            $this->profileParam()
+        ));
 
         return $statement->fetchAll();
     }
@@ -296,7 +418,8 @@ final class MedicationRepository
         string $inventoryType = 'pills',
         float $startingQuantity = 0.0,
         float $quantityPerDose = 1.0,
-        array $doseQtys = []
+        array $doseQtys = [],
+        ?string $startDate = null
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
@@ -307,15 +430,16 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (user_id, profile_id, name, dose, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:user_id, :profile_id, :name, \'\', :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
+                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
                 'user_id'    => $this->userId,
                 'profile_id' => $this->profileId,
                 'name' => $name,
+                'start_date' => $startDate ?? date('Y-m-d'),
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
@@ -364,7 +488,8 @@ final class MedicationRepository
         string $inventoryType = 'pills',
         float $startingQuantity = 0.0,
         float $quantityPerDose = 1.0,
-        array $doseQtys = []
+        array $doseQtys = [],
+        ?string $startDate = null
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
@@ -377,6 +502,7 @@ final class MedicationRepository
             $statement = $this->db->prepare(
                 'UPDATE medications
                  SET name = :name,
+                     start_date = COALESCE(:start_date, start_date),
                      instructions = :instructions,
                      schedule_mode = :schedule_mode,
                      time_format = :time_format,
@@ -409,6 +535,7 @@ final class MedicationRepository
                 'refill_check_id2' => $id,
                 'starting_pill_count' => 0,
                 'name' => $name,
+                'start_date' => $startDate,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
@@ -2726,6 +2853,40 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureStartDateColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'start_date'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN start_date DATE NULL AFTER dose");
+                    $this->db->exec("UPDATE medications SET start_date = DATE(created_at) WHERE start_date IS NULL");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'start_date') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN start_date TEXT NULL");
+                    $this->db->exec("UPDATE medications SET start_date = date(created_at) WHERE start_date IS NULL");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
         }
     }
 }
