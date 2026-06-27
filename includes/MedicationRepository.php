@@ -2593,7 +2593,7 @@ final class MedicationRepository
                     m.current_quantity, m.inventory_unit, m.low_supply_threshold,
                     m.dose_form, m.quantity_per_dose, m.schedule_mode, m.interval_hours
              FROM user_notifications un
-             INNER JOIN medications m ON m.id = un.medication_id AND m.user_id = :user_id
+             INNER JOIN medications m ON m.id = un.medication_id
              WHERE un.user_id = :user_id AND un.is_dismissed = 0
              ORDER BY
                  CASE un.type

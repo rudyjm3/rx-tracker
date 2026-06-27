@@ -59,6 +59,7 @@
             </div>
           </div>
           <div class="notif-item-actions">
+            <?php if ($navShowRefillBtn ?? true): ?>
             <button type="button"
                     class="notif-refill-btn"
                     data-open-refill-modal
@@ -67,6 +68,7 @@
                     title="Log a refill for <?= e((string) $notif['medication_name']) ?>">
               Refill
             </button>
+            <?php endif; ?>
             <button type="button"
                     class="notif-dismiss-btn"
                     data-notif-dismiss="<?= e((string) $notif['id']) ?>"

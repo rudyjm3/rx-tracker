@@ -152,7 +152,7 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       <a href="index.php?page=help">Help</a>
     </div>
     <div class="nav-actions">
-      <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
+      <?php $navShowRefillBtn = false; require __DIR__ . '/../includes/nav-bell.php'; ?>
       <a class="nav-user-btn is-active" href="index.php?page=profile"
          title="<?= e((string) $userRow['email']) ?>"
          aria-label="My profile">
