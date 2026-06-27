@@ -109,8 +109,8 @@ require __DIR__ . '/../includes/nav-bell.php';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Family — RxTracker</title>
-    <link rel="stylesheet" href="assets/css/rxtracker-brand-tokens.css">
-    <link rel="stylesheet" href="assets/css/styles.css">
+    <link rel="stylesheet" href="assets/css/rxtracker-brand-tokens.css?v=<?= filemtime(__DIR__ . '/../assets/css/rxtracker-brand-tokens.css') ?>">
+    <link rel="stylesheet" href="assets/css/styles.css?v=<?= filemtime(__DIR__ . '/../assets/css/styles.css') ?>">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
