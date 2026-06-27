@@ -39,7 +39,7 @@ if ($page === 'profile') {
 }
 
 if ($page === 'family') {
-    require __DIR__ . '/routes/family.php';
+    header('Location: index.php?page=profile');
     exit;
 }
 

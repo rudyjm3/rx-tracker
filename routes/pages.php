@@ -141,13 +141,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       RxTracker
     </a>
     <div class="nav-links">
-      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'family'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
       <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
       <a href="index.php?page=help"<?= $page === 'help' ? ' class="is-active"' : '' ?>>Help</a>
-      <a href="index.php?page=family"<?= $page === 'family' ? ' class="is-active"' : '' ?>>Family</a>
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>
@@ -161,7 +160,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
         </button>
         <div class="profile-switcher-dropdown" data-profile-dropdown hidden>
-          <form method="post" action="index.php?page=family">
+          <form method="post" action="index.php?page=profile">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="switch_family_profile">
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
@@ -185,7 +184,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </button>
             <?php endforeach; ?>
           </form>
-          <a href="index.php?page=family" class="profile-switcher-manage">Manage family</a>
+          <a href="index.php?page=profile" class="profile-switcher-manage">Manage family</a>
         </div>
       </div>
       <?php endif; ?>
@@ -208,7 +207,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <?= e(mb_strtoupper(mb_substr((string) $activeProfile['display_name'], 0, 1))) ?>
     </span>
     Viewing <strong><?= e((string) $activeProfile['display_name']) ?></strong>'s medications
-    <form method="post" action="index.php?page=family" style="display:inline">
+    <form method="post" action="index.php?page=profile" style="display:inline">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="switch_family_profile">
       <input type="hidden" name="profile_id" value="0">

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 /** @var AuthService $auth */
 
-$userId = $auth->currentUserId();
+$userId     = $auth->currentUserId();
+$familyRepo = new FamilyProfileRepository(db());
 
 $stmt = db()->prepare('SELECT id, email, display_name, created_at FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
@@ -94,6 +95,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    if ($action === 'switch_family_profile') {
+        $profileId  = (int) ($_POST['profile_id'] ?? 0);
+        $redirectTo = trim((string) ($_POST['redirect_to'] ?? 'index.php'));
+        if (!str_starts_with($redirectTo, 'index.php')) {
+            $redirectTo = 'index.php';
+        }
+        if ($profileId > 0) {
+            $target = $familyRepo->findProfile($profileId, $userId);
+            if ($target !== null) {
+                $auth->setActiveProfile($profileId);
+            }
+        } else {
+            $auth->setActiveProfile(null);
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($action === 'create_family_profile') {
+        try {
+            $displayName  = trim(post_string('display_name'));
+            $avatarColor  = trim(post_string('avatar_color')) ?: null;
+            $relationship = trim(post_string('relationship')) ?: null;
+            $birthYearRaw = trim(post_string('birth_year'));
+            $birthYear    = $birthYearRaw !== '' ? (int) $birthYearRaw : null;
+            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, $birthYear);
+            header('Location: index.php?page=profile&success=' . urlencode($displayName . ' was added.'));
+        } catch (RuntimeException $e) {
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+        }
+        exit;
+    }
+
+    if ($action === 'update_family_profile') {
+        try {
+            $profileId    = (int) ($_POST['profile_id'] ?? 0);
+            $displayName  = trim(post_string('display_name'));
+            $avatarColor  = trim(post_string('avatar_color')) ?: null;
+            $relationship = trim(post_string('relationship')) ?: null;
+            $birthYearRaw = trim(post_string('birth_year'));
+            $birthYear    = $birthYearRaw !== '' ? (int) $birthYearRaw : null;
+            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear);
+            header('Location: index.php?page=profile&success=' . urlencode($displayName . '\'s profile was updated.'));
+        } catch (RuntimeException $e) {
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+        }
+        exit;
+    }
+
+    if ($action === 'delete_family_profile') {
+        $profileId = (int) ($_POST['profile_id'] ?? 0);
+        if ($profileId > 0) {
+            $familyRepo->deleteProfile($profileId, $userId);
+            if ($auth->activeProfileId() === $profileId) {
+                $auth->setActiveProfile(null);
+            }
+        }
+        header('Location: index.php?page=profile&success=' . urlencode('Family member removed.'));
+        exit;
+    }
+
     header('Location: index.php?page=profile');
     exit;
 }
@@ -107,6 +169,12 @@ $sessStmt = db()->prepare(
 $sessStmt->execute(['uid' => $userId]);
 $activeSessions = $sessStmt->fetchAll();
 $currentToken   = (string) ($_COOKIE['rx_remember'] ?? '');
+
+$familyProfiles     = $familyRepo->profilesForUser($userId);
+$relationships      = FamilyProfileRepository::allowedRelationships();
+$familyEditId       = (int) ($_GET['family_edit'] ?? 0);
+$familyEditProfile  = $familyEditId > 0 ? $familyRepo->findProfile($familyEditId, $userId) : null;
+$palette            = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444'];
 
 $memberSince = '';
 if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
@@ -366,6 +434,137 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
         </div>
       </div>
 
+      <!-- Family Members -->
+      <div class="panel">
+        <div class="panel-heading">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <h2>Family Members</h2>
+        </div>
+        <p class="muted" style="margin-bottom:1rem">Track medications for family members under one account — no separate logins needed.</p>
+
+        <?php if ($familyProfiles !== []): ?>
+        <ul class="sessions-list" style="margin-bottom:1.25rem">
+          <?php foreach ($familyProfiles as $fp): ?>
+          <li class="session-row">
+            <div class="session-info">
+              <span class="session-agent">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border-radius:50%;background:<?= e((string)($fp['avatar_color'] ?? '#6366f1')) ?>;color:#fff;font-size:.75rem;font-weight:700;margin-right:.5rem">
+                  <?= e(mb_strtoupper(mb_substr((string)$fp['display_name'], 0, 1))) ?>
+                </span>
+                <?= e((string)$fp['display_name']) ?>
+              </span>
+              <?php if ($fp['relationship'] || $fp['birth_year']): ?>
+              <span class="session-meta">
+                <?php if ($fp['relationship']): ?><?= e((string)$fp['relationship']) ?><?php endif; ?>
+                <?php if ($fp['relationship'] && $fp['birth_year']): ?> · <?php endif; ?>
+                <?php if ($fp['birth_year']): ?>b. <?= (int)$fp['birth_year'] ?><?php endif; ?>
+              </span>
+              <?php endif; ?>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-shrink:0">
+              <a href="index.php?page=profile&family_edit=<?= (int)$fp['id'] ?>" class="secondary" style="font-size:.8rem;padding:.25rem .6rem">Edit</a>
+              <form method="post" action="index.php?page=profile"
+                    onsubmit="return confirm('Remove <?= e(addslashes((string)$fp['display_name'])) ?> from your family members?')">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="delete_family_profile">
+                <input type="hidden" name="profile_id" value="<?= (int)$fp['id'] ?>">
+                <button type="submit" class="btn-danger" style="font-size:.8rem;padding:.25rem .6rem">Remove</button>
+              </form>
+            </div>
+          </li>
+          <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+
+        <?php if ($familyEditProfile !== null): ?>
+        <hr class="profile-divider">
+        <h3 style="margin-bottom:.75rem;font-size:.95rem">Edit <?= e((string)$familyEditProfile['display_name']) ?></h3>
+        <form method="post" action="index.php?page=profile" class="stacked-form">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="update_family_profile">
+          <input type="hidden" name="profile_id" value="<?= (int)$familyEditProfile['id'] ?>">
+          <div class="form-group">
+            <label for="edit_display_name">Name <span style="color:var(--danger)">*</span></label>
+            <input type="text" id="edit_display_name" name="display_name" required maxlength="100"
+                   value="<?= e((string)$familyEditProfile['display_name']) ?>">
+          </div>
+          <div class="form-group">
+            <label for="edit_relationship">Relationship</label>
+            <select id="edit_relationship" name="relationship">
+              <option value="">— Optional —</option>
+              <?php foreach ($relationships as $rel): ?>
+              <option value="<?= e($rel) ?>"<?= $familyEditProfile['relationship'] === $rel ? ' selected' : '' ?>><?= e($rel) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="edit_birth_year">Birth Year</label>
+            <input type="number" id="edit_birth_year" name="birth_year" min="1900" max="<?= (int)date('Y') ?>"
+                   value="<?= $familyEditProfile['birth_year'] !== null ? (int)$familyEditProfile['birth_year'] : '' ?>">
+          </div>
+          <div class="form-group">
+            <label>Avatar Color</label>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+              <?php
+              $currentColor = (string)($familyEditProfile['avatar_color'] ?? '#6366f1');
+              foreach ($palette as $color): ?>
+              <label style="cursor:pointer">
+                <input type="radio" name="avatar_color" value="<?= e($color) ?>"
+                       <?= $currentColor === $color ? 'checked' : '' ?> style="position:absolute;opacity:0;width:0;height:0">
+                <span data-color-swatch style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;background:<?= e($color) ?>;outline:<?= $currentColor === $color ? '3px solid #fff' : 'none' ?>;box-shadow:<?= $currentColor === $color ? '0 0 0 2px '.$color : 'none' ?>"></span>
+              </label>
+              <?php endforeach; ?>
+              <input type="color" id="edit_color_custom" value="<?= e($currentColor) ?>" style="width:1.8rem;height:1.8rem;border-radius:50%;border:none;cursor:pointer;padding:0">
+            </div>
+            <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final" value="<?= e($currentColor) ?>">
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <button type="submit" class="secondary">Save Changes</button>
+            <a href="index.php?page=profile" class="secondary">Cancel</a>
+          </div>
+        </form>
+        <hr class="profile-divider">
+        <?php endif; ?>
+
+        <h3 style="margin-bottom:.75rem;font-size:.95rem"><?= $familyEditProfile !== null ? 'Add Another Member' : 'Add a Family Member' ?></h3>
+        <form method="post" action="index.php?page=profile" class="stacked-form">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="create_family_profile">
+          <div class="form-group">
+            <label for="family_display_name">Name <span style="color:var(--danger)">*</span></label>
+            <input type="text" id="family_display_name" name="display_name" required maxlength="100" placeholder="e.g. Sarah">
+          </div>
+          <div class="form-group">
+            <label for="family_relationship">Relationship</label>
+            <select id="family_relationship" name="relationship">
+              <option value="">— Optional —</option>
+              <?php foreach ($relationships as $rel): ?>
+              <option value="<?= e($rel) ?>"><?= e($rel) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="family_birth_year">Birth Year</label>
+            <input type="number" id="family_birth_year" name="birth_year" min="1900" max="<?= (int)date('Y') ?>" placeholder="e.g. 1985">
+          </div>
+          <div class="form-group">
+            <label>Avatar Color</label>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+              <?php foreach ($palette as $i => $color): ?>
+              <label style="cursor:pointer">
+                <input type="radio" name="avatar_color" value="<?= e($color) ?>"
+                       <?= $i === 0 ? 'checked' : '' ?> style="position:absolute;opacity:0;width:0;height:0">
+                <span data-color-swatch style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;background:<?= e($color) ?>;outline:<?= $i === 0 ? '3px solid #fff' : 'none' ?>;box-shadow:<?= $i === 0 ? '0 0 0 2px '.$color : 'none' ?>"></span>
+              </label>
+              <?php endforeach; ?>
+              <input type="color" id="family_color_custom" value="#6366f1" style="width:1.8rem;height:1.8rem;border-radius:50%;border:none;cursor:pointer;padding:0">
+            </div>
+            <input type="hidden" name="avatar_color_final" id="family_avatar_color_final" value="#6366f1">
+          </div>
+          <button type="submit" class="secondary">Add Family Member</button>
+        </form>
+      </div>
+
     </div><!-- /.profile-grid -->
 
   </section>
@@ -410,5 +609,76 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
     </a>
   </div>
 </div>
+<script>
+(function () {
+  function setupColorPicker(formSelector, customColorId, finalInputId) {
+    var form = document.querySelector(formSelector);
+    if (!form) return;
+    var customInput = document.getElementById(customColorId);
+    var finalInput  = document.getElementById(finalInputId);
+    if (!customInput || !finalInput) return;
+    var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
+    radios.forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        finalInput.value = radio.value;
+        updateSwatches(form, radio.value);
+      });
+    });
+    customInput.addEventListener('input', function () {
+      finalInput.value = customInput.value;
+      updateSwatches(form, customInput.value);
+    });
+    form.addEventListener('submit', function () {
+      radios.forEach(function (r) { r.disabled = true; });
+      finalInput.name = 'avatar_color';
+    });
+  }
+  function updateSwatches(form, activeColor) {
+    form.querySelectorAll('[data-color-swatch]').forEach(function (sw) {
+      var bg = sw.style.background;
+      if (bg === activeColor) {
+        sw.style.outline = '3px solid #fff';
+        sw.style.boxShadow = '0 0 0 2px ' + bg;
+      } else {
+        sw.style.outline = 'none';
+        sw.style.boxShadow = 'none';
+      }
+    });
+  }
+  setupColorPicker('form[action*="create_family_profile"], form:has(#family_display_name)', 'family_color_custom', 'family_avatar_color_final');
+  setupColorPicker('form:has(#edit_display_name)', 'edit_color_custom', 'edit_avatar_color_final');
+  // Simpler approach: find forms by hidden action input
+  document.querySelectorAll('input[name="action"]').forEach(function (inp) {
+    if (inp.value === 'create_family_profile') {
+      var form = inp.closest('form');
+      if (form) {
+        var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
+        var finalInput = form.querySelector('#family_avatar_color_final');
+        var customInput = form.querySelector('#family_color_custom');
+        if (!finalInput || !customInput) return;
+        radios.forEach(function (radio) {
+          radio.addEventListener('change', function () { finalInput.value = radio.value; updateSwatches(form, radio.value); });
+        });
+        customInput.addEventListener('input', function () { finalInput.value = customInput.value; updateSwatches(form, customInput.value); });
+        form.addEventListener('submit', function () { radios.forEach(function (r) { r.disabled = true; }); finalInput.name = 'avatar_color'; });
+      }
+    }
+    if (inp.value === 'update_family_profile') {
+      var form = inp.closest('form');
+      if (form) {
+        var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
+        var finalInput = form.querySelector('#edit_avatar_color_final');
+        var customInput = form.querySelector('#edit_color_custom');
+        if (!finalInput || !customInput) return;
+        radios.forEach(function (radio) {
+          radio.addEventListener('change', function () { finalInput.value = radio.value; updateSwatches(form, radio.value); });
+        });
+        customInput.addEventListener('input', function () { finalInput.value = customInput.value; updateSwatches(form, customInput.value); });
+        form.addEventListener('submit', function () { radios.forEach(function (r) { r.disabled = true; }); finalInput.name = 'avatar_color'; });
+      }
+    }
+  });
+})();
+</script>
 </body>
 </html>
