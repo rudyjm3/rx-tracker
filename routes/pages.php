@@ -141,15 +141,54 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       RxTracker
     </a>
     <div class="nav-links">
-      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'family'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
       <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
       <a href="index.php?page=help"<?= $page === 'help' ? ' class="is-active"' : '' ?>>Help</a>
+      <a href="index.php?page=family"<?= $page === 'family' ? ' class="is-active"' : '' ?>>Family</a>
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>
+      <?php if (!empty($familyProfiles)): ?>
+      <div class="profile-switcher" data-profile-switcher>
+        <button type="button" class="profile-chip" aria-haspopup="true" aria-expanded="false" data-profile-chip>
+          <span class="profile-chip-avatar" style="background:<?= e((string) ($activeProfile['avatar_color'] ?? '#6366f1')) ?>">
+            <?= e(mb_strtoupper(mb_substr((string) ($activeProfile['display_name'] ?? ($currentUser['display_name'] ?? 'M')), 0, 1))) ?>
+          </span>
+          <span class="profile-chip-name"><?= e((string) ($activeProfile['display_name'] ?? 'Me')) ?></span>
+          <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div class="profile-switcher-dropdown" data-profile-dropdown hidden>
+          <form method="post" action="index.php?page=family">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="switch_family_profile">
+            <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
+            <button type="submit" name="profile_id" value="0"
+                    class="profile-option<?= $activeProfileId === null ? ' is-active' : '' ?>">
+              <span class="profile-option-avatar" style="background:#6366f1">
+                <?= e(mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'M'), 0, 1))) ?>
+              </span>
+              <?= e((string) ($currentUser['display_name'] ?? 'Me')) ?>
+            </button>
+            <?php foreach ($familyProfiles as $fp): ?>
+            <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
+                    class="profile-option<?= $activeProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
+              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
+                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
+              </span>
+              <?= e((string) $fp['display_name']) ?>
+              <?php if ($fp['relationship']): ?>
+                <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
+              <?php endif; ?>
+            </button>
+            <?php endforeach; ?>
+          </form>
+          <a href="index.php?page=family" class="profile-switcher-manage">Manage family</a>
+        </div>
+      </div>
+      <?php endif; ?>
       <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
       <a class="nav-user-btn" href="index.php?page=profile"
          title="<?= e($currentUser['email'] ?? '') ?>"
@@ -162,6 +201,22 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>
+
+  <?php if (!empty($activeProfile)): ?>
+  <div class="profile-context-banner" role="status">
+    <span class="profile-context-avatar" style="background:<?= e((string) ($activeProfile['avatar_color'] ?? '#6366f1')) ?>">
+      <?= e(mb_strtoupper(mb_substr((string) $activeProfile['display_name'], 0, 1))) ?>
+    </span>
+    Viewing <strong><?= e((string) $activeProfile['display_name']) ?></strong>'s medications
+    <form method="post" action="index.php?page=family" style="display:inline">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="switch_family_profile">
+      <input type="hidden" name="profile_id" value="0">
+      <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
+      <button type="submit" class="profile-context-switch-btn">Switch back to Me</button>
+    </form>
+  </div>
+  <?php endif; ?>
 
   <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true)): ?>
   <section class="hero">
