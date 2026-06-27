@@ -453,7 +453,10 @@ try {
             $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
             $chart  = new PainChartRenderer();
             $currentUser = $auth->currentUser();
-            $report = new DoctorVisitReport($repository, $seRepo, $chart, (string) ($currentUser['display_name'] ?? 'Patient'));
+            $patientName = $activeProfile !== null
+                ? (string) ($activeProfile['display_name'] ?? $currentUser['display_name'] ?? 'Patient')
+                : (string) ($currentUser['display_name'] ?? 'Patient');
+            $report = new DoctorVisitReport($repository, $seRepo, $chart, $patientName);
             $pdf    = $report->generate($reportStart, $reportEnd, $chartDays);
 
             header('Content-Type: application/pdf');
