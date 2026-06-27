@@ -33,9 +33,10 @@ final class MedicationRepository
 
     private function profileSql(string $alias = 'm'): string
     {
+        $col = $alias !== '' ? "{$alias}.profile_id" : 'profile_id';
         return $this->profileId === null
-            ? "AND {$alias}.profile_id IS NULL"
-            : "AND {$alias}.profile_id = :profile_id";
+            ? "AND {$col} IS NULL"
+            : "AND {$col} = :profile_id";
     }
 
     private function profileParam(): array
@@ -167,9 +168,9 @@ final class MedicationRepository
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id AND active = 1'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
         );
-        $statement->execute(['id' => $id, 'user_id' => $this->userId]);
+        $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
         $row = $statement->fetch();
 
         if (!is_array($row)) {
@@ -399,9 +400,9 @@ final class MedicationRepository
                      ) THEN :starting_quantity ELSE starting_quantity END,
                      current_quantity = :current_quantity,
                      quantity_per_dose = :quantity_per_dose
-                 WHERE id = :id AND user_id = :user_id'
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             );
-            $statement->execute([
+            $statement->execute(array_merge([
                 'id' => $id,
                 'user_id' => $this->userId,
                 'refill_check_id' => $id,
@@ -426,7 +427,7 @@ final class MedicationRepository
                 'starting_quantity' => $startingQuantity,
                 'current_quantity' => $startingQuantity,
                 'quantity_per_dose' => $quantityPerDose,
-            ]);
+            ], $this->profileParam()));
 
             $this->replaceScheduleTimes($id, $doseTimes, $doseQtys);
             $this->db->commit();
@@ -444,6 +445,14 @@ final class MedicationRepository
 
         if ($painLevel !== null && ($painLevel < 1 || $painLevel > 10)) {
             throw new RuntimeException('Pain level must be between 1 and 10.');
+        }
+
+        $ownerCheck = $this->db->prepare(
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
+        );
+        $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if (!$ownerCheck->fetchColumn()) {
+            throw new RuntimeException('Medication not found.');
         }
 
         $doseQtyOverride = null;
@@ -542,6 +551,14 @@ final class MedicationRepository
 
     public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false): void
     {
+        $ownerCheck = $this->db->prepare(
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
+        );
+        $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if (!$ownerCheck->fetchColumn()) {
+            throw new RuntimeException('Medication not found.');
+        }
+
         $now = new DateTimeImmutable('now');
         $date = $now->format('Y-m-d');
 
@@ -734,14 +751,14 @@ final class MedicationRepository
 
     public function deactivateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id');
-        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+        $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function activateMedication(int $medicationId): void
     {
-        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id');
-        $statement->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+        $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+        $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function getMissedGraceMinutes(): int
@@ -1138,8 +1155,8 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
-            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id AND active = 1');
-            $stmt->execute(['id' => $medicationId, 'user_id' => $this->userId]);
+            $stmt = $this->db->prepare('SELECT current_quantity FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1');
+            $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
             $current = $stmt->fetchColumn();
             if ($current === false) {
                 throw new RuntimeException('Medication not found.');
@@ -1147,14 +1164,14 @@ final class MedicationRepository
             $newCount = (float) $current + $amount;
 
             $update = $this->db->prepare(
-                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id'
+                'UPDATE medications SET current_quantity = :current_quantity, starting_quantity = :starting_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             );
-            $update->execute([
+            $update->execute(array_merge([
                 'current_quantity' => $newCount,
                 'starting_quantity' => $amount,
                 'id' => $medicationId,
                 'user_id' => $this->userId,
-            ]);
+            ], $this->profileParam()));
 
             $insert = $this->db->prepare(
                 'INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note)
@@ -1449,8 +1466,8 @@ final class MedicationRepository
                      WHEN current_quantity >= :qty THEN current_quantity - :qty2
                      ELSE 0
                  END
-                 WHERE id = :id'
-            )->execute(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId]);
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            )->execute(array_merge(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         } else {
             $this->db->prepare(
                 'UPDATE medications
@@ -1459,8 +1476,8 @@ final class MedicationRepository
                      WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
                      ELSE 0
                  END
-                 WHERE id = :id'
-            )->execute(['id' => $medicationId]);
+                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            )->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         }
     }
 
@@ -2703,6 +2720,9 @@ final class MedicationRepository
                         created_at    TEXT DEFAULT CURRENT_TIMESTAMP
                     )"
                 );
+                // SQLite does not support IF NOT EXISTS on ADD COLUMN; swallow the error if the column exists.
+                try { $this->db->exec("ALTER TABLE medications ADD COLUMN profile_id INTEGER NULL"); } catch (Throwable) {}
+                try { $this->db->exec("ALTER TABLE medication_groups ADD COLUMN profile_id INTEGER NULL"); } catch (Throwable) {}
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.

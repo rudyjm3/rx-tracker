@@ -244,11 +244,15 @@ CREATE TABLE IF NOT EXISTS family_profiles (
 
 ALTER TABLE medications
     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id,
-    ADD INDEX IF NOT EXISTS idx_medications_profile (profile_id);
+    ADD INDEX IF NOT EXISTS idx_medications_profile (profile_id),
+    ADD CONSTRAINT fk_medications_profile
+        FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL;
 
 ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id,
-    ADD INDEX IF NOT EXISTS idx_medication_groups_profile (profile_id);
+    ADD INDEX IF NOT EXISTS idx_medication_groups_profile (profile_id),
+    ADD CONSTRAINT fk_medication_groups_profile
+        FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL;
 
 -- In-app low-stock notifications
 CREATE TABLE IF NOT EXISTS user_notifications (
