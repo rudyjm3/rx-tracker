@@ -250,7 +250,6 @@ button:disabled {
   border: 1px solid var(--rx-border);
   border-radius: var(--rx-radius-md);
   box-shadow: var(--rx-shadow);
-  display: flex;
   flex-direction: column;
   max-height: min(480px, calc(100vh - 5rem));
   min-width: 320px;
@@ -259,6 +258,10 @@ button:disabled {
   top: calc(100% + 0.5rem);
   width: min(360px, calc(100vw - 2rem));
   z-index: 1100;
+}
+
+.notif-panel:not([hidden]) {
+  display: flex;
 }
 
 .notif-panel-header {
