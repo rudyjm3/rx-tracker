@@ -345,6 +345,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <option value="supplement"   <?= (($editing['medication_type'] ?? '') === 'supplement')   ? 'selected' : '' ?>>Vitamin / Supplement</option>
             </select>
           </label>
+          <label>Start date <span class="field-optional">(when you began taking this medication)</span>
+            <input type="date" name="start_date" value="<?= e((string) ($editing['start_date'] ?? date('Y-m-d'))) ?>">
+          </label>
           <label>Dose amount
             <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>">
           </label>
@@ -549,6 +552,41 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <div data-med-detail-body>
           <p class="pain-graph-loading">Loading&hellip;</p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Side effect log modal -->
+  <div class="modal-overlay" id="side-effect-modal" data-se-modal>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="se-modal-title">
+      <div class="modal-header">
+        <h2 id="se-modal-title">Log Side Effect</h2>
+        <button type="button" class="icon-button" data-close-se-modal aria-label="Close">&#10005;</button>
+      </div>
+      <div class="modal-scroll">
+      <form method="post" action="index.php" class="stacked-form" data-se-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="log_side_effect">
+        <input type="hidden" name="medication_id" id="se-medication-id" value="">
+        <label>Date
+          <input type="date" name="occurred_date" value="<?= e(date('Y-m-d')) ?>">
+        </label>
+        <label>Description <span class="field-required">*</span>
+          <input type="text" name="description" maxlength="255" required placeholder="e.g. Nausea, headache, dizziness">
+        </label>
+        <label>Severity
+          <select name="severity">
+            <option value="mild">Mild</option>
+            <option value="moderate">Moderate</option>
+            <option value="severe">Severe</option>
+          </select>
+        </label>
+        <label>Notes <span class="field-optional">(optional)</span>
+          <textarea name="note" rows="3" maxlength="500" placeholder="Any additional context or observations"></textarea>
+        </label>
+        <button type="submit">Log side effect</button>
+        <button type="button" class="secondary" data-close-se-modal>Cancel</button>
+      </form>
       </div>
     </div>
   </div>
@@ -945,144 +983,120 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <?php if ($page === 'export'): ?>
   <?php
-    $exportMonth = (string) ($_GET['m'] ?? date('Y-m'));
-    if (!preg_match('/^\d{4}-\d{2}$/', $exportMonth)) {
-        $exportMonth = date('Y-m');
-    }
-    $rawStart = (string) ($_GET['start_date'] ?? '');
-    $rawEnd   = (string) ($_GET['end_date'] ?? '');
-    $validStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawStart) ? $rawStart : null;
-    $validEnd   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawEnd)   ? $rawEnd   : null;
-    if ($validStart !== null && $validEnd !== null && $validStart <= $validEnd) {
-        $filterStart   = $validStart;
-        $filterEnd     = $validEnd;
-        $isCustomRange = true;
-        $exportMonth   = (new DateTimeImmutable($filterStart))->format('Y-m');
-    } else {
-        $monthDate     = DateTimeImmutable::createFromFormat('Y-m-d', $exportMonth . '-01');
-        $filterStart   = $exportMonth . '-01';
-        $filterEnd     = $monthDate ? $monthDate->format('Y-m-t') : $exportMonth . '-31';
-        $isCustomRange = false;
-    }
-    $monthDateObj = DateTimeImmutable::createFromFormat('Y-m', $exportMonth);
-    $prevMonth    = $monthDateObj ? $monthDateObj->modify('-1 month')->format('Y-m') : '';
-    $nextMonth    = $monthDateObj ? $monthDateObj->modify('+1 month')->format('Y-m') : '';
-    $monthLabel   = $monthDateObj ? $monthDateObj->format('F Y') : $exportMonth;
-  ?>
-  <section class="panel export-section">
-    <div class="panel-heading">
-      <h2>Medication List &mdash; <?= e(date('F j, Y')) ?></h2>
-      <button type="button" class="no-print" onclick="window.print()">Print / Save as PDF</button>
-    </div>
-    <div class="table-scroll-wrap">
-    <table class="export-table">
-      <thead>
-        <tr>
-          <th>Medication</th>
-          <th>Dose</th>
-          <th>Schedule</th>
-          <th>Instructions</th>
-          <th>Pills left</th>
-          <th>Refill at</th>
-          <th>Est. days left</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($medications as $med): ?>
-          <?php $exportDays = daysUntilRunout($med); ?>
-          <tr>
-            <td><?= e((string) $med['name']) ?></td>
-            <td><?= e(formattedDose($med)) ?></td>
-            <td>
-              <?php if ((string) $med['schedule_mode'] === 'interval'): ?>
-                Every <?= e((string) $med['interval_hours']) ?>h from <?= e(to12h((string) $med['first_dose_time'])) ?>
-              <?php else: ?>
-                <?= e(implode(', ', array_map(static fn(string $t): string => to12h($t), $med['times']))) ?>
-              <?php endif; ?>
-            </td>
-            <td><?= e((string) ($med['instructions'] ?: '—')) ?></td>
-            <?php
-              $exportQty = (float) ($med['current_quantity'] ?? $med['pill_count'] ?? 0);
-              $exportQtyDisplay = $exportQty == (int) $exportQty ? (string) (int) $exportQty : rtrim(rtrim(number_format($exportQty, 3), '0'), '.');
-            ?>
-            <td><?= e($exportQtyDisplay) ?> <?= e((string) ($med['inventory_unit'] ?? 'tablets')) ?></td>
-            <td><?= e((string) $med['low_supply_threshold']) ?></td>
-            <td>
-              <?php if ($exportDays !== null): ?>
-                ~<?= e((string) $exportDays) ?> days
-              <?php else: ?>
-                —
-              <?php endif; ?>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-        <?php if ($medications === []): ?>
-          <tr><td colspan="7">No active medications.</td></tr>
-        <?php endif; ?>
-      </tbody>
-    </table>
-    </div>
-  </section>
+    // Default reporting period: last 30 days
+    $reportDefaultStart = date('Y-m-d', strtotime('-30 days'));
+    $reportDefaultEnd   = date('Y-m-d');
+    $reportStart = (string) ($_GET['report_start'] ?? $reportDefaultStart);
+    $reportEnd   = (string) ($_GET['report_end']   ?? $reportDefaultEnd);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportStart)) { $reportStart = $reportDefaultStart; }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportEnd))   { $reportEnd   = $reportDefaultEnd; }
+    if ($reportStart > $reportEnd) { $reportStart = $reportDefaultStart; }
 
-  <?php $exportLogs = $repository->logsForDateRange($filterStart, $filterEnd); ?>
-  <section class="panel export-section export-history-section" id="dose-history">
-    <div class="panel-heading export-history-heading">
-      <h2>Dose History</h2>
-      <div class="export-month-nav no-print">
-        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($prevMonth) ?>#dose-history">&lsaquo;</a>
-        <span class="export-month-label"><?= e($monthLabel) ?></span>
-        <a class="calendar-nav-btn secondary" href="?page=export&m=<?= e($nextMonth) ?>#dose-history">&rsaquo;</a>
-      </div>
+    $trackedMedications = array_values(array_filter(
+        $medications,
+        static fn(array $m): bool => (bool) $m['track_dose_feedback']
+    ));
+
+    // Compute days-on-medication and default chart range for each pain-tracked medication
+    $medChartInfo = [];
+    foreach ($trackedMedications as $m) {
+        $sd     = !empty($m['start_date']) ? (string) $m['start_date'] : date('Y-m-d');
+        $daysOn = max(0, (int) floor((time() - strtotime($sd)) / 86400));
+        if ($daysOn < 7) {
+            $defaultRange = 0;
+            $extraOpts    = [];
+        } elseif ($daysOn < 30) {
+            $defaultRange = 7;
+            $extraOpts    = [];
+        } elseif ($daysOn < 90) {
+            $defaultRange = 30;
+            $extraOpts    = [7];
+        } else {
+            $defaultRange = 90;
+            $extraOpts    = [7, 30];
+        }
+        $medChartInfo[(int) $m['id']] = [
+            'days_on'       => $daysOn,
+            'default_range' => $defaultRange,
+            'extra_opts'    => $extraOpts,
+            'start_date'    => $sd,
+        ];
+    }
+  ?>
+  <section class="panel export-section" style="max-width:700px;margin:1.5rem auto;">
+    <div class="panel-heading">
+      <h2>Doctor Visit Report</h2>
     </div>
-    <form method="get" action="index.php" class="export-date-filter no-print" data-history-filter>
-      <input type="hidden" name="page" value="export">
-      <label>From <input type="date" name="start_date" value="<?= e($filterStart) ?>"></label>
-      <label>To <input type="date" name="end_date" value="<?= e($filterEnd) ?>"></label>
-      <button type="submit" class="secondary">Filter</button>
-      <?php if ($isCustomRange): ?>
-        <a href="?page=export&m=<?= e($exportMonth) ?>#dose-history" class="secondary">Clear</a>
-      <?php endif; ?>
-    </form>
-    <p class="export-date-range-label">
-      <?php if ($isCustomRange): ?>
-        <?= e((new DateTimeImmutable($filterStart))->format('M j, Y')) ?> &ndash; <?= e((new DateTimeImmutable($filterEnd))->format('M j, Y')) ?>
-      <?php else: ?>
-        <?= e($monthLabel) ?>
-      <?php endif; ?>
-      &mdash; <?= count($exportLogs) ?> record<?= count($exportLogs) !== 1 ? 's' : '' ?>
-    </p>
-    <?php if ($exportLogs !== []): ?>
-    <div class="table-scroll-wrap">
-    <table class="export-table">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Medication</th>
-          <th>Time</th>
-          <th>Status</th>
-          <th>Pain Level</th>
-          <th>Notes</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php foreach ($exportLogs as $log): ?>
-          <tr>
-            <td><?= e((string) $log['scheduled_for_date']) ?></td>
-            <td><?= e((string) $log['name']) ?><?= !empty($log['dose']) ? ' — ' . e((string) $log['dose']) : '' ?></td>
-            <td><?= e(to12h((string) $log['scheduled_time'])) ?></td>
-            <td><?= e(ucfirst((string) $log['status'])) ?></td>
-            <td><?= (isset($log['pain_level']) && $log['pain_level'] !== null) ? e((string) $log['pain_level']) . '/10' : '&mdash;' ?></td>
-            <td><?= e((string) ($log['note'] ?: '—')) ?></td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-    </div>
-    <?php else: ?>
-    <p class="empty-state-text">No dose records for this period.</p>
+    <?php if ($error !== null): ?>
+      <div class="alert"><?= e($error) ?></div>
     <?php endif; ?>
+    <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
+      Generate a branded PDF summary of your medication history, adherence, pain trends, and side effects — ready to share with your doctor.
+    </p>
+    <form method="post" action="index.php" class="stacked-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="generate_doctor_visit_report">
+
+      <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
+        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Reporting period</legend>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.5rem;">
+          <label style="flex:1;min-width:140px;">From
+            <input type="date" name="report_start" value="<?= e($reportStart) ?>" required>
+          </label>
+          <label style="flex:1;min-width:140px;">To
+            <input type="date" name="report_end" value="<?= e($reportEnd) ?>" required>
+          </label>
+        </div>
+      </fieldset>
+
+      <?php if ($trackedMedications !== []): ?>
+      <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
+        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Pain chart range per medication</legend>
+        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
+          Charts are based on days on medication. The default range is pre-selected; you can choose a different window if you prefer.
+        </p>
+        <?php foreach ($trackedMedications as $m): ?>
+          <?php
+            $mId   = (int) $m['id'];
+            $info  = $medChartInfo[$mId];
+            $daysOn = $info['days_on'];
+            $defR   = $info['default_range'];
+          ?>
+          <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--rx-bg);border-radius:8px;">
+            <strong><?= e((string) $m['name']) ?></strong>
+            <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $daysOn ?> days on medication</span>
+            <?php if ($defR === 0): ?>
+              <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
+                Pain tracking started <?= e(date('F j', strtotime($info['start_date']))) ?> — check back after a few more days of logged doses.
+              </p>
+              <input type="hidden" name="chart_days[<?= $mId ?>]" value="0">
+            <?php else: ?>
+              <div style="margin-top:0.4rem;">
+                <label style="font-size:0.88rem;">Chart window
+                  <select name="chart_days[<?= $mId ?>]" style="margin-left:0.5rem;">
+                    <?php if (in_array(7, $info['extra_opts'], true) || $defR === 7): ?>
+                      <option value="7" <?= $defR === 7 ? 'selected' : '' ?>>7 days</option>
+                    <?php endif; ?>
+                    <?php if (in_array(30, $info['extra_opts'], true) || $defR === 30): ?>
+                      <option value="30" <?= $defR === 30 ? 'selected' : '' ?>>30 days</option>
+                    <?php endif; ?>
+                    <?php if ($defR === 90 || $daysOn >= 90): ?>
+                      <option value="90" <?= $defR === 90 ? 'selected' : '' ?>>90 days</option>
+                    <?php endif; ?>
+                  </select>
+                </label>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </fieldset>
+      <?php endif; ?>
+
+      <button type="submit" style="width:100%;">
+        <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
+      </button>
+    </form>
   </section>
-  <p class="disclaimer no-print">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
 </main>
 <nav class="bottom-nav" aria-label="Main navigation">
   <a href="index.php" class="bottom-nav-item" aria-label="Dashboard">
@@ -1097,9 +1111,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <i class="fa-regular fa-calendar" aria-hidden="true"></i>
     Calendar
   </a>
-  <a href="index.php?page=export" class="bottom-nav-item is-active" aria-label="Export">
-    <i class="fa-solid fa-file-export" aria-hidden="true"></i>
-    Export
+  <a href="index.php?page=export" class="bottom-nav-item is-active" aria-label="Report">
+    <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+    Report
   </a>
   <button type="button" class="bottom-nav-item" aria-label="More" onclick="document.getElementById('more-menu').classList.add('is-open')">
     <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>

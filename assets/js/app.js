@@ -3755,6 +3755,41 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
   }
 });
 
+// ── Side-effect modal ─────────────────────────────────────────────────────────
+
+(function () {
+  const modal    = document.querySelector('[data-se-modal]');
+  const medIdEl  = document.querySelector('#se-medication-id');
+  const titleEl  = document.querySelector('#se-modal-title');
+  if (!modal) return;
+
+  const openSeModal = ({ medicationId, medicationName }) => {
+    if (medIdEl) medIdEl.value = medicationId;
+    if (titleEl) titleEl.textContent = `Log Side Effect — ${medicationName}`;
+    modal.classList.add('is-open');
+    lockBodyScroll();
+  };
+  const closeSeModal = () => {
+    modal.classList.remove('is-open');
+    unlockBodyScroll();
+  };
+
+  document.querySelectorAll('[data-log-se]').forEach((btn) => {
+    btn.addEventListener('click', () => openSeModal({
+      medicationId:   btn.dataset.medicationId,
+      medicationName: btn.dataset.medicationName,
+    }));
+  });
+
+  document.querySelectorAll('[data-close-se-modal]').forEach((btn) => {
+    btn.addEventListener('click', closeSeModal);
+  });
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeSeModal();
+  });
+})();
+
 // Profile switcher dropdown
 (function () {
   const switcher = document.querySelector('[data-profile-switcher]');
