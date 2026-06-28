@@ -216,8 +216,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       <a href="index.php?page=medications">Medications</a>
       <a href="index.php?page=calendar">Calendar</a>
       <a href="index.php?page=export">Export</a>
-      <a href="index.php?page=settings">Settings</a>
-      <a href="index.php?page=help">Help</a>
     </div>
     <div class="nav-actions">
       <?php $navShowRefillBtn = false; require __DIR__ . '/../includes/nav-bell.php'; ?>
@@ -227,6 +225,12 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
         <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
       </a>
       <span class="nav-user-name"><?= e((string) ($userRow['display_name'] ?? $userRow['email'])) ?></span>
+      <a href="index.php?page=settings" class="nav-icon-link" aria-label="Settings" title="Settings">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+      </a>
+      <a href="index.php?page=help" class="nav-icon-link" aria-label="Help" title="Help">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+      </a>
     </div>
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>

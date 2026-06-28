@@ -45,18 +45,20 @@ final class DoctorVisitReport
 
         $medications  = $this->repository->activeMedications();
         $adherence    = $this->repository->adherenceForDateRange($startDate, $endDate);
-        $missedLogs   = $this->repository->missedAndSkippedForDateRange($startDate, $endDate);
+        $dailySummary = $this->repository->dailyDoseSummaryForDateRange($startDate, $endDate);
         $sideEffects  = $this->sideEffectRepo->sideEffectsForDateRange($startDate, $endDate);
 
         $html  = $this->docHead($generatedDate);
         $html .= '<body>';
         $html .= $this->sectionHeader($periodLabel, $generatedDate);
+        $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
         $html .= $this->sectionAdherence($adherence);
         $html .= $this->sectionMedications($medications);
-        $html .= $this->sectionMissedDoses($missedLogs);
+        $html .= $this->sectionDoseSummary($dailySummary);
         $html .= $this->sectionPainCharts($medications, $startDate, $endDate, $perMedChartDays);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
+        $html .= '</div>';
         $html .= '</body></html>';
 
         return $html;
@@ -77,7 +79,7 @@ final class DoctorVisitReport
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #172033; background: #fff; }
-@page { size: letter portrait; margin: 0.6in 0.65in 0.7in 0.65in; }
+@page { size: letter portrait; margin: 0; }
 
 /* Tables */
 table  { width: 100%; border-collapse: collapse; margin-bottom: 12pt; font-size: 9pt; }
@@ -168,8 +170,8 @@ HTML;
     </td>
     <td style="padding:14pt 12pt;vertical-align:middle;border:none;">
       <div style="font-size:17pt;font-weight:bold;color:#ffffff;line-height:1.2;">Doctor Visit Report</div>
-      <div style="font-size:9pt;color:#cde8ff;margin-top:4pt;">Patient: {$name}</div>
-      <div style="font-size:9pt;color:#cde8ff;margin-top:2pt;">Period: {$period} &nbsp;|&nbsp; Generated: {$gen}</div>
+      <div style="font-size:9pt;color:#cde8ff;margin-top:4pt;">Prepared by RxTracker &bull; Patient: {$name}</div>
+      <div style="font-size:9pt;color:#cde8ff;margin-top:2pt;">Reporting period: {$period} &bull; Generated: {$gen}</div>
     </td>
   </tr>
 </table>
@@ -268,34 +270,39 @@ HTML;
     }
 
     // -------------------------------------------------------------------------
-    // Section 4: Missed / Skipped Dose Detail
+    // Section 4: Daily Dose Summary
     // -------------------------------------------------------------------------
 
-    private function sectionMissedDoses(array $logs): string
+    private function sectionDoseSummary(array $rows): string
     {
-        $rows = '';
-        foreach ($logs as $log) {
-            $statusClass = (string) $log['status'] === 'missed' ? 'badge-missed' : 'badge-skipped';
-            $rows .= sprintf(
-                '<tr><td>%s</td><td>%s</td><td>%s</td><td><span class="badge %s">%s</span></td></tr>',
-                $this->h((string) $log['scheduled_for_date']),
-                $this->h((string) $log['name']),
-                $this->h($this->to12h((string) $log['scheduled_time'])),
-                $statusClass,
-                ucfirst((string) $log['status'])
-            );
+        $tableRows = '';
+        foreach ($rows as $row) {
+            $date    = $this->h(date('M j, Y', (int) strtotime((string) $row['scheduled_for_date'])));
+            $med     = $this->h((string) $row['name']);
+            $dose    = trim((string) $row['dose_amount'] . ' ' . (string) $row['dose_unit']);
+            $medCell = $dose !== '' ? "{$med} <span style=\"color:#60708A;\">{$this->h($dose)}</span>" : $med;
+
+            $taken   = (int) $row['taken'];
+            $missed  = (int) $row['missed'];
+            $skipped = (int) $row['skipped'];
+
+            $takenCell   = $taken   > 0 ? "<strong style=\"color:#18BFA6;\">{$taken}</strong>"   : '0';
+            $missedCell  = $missed  > 0 ? "<strong style=\"color:#E5484D;\">{$missed}</strong>"  : '0';
+            $skippedCell = $skipped > 0 ? "<strong style=\"color:#F5A524;\">{$skipped}</strong>" : '0';
+
+            $tableRows .= "<tr><td>{$date}</td><td>{$medCell}</td><td>{$takenCell}</td><td>{$missedCell}</td><td>{$skippedCell}</td></tr>";
         }
 
-        if ($rows === '') {
-            $rows = '<tr><td colspan="4" class="empty-state">No missed or skipped doses for this period.</td></tr>';
+        if ($tableRows === '') {
+            $tableRows = '<tr><td colspan="5" class="empty-state">No scheduled dose data for this period.</td></tr>';
         }
 
         return <<<HTML
-<div class="section-title page-break">Missed &amp; Skipped Dose Detail</div>
+<div class="section-title page-break">Dose History</div>
 <div class="section-block">
   <table>
-    <thead><tr><th>Date</th><th>Medication</th><th>Scheduled Time</th><th>Status</th></tr></thead>
-    <tbody>{$rows}</tbody>
+    <thead><tr><th>Date</th><th>Medication</th><th>Taken</th><th>Missed</th><th>Skipped</th></tr></thead>
+    <tbody>{$tableRows}</tbody>
   </table>
 </div>
 HTML;

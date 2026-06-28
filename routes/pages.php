@@ -145,8 +145,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
-      <a href="index.php?page=settings"<?= $page === 'settings' ? ' class="is-active"' : '' ?>>Settings</a>
-      <a href="index.php?page=help"<?= $page === 'help' ? ' class="is-active"' : '' ?>>Help</a>
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>
@@ -197,6 +195,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <span class="nav-user-name">
         <?= e($currentUser['display_name'] ?? $currentUser['email'] ?? '') ?>
       </span>
+      <a href="index.php?page=settings" class="nav-icon-link<?= $page === 'settings' ? ' is-active' : '' ?>"
+         aria-label="Settings" title="Settings">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+      </a>
+      <a href="index.php?page=help" class="nav-icon-link<?= $page === 'help' ? ' is-active' : '' ?>"
+         aria-label="Help" title="Help">
+        <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+      </a>
     </div>
     <button class="nav-hamburger" aria-label="Menu" aria-expanded="false" data-nav-toggle>&#9776;</button>
   </nav>
@@ -487,11 +493,16 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
       </div>
       <div class="modal-scroll">
-        <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-          <button class="range-tab is-active" data-range="0">Today</button>
-          <button class="range-tab" data-range="7">7 days</button>
-          <button class="range-tab" data-range="30">30 days</button>
-          <button class="range-tab" data-range="90">90 days</button>
+        <div class="pain-graph-controls">
+          <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+            <button class="range-tab is-active" data-range="0">Today</button>
+            <button class="range-tab" data-range="7">7 days</button>
+            <button class="range-tab" data-range="30">30 days</button>
+            <button class="range-tab" data-range="90">90 days</button>
+          </div>
+          <button type="button" class="pain-graph-print-btn" data-pain-graph-print aria-label="Print pain graph" title="Print">
+            <i class="fa-solid fa-print" aria-hidden="true"></i>
+          </button>
         </div>
         <div class="pain-graph-body" data-pain-graph-body></div>
         <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
@@ -1544,7 +1555,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="action"         value="mark_dose">
         <input type="hidden" name="status"         value="taken">
         <input type="hidden" name="json_response"  value="1">
-        <input type="hidden" name="note"           value="Marked taken (was missed)">
+        <input type="hidden" name="note"           data-missed-dose-note-hidden value="Marked taken (was missed)">
+        <input type="hidden" name="pain_level"     data-missed-dose-pain-level  value="">
         <input type="hidden" name="medication_id"  data-missed-dose-med-id     value="">
         <input type="hidden" name="scheduled_date" data-missed-dose-date        value="">
         <input type="hidden" name="scheduled_time" data-missed-dose-sched-time  value="">
@@ -1552,6 +1564,19 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <label for="missed-dose-actual-time" class="form-label">Time taken</label>
           <input type="time" id="missed-dose-actual-time" name="actual_taken_time"
                  data-missed-dose-actual-time class="form-control" style="margin-top:.375rem;width:100%;">
+        </div>
+        <div data-missed-dose-pain-section hidden style="margin-top:1.25rem;">
+          <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select pain level" style="margin-top:.4rem;">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="missed-pain-btn" data-missed-pain="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+          <label style="margin-top:.75rem;display:block;">Notes <span class="field-optional">(optional)</span>
+            <textarea data-missed-dose-note-text rows="2" maxlength="250"
+                      placeholder="Any notes about this dose?"
+                      style="margin-top:.375rem;width:100%;"></textarea>
+          </label>
         </div>
       </form>
     </div>

@@ -242,6 +242,17 @@ try {
                 throw new RuntimeException('Taken time cannot be in the future.');
             }
             $customTakenAt = $candidateAt->format('Y-m-d H:i:s');
+        } else {
+            $scheduledDateStr = post_string('scheduled_date');
+            $scheduledTimeStr = post_string('scheduled_time');
+            if ($scheduledDateStr !== '' && $scheduledTimeStr !== '') {
+                $graceMin    = $repository->getMissedGraceMinutes();
+                $scheduledAt = new DateTimeImmutable($scheduledDateStr . ' ' . $scheduledTimeStr);
+                $earliest    = $scheduledAt->modify('-' . $graceMin . ' minutes');
+                if (new DateTimeImmutable('now') < $earliest) {
+                    throw new RuntimeException('Too early to log this dose. It is scheduled for ' . $scheduledAt->format('g:i A') . '.');
+                }
+            }
         }
         $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt);
         if ($jsonResponse) {

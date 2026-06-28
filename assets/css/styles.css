@@ -243,6 +243,10 @@ button:disabled {
   top: -0.15rem;
 }
 
+.nav-bell-badge[hidden] {
+  display: none;
+}
+
 /* ── Notification panel ─────────────────────────────────────────────────────── */
 
 .notif-panel {
@@ -1855,7 +1859,8 @@ textarea:focus,
 }
 
 .medication-actions-bottom button,
-.medication-actions-bottom .secondary {
+.medication-actions-bottom .secondary,
+.log-se-btn {
   align-items: center;
   display: inline-flex;
   font-size: 0.82rem;
@@ -3221,10 +3226,36 @@ textarea:focus,
   max-width: 600px;
 }
 
-.pain-graph-range-tabs {
+.pain-graph-controls {
+  align-items: center;
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1.2rem;
+}
+
+.pain-graph-print-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
+  justify-content: center;
+  margin-left: 1rem;
+  padding: 0.3rem 0.5rem;
+}
+
+.pain-graph-print-btn:hover {
+  background: var(--rx-bg);
+  box-shadow: none;
+  transform: none;
+}
+
+.pain-graph-range-tabs {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .range-tab {
@@ -3486,6 +3517,45 @@ textarea:focus,
   background: #c9213c;
   border-color: #c9213c;
 }
+
+/* Missed dose modal pain buttons — same appearance as feedback modal pain buttons */
+.missed-pain-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  color: var(--rx-text-muted);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+.missed-pain-btn:hover { border-color: var(--rx-text-muted); color: #fff; }
+.missed-pain-btn[data-missed-pain="1"],
+.missed-pain-btn[data-missed-pain="2"],
+.missed-pain-btn[data-missed-pain="3"]  { border-color: #2a9d49; }
+.missed-pain-btn[data-missed-pain="4"],
+.missed-pain-btn[data-missed-pain="5"],
+.missed-pain-btn[data-missed-pain="6"]  { border-color: #d97706; }
+.missed-pain-btn[data-missed-pain="7"],
+.missed-pain-btn[data-missed-pain="8"]  { border-color: #e05b30; }
+.missed-pain-btn[data-missed-pain="9"],
+.missed-pain-btn[data-missed-pain="10"] { border-color: #c9213c; }
+.missed-pain-btn.is-selected { color: #fff; }
+.missed-pain-btn.is-selected[data-missed-pain="1"],
+.missed-pain-btn.is-selected[data-missed-pain="2"],
+.missed-pain-btn.is-selected[data-missed-pain="3"]  { background: #2a9d49; border-color: #2a9d49; }
+.missed-pain-btn.is-selected[data-missed-pain="4"],
+.missed-pain-btn.is-selected[data-missed-pain="5"],
+.missed-pain-btn.is-selected[data-missed-pain="6"]  { background: #d97706; border-color: #d97706; }
+.missed-pain-btn.is-selected[data-missed-pain="7"],
+.missed-pain-btn.is-selected[data-missed-pain="8"]  { background: #e05b30; border-color: #e05b30; }
+.missed-pain-btn.is-selected[data-missed-pain="9"],
+.missed-pain-btn.is-selected[data-missed-pain="10"] { background: #c9213c; border-color: #c9213c; }
 
 .feedback-actions {
   display: flex;
@@ -4752,6 +4822,28 @@ a.nav-user-btn.is-active {
   background: var(--rx-navy);
   border-color: var(--rx-navy);
   color: #fff;
+}
+
+/* ── Nav icon links (Settings, Help) ────────────────────────────────────────── */
+
+.nav-icon-link {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  color: var(--rx-text-muted);
+  display: inline-flex;
+  font-size: 1.1rem;
+  padding: 0.3rem;
+  text-decoration: none;
+}
+
+.nav-icon-link:hover {
+  color: var(--rx-navy);
+}
+
+.nav-icon-link.is-active {
+  color: var(--rx-navy);
 }
 
 /* ── Profile page ────────────────────────────────────────────────────────────── */

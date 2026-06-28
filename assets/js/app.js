@@ -114,13 +114,18 @@ requiredDosesModal?.addEventListener('click', (e) => {
 
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
-const missedDoseModal      = document.querySelector('[data-missed-dose-modal]');
-const missedDoseTitle      = document.querySelector('[data-missed-dose-title]');
-const missedDoseMedId      = document.querySelector('[data-missed-dose-med-id]');
-const missedDoseDate       = document.querySelector('[data-missed-dose-date]');
-const missedDoseSchedTime  = document.querySelector('[data-missed-dose-sched-time]');
-const missedDoseActualTime = document.querySelector('[data-missed-dose-actual-time]');
-const missedDoseForm       = document.querySelector('[data-missed-dose-form]');
+const missedDoseModal        = document.querySelector('[data-missed-dose-modal]');
+const missedDoseTitle        = document.querySelector('[data-missed-dose-title]');
+const missedDoseMedId        = document.querySelector('[data-missed-dose-med-id]');
+const missedDoseDate         = document.querySelector('[data-missed-dose-date]');
+const missedDoseSchedTime    = document.querySelector('[data-missed-dose-sched-time]');
+const missedDoseActualTime   = document.querySelector('[data-missed-dose-actual-time]');
+const missedDoseForm         = document.querySelector('[data-missed-dose-form]');
+const missedDosePainSection  = document.querySelector('[data-missed-dose-pain-section]');
+const missedDosePainLevelEl  = document.querySelector('[data-missed-dose-pain-level]');
+const missedDoseNoteHidden   = document.querySelector('[data-missed-dose-note-hidden]');
+const missedDoseNoteText     = document.querySelector('[data-missed-dose-note-text]');
+let   missedDosePainMode     = false;
 const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
 const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
 
@@ -212,8 +217,22 @@ slotPickerModal?.addEventListener('click', (e) => {
 });
 
 slotPickerConfirm?.addEventListener('click', async () => {
-  const { medicationId, selectedSlot, trackFeedback, sourceForm, today } = slotPickerState;
+  const { medicationId, selectedSlot, trackFeedback, sourceForm, today, graceMinutes } = slotPickerState;
   if (!selectedSlot) return;
+
+  const slotTooEarly = (() => {
+    const [h, m]   = selectedSlot.split(':').map(Number);
+    const [y, mo, d] = today.split('-').map(Number);
+    const scheduled  = new Date(y, mo - 1, d, h, m, 0);
+    const earliest   = new Date(scheduled.getTime() - graceMinutes * 60_000);
+    return Date.now() < earliest.getTime();
+  })();
+
+  if (slotTooEarly) {
+    const label = selectedSlot.substring(0, 5);
+    alert(`This dose isn't scheduled until ${slotTo12h(label)}. You can log it up to ${graceMinutes} minutes early.`);
+    return;
+  }
 
   if (trackFeedback) {
     closeSlotPickerModal();
@@ -305,14 +324,21 @@ postponeModal?.addEventListener('click', (event) => {
 
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
-const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime }) => {
+const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false }) => {
   if (!missedDoseModal) return;
+  missedDosePainMode = trackFeedback;
   if (missedDoseTitle) missedDoseTitle.textContent = `Log missed dose — ${medicationName}`;
   if (missedDoseMedId) missedDoseMedId.value = medicationId;
   if (missedDoseDate) missedDoseDate.value = scheduledDate;
   if (missedDoseSchedTime) missedDoseSchedTime.value = scheduledTime;
   // Pre-fill the time input with the scheduled time, stripping seconds ("HH:MM:SS" → "HH:MM")
   if (missedDoseActualTime) missedDoseActualTime.value = scheduledTime.substring(0, 5);
+  // Show/hide pain section and reset state
+  if (missedDosePainSection) missedDosePainSection.hidden = !trackFeedback;
+  if (missedDosePainLevelEl) missedDosePainLevelEl.value = '';
+  if (missedDoseNoteText) missedDoseNoteText.value = '';
+  missedDoseModal.querySelectorAll('.missed-pain-btn').forEach((b) => b.classList.remove('is-selected'));
+  if (missedDoseNoteHidden) missedDoseNoteHidden.value = trackFeedback ? '' : 'Marked taken (was missed)';
   missedDoseModal.classList.add('is-open');
   lockBodyScroll();
 };
@@ -330,9 +356,21 @@ missedDoseModal?.addEventListener('click', (e) => {
   if (e.target === missedDoseModal) closeMissedDoseModal();
 });
 
+missedDoseModal?.querySelectorAll('.missed-pain-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    missedDoseModal.querySelectorAll('.missed-pain-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (missedDosePainLevelEl) missedDosePainLevelEl.value = btn.dataset.missedPain ?? '';
+  });
+});
+
 missedDoseModal?.querySelector('[data-missed-dose-confirm]')?.addEventListener('click', async () => {
   const confirmBtn = missedDoseModal.querySelector('[data-missed-dose-confirm]');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Logging…'; }
+  // When in pain mode, sync the note textarea into the hidden note field
+  if (missedDosePainMode && missedDoseNoteText && missedDoseNoteHidden) {
+    missedDoseNoteHidden.value = missedDoseNoteText.value;
+  }
   try {
     const fd = new FormData(missedDoseForm);
     const res = await fetch('index.php', { method: 'POST', body: fd });
@@ -486,6 +524,22 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       return Date.now() > cutoff.getTime();
     })();
 
+    const isTooEarly = (() => {
+      if (!scheduledDate || !scheduledTime) return false;
+      const [y, mo, d] = scheduledDate.split('-').map(Number);
+      const [h, m]     = scheduledTime.split(':').map(Number);
+      const scheduled  = new Date(y, mo - 1, d, h, m, 0);
+      const earliest   = new Date(scheduled.getTime() - graceMinutes * 60_000);
+      return Date.now() < earliest.getTime();
+    })();
+
+    if (isTooEarly) {
+      event.preventDefault();
+      const label = scheduledTime.substring(0, 5);
+      alert(`This dose isn't scheduled until ${slotTo12h(label)}. You can log it up to ${graceMinutes} minutes early.`);
+      return;
+    }
+
     if (isEffectivelyMissed) {
       event.preventDefault();
       openMissedDoseModal({
@@ -493,6 +547,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         medicationName: btn.dataset.medicationName ?? 'medication',
         scheduledDate,
         scheduledTime,
+        trackFeedback:  btn.dataset.trackDoseFeedback === '1',
       });
       return;
     }
@@ -748,11 +803,12 @@ const painGraphEmpty = document.querySelector('[data-pain-graph-empty]');
 let painGraphMedId = null;
 let painGraphDays = 7;
 
-const openPainGraphModal = (medicationId, medicationName) => {
+const openPainGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!painGraphModal) return;
   painGraphMedId = medicationId;
   painGraphDays = 0;
-  if (painGraphTitle) painGraphTitle.textContent = medicationName + ' — Pain Trend';
+  const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
+  if (painGraphTitle) painGraphTitle.textContent = titleBase + ' — Pain Trend';
   painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
     t.classList.toggle('is-active', t.dataset.range === '0');
   });
@@ -785,7 +841,7 @@ const escSvg = (str) => String(str)
 
 const renderPainChart = (container, data) => {
   const W = 500, H = 200;
-  const ml = 32, mr = 12, mt = 12, mb = 36;
+  const ml = 44, mr = 12, mt = 12, mb = 36;
   const chartW = W - ml - mr;
   const chartH = H - mt - mb;
 
@@ -835,7 +891,9 @@ const renderPainChart = (container, data) => {
     circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escSvg(date)}&#10;${tipLines}</title></circle>`;
   });
 
+  const yAxisCY = (mt + chartH / 2).toFixed(1);
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pain level trend chart">
+    <text transform="rotate(-90)" x="-${yAxisCY}" y="11" text-anchor="middle" font-size="8.5" fill="#94a3b8">Pain Level</text>
     ${gridLines}
     <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
     <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
@@ -847,7 +905,7 @@ const renderPainChart = (container, data) => {
 
 const renderPainChartToday = (container, data) => {
   const W = 500, H = 200;
-  const ml = 32, mr = 12, mt = 12, mb = 36;
+  const ml = 44, mr = 12, mt = 12, mb = 36;
   const chartW = W - ml - mr;
   const chartH = H - mt - mb;
 
@@ -883,7 +941,9 @@ const renderPainChartToday = (container, data) => {
     circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${tip}</title></circle>`;
   });
 
+  const yAxisCYToday = (mt + chartH / 2).toFixed(1);
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pain level trend chart">
+    <text transform="rotate(-90)" x="-${yAxisCYToday}" y="11" text-anchor="middle" font-size="8.5" fill="#94a3b8">Pain Level</text>
     ${gridLines}
     <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
     <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
@@ -927,10 +987,11 @@ painGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
 
 document.querySelectorAll('[data-open-pain-graph]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const medId = btn.dataset.medicationId ?? '';
+    const medId   = btn.dataset.medicationId ?? '';
     const medName = btn.dataset.medicationName ?? '';
+    const medDose = btn.dataset.medicationDose ?? '';
     if (!medId) return;
-    openPainGraphModal(medId, medName);
+    openPainGraphModal(medId, medName, medDose);
   });
 });
 
@@ -938,6 +999,26 @@ document.querySelector('[data-close-pain-graph]')?.addEventListener('click', clo
 
 painGraphModal?.addEventListener('click', (event) => {
   if (event.target === painGraphModal) closePainGraphModal();
+});
+
+document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () => {
+  const svg = painGraphBody?.querySelector('svg');
+  if (!svg) return;
+  const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
+  const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
+  const win = window.open('', '_blank', 'width=750,height=520');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    body{font-family:sans-serif;padding:1.5rem;color:#172033;}
+    h2{font-size:1.1rem;margin:0 0 0.2rem;}
+    p{font-size:0.82rem;color:#64748b;margin:0 0 1rem;}
+    svg{width:100%;max-width:680px;display:block;}
+  </style></head><body>
+  <h2>${title}</h2><p>${rangeLabel}</p>
+  ${svg.outerHTML}
+  <script>window.onafterprint=function(){window.close();};window.onload=function(){window.print();}<\/script>
+  </body></html>`);
+  win.document.close();
 });
 
 // Pain tracking dedicated page

@@ -250,6 +250,33 @@ final class MedicationRepository
         return $statement->fetchAll();
     }
 
+    public function dailyDoseSummaryForDateRange(string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date,
+                    m.name,
+                    m.dose_amount,
+                    m.dose_unit,
+                    SUM(CASE WHEN dl.status = \'taken\'   THEN 1 ELSE 0 END) AS taken,
+                    SUM(CASE WHEN dl.status = \'missed\'  THEN 1 ELSE 0 END) AS missed,
+                    SUM(CASE WHEN dl.status = \'skipped\' THEN 1 ELSE 0 END) AS skipped
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE m.user_id = :user_id
+               ' . $this->profileSql('m') . '
+               AND m.as_needed = 0
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
+             GROUP BY dl.scheduled_for_date, dl.medication_id, m.name, m.dose_amount, m.dose_unit
+             ORDER BY dl.scheduled_for_date DESC, m.name ASC'
+        );
+        $statement->execute(array_merge(
+            ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
+            $this->profileParam()
+        ));
+
+        return $statement->fetchAll();
+    }
+
     public function painLevelTrend(int $medicationId, int $days): array
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
