@@ -224,7 +224,7 @@ slotPickerConfirm?.addEventListener('click', async () => {
     const [h, m]   = selectedSlot.split(':').map(Number);
     const [y, mo, d] = today.split('-').map(Number);
     const scheduled  = new Date(y, mo - 1, d, h, m, 0);
-    const earliest   = new Date(scheduled.getTime() - graceMinutes * 60_000);
+    const earliest   = new Date(scheduled.getTime() - graceMinutes * 60000);
     return Date.now() < earliest.getTime();
   })();
 
@@ -520,7 +520,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       const [y, mo, d] = scheduledDate.split('-').map(Number);
       const [h, m]     = scheduledTime.split(':').map(Number);
       const scheduled  = new Date(y, mo - 1, d, h, m, 0);
-      const cutoff     = new Date(scheduled.getTime() + graceMinutes * 60_000);
+      const cutoff     = new Date(scheduled.getTime() + graceMinutes * 60000);
       return Date.now() > cutoff.getTime();
     })();
 
@@ -529,7 +529,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       const [y, mo, d] = scheduledDate.split('-').map(Number);
       const [h, m]     = scheduledTime.split(':').map(Number);
       const scheduled  = new Date(y, mo - 1, d, h, m, 0);
-      const earliest   = new Date(scheduled.getTime() - graceMinutes * 60_000);
+      const earliest   = new Date(scheduled.getTime() - graceMinutes * 60000);
       return Date.now() < earliest.getTime();
     })();
 
@@ -1006,8 +1006,15 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
   if (!svg) return;
   const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
   const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=750,height=520');
   if (!win) return;
+  const printScript = isMobile
+    ? ''
+    : `<script>window.onafterprint=function(){window.close();};window.onload=function(){window.print();}<\/script>`;
+  const mobileHint = isMobile
+    ? `<p style="background:#f1f5f9;border-radius:8px;color:#475569;font-size:0.82rem;margin:0.5rem 0 1rem;padding:0.6rem 0.9rem;">Use your browser&rsquo;s print or share button to print this chart.</p>`
+    : '';
   win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
     body{font-family:sans-serif;padding:1.5rem;color:#172033;}
     h2{font-size:1.1rem;margin:0 0 0.2rem;}
@@ -1015,8 +1022,9 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
     svg{width:100%;max-width:680px;display:block;}
   </style></head><body>
   <h2>${title}</h2><p>${rangeLabel}</p>
+  ${mobileHint}
   ${svg.outerHTML}
-  <script>window.onafterprint=function(){window.close();};window.onload=function(){window.print();}<\/script>
+  ${printScript}
   </body></html>`);
   win.document.close();
 });
