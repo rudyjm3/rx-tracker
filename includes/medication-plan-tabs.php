@@ -305,12 +305,10 @@
           <?php foreach ($group['members'] as $member): ?>
             <div class="group-member-row">
               <?php $grpMedTypeSlug = (string) ($member['medication_type'] ?? 'prescription'); $grpMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
-              <span class="group-member-name"><?= e((string) $member['name']) ?></span><span class="med-type-badge med-type-badge--<?= e($grpMedTypeSlug) ?>"><?= e($grpMedTypeLabels[$grpMedTypeSlug] ?? 'Rx') ?></span>
+              <span class="group-member-name"><?= e((string) $member['name']) ?></span><?php if (formattedDose($member) !== ''): ?><span class="group-member-dose"><?= e(formattedDose($member)) ?></span><?php endif; ?><span class="med-type-badge med-type-badge--<?= e($grpMedTypeSlug) ?>"><?= e($grpMedTypeLabels[$grpMedTypeSlug] ?? 'Rx') ?></span>
               <?php if ($member['group_quantity_per_dose'] !== null): ?>
                 <?php $overrideUnit = (string) ($member['inventory_unit'] ?? 'tablets'); ?>
                 <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?> <?= e($overrideUnit) ?> <em class="group-dose-override-hint">(override)</em></span>
-              <?php elseif (formattedDose($member) !== ''): ?>
-                <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
               <?php endif; ?>
               <?php if ((int) $member['track_dose_feedback'] === 1): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
