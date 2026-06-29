@@ -1579,25 +1579,27 @@ final class MedicationRepository
         }
 
         $interval = (int) $medication['interval_hours'];
-        $step = $interval * 60;
-        $nextDue = $this->nextDueDateTime((int) $medication['id']);
-
-        if ($nextDue === null) {
-            $first = substr((string) $medication['first_dose_time'], 0, 5);
-            return [$first];
+        if ($interval <= 0) {
+            return [];
         }
 
-        $windowEnd = $nextDue->modify('+' . (24 * 60 - 1) . ' minutes');
-        $times = [$nextDue->format('H:i')];
-        for ($i = 1; $i <= 4; $i++) {
-            $candidate = $nextDue->modify('+' . ($i * $step) . ' minutes');
-            if ($candidate > $windowEnd) {
-                break;
-            }
-            $times[] = $candidate->format('H:i');
+        $firstDose = substr((string) $medication['first_dose_time'], 0, 5);
+        if ($firstDose === '') {
+            return [];
         }
 
-        return array_values(array_unique($times));
+        // Generate every dose slot within a 24-hour day starting from first_dose_time.
+        // This ensures the full day's schedule (and adherence count) is correct
+        // regardless of what time of day timesForDate() is called.
+        $stepMinutes  = $interval * 60;
+        $startMinutes = $this->timeToMinutes($firstDose);
+        $times        = [];
+
+        for ($m = $startMinutes; $m < 1440; $m += $stepMinutes) {
+            $times[] = $this->minutesToTime($m);
+        }
+
+        return $times;
     }
 
     private function timeToMinutes(string $time): int
