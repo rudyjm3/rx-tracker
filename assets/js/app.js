@@ -3900,3 +3900,35 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
     }
   });
 })();
+
+// ── Export PDF download feedback ──────────────────────────────────────────────
+
+(function () {
+  const form    = document.querySelector('[data-export-form]');
+  const btn     = document.querySelector('[data-export-btn]');
+  const tokenEl = document.querySelector('[data-download-token]');
+  const notice  = document.querySelector('[data-export-notice]');
+  if (!form || !btn || !tokenEl) return;
+
+  form.addEventListener('submit', () => {
+    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    tokenEl.value = token;
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Generating PDF…';
+
+    const cookieName = 'rx_dl_' + token;
+    let attempts = 0;
+    const poll = setInterval(() => {
+      attempts++;
+      if (document.cookie.includes(cookieName) || attempts > 60) {
+        clearInterval(poll);
+        document.cookie = cookieName + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        if (notice) notice.style.display = 'flex';
+      }
+    }, 500);
+  });
+})();

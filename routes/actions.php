@@ -470,6 +470,10 @@ try {
             $report = new DoctorVisitReport($repository, $seRepo, $chart, $patientName);
             $pdf    = $report->generate($reportStart, $reportEnd, $chartDays);
 
+            $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));
+            if ($dlToken !== '') {
+                setcookie('rx_dl_' . $dlToken, '1', time() + 60, '/');
+            }
             header('Content-Type: application/pdf');
             header('Content-Disposition: attachment; filename="doctor-visit-report-' . $reportStart . '.pdf"');
             header('Cache-Control: private, no-cache');

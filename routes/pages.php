@@ -1044,9 +1044,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
       Generate a branded PDF summary of your medication history, adherence, pain trends, and side effects — ready to share with your doctor.
     </p>
-    <form method="post" action="index.php" class="stacked-form">
+    <form method="post" action="index.php" class="stacked-form" data-export-form>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="generate_doctor_visit_report">
+      <input type="hidden" name="download_token" data-download-token value="">
 
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
         <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Reporting period</legend>
@@ -1103,9 +1104,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </fieldset>
       <?php endif; ?>
 
-      <button type="submit" style="width:100%;">
+      <button type="submit" style="width:100%;" data-export-btn>
         <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
       </button>
+      <div data-export-notice style="display:none;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
+        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+        Your PDF is downloading — check your Downloads folder.
+      </div>
     </form>
   </section>
 </main>
