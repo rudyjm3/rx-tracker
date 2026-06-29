@@ -5178,10 +5178,16 @@ a.nav-user-btn.is-active {
 
 @media (max-width: 600px) {
   .notif-panel {
+    /* Switch to fixed so left/right are viewport-relative, not relative to the
+       narrow .nav-actions container, which caused the panel to render tiny. */
     left: 1rem;
+    max-height: calc(100vh - 5rem);
+    max-width: calc(100vw - 2rem);
     min-width: unset;
+    position: fixed;
     right: 1rem;
-    width: auto;
+    top: 3.75rem;
+    width: calc(100vw - 2rem);
   }
 }
 
