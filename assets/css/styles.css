@@ -1872,6 +1872,50 @@ textarea:focus,
   padding: 0.5rem 0.8rem;
 }
 
+/* Mobile: hide desktop-only buttons, show mobile more-menu */
+.med-action-mobile { display: none; }
+.med-action-desktop { display: inline-flex; }
+
+.med-actions-more-wrap {
+  position: relative;
+}
+
+.med-actions-more-trigger {
+  padding: 0.5rem 0.75rem;
+}
+
+.med-actions-more-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: var(--rx-surface);
+  border: 1px solid var(--rx-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 180px;
+  z-index: 200;
+  padding: 0.25rem 0;
+}
+
+.med-actions-more-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--rx-text);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.med-actions-more-item:hover {
+  background: var(--rx-surface-2, rgba(0,0,0,0.05));
+}
+
 .done-pill {
   align-self: flex-start;
   background: rgba(24, 191, 166, 0.12);
@@ -3021,6 +3065,9 @@ textarea:focus,
     font-size: 0.84rem;
     padding: 0.5rem 0.6rem;
   }
+
+  .med-action-desktop { display: none; }
+  .med-action-mobile { display: flex; }
 
   .medication-actions-top {
     grid-column: 3;
@@ -4552,7 +4599,7 @@ details.med-detail-section[open] .med-detail-section-title::after {
 .auth-logo {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
+  border-radius: 10px;
 }
 
 .auth-brand-name {

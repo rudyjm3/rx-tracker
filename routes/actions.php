@@ -250,7 +250,17 @@ try {
                 $scheduledAt = new DateTimeImmutable($scheduledDateStr . ' ' . $scheduledTimeStr);
                 $earliest    = $scheduledAt->modify('-' . $graceMin . ' minutes');
                 if (new DateTimeImmutable('now') < $earliest) {
-                    throw new RuntimeException('Too early to log this dose. It is scheduled for ' . $scheduledAt->format('g:i A') . '.');
+                    // Bypass the early-window block for snoozed doses — the snooze
+                    // itself is explicit user intent to act on this dose, so the
+                    // original schedule window should not prevent taking or skipping.
+                    $isSnoozed = $repository->activePostponeForDose(
+                        (int) post_string('medication_id'),
+                        $scheduledDateStr,
+                        $scheduledTimeStr
+                    ) !== null;
+                    if (!$isSnoozed) {
+                        throw new RuntimeException('Too early to log this dose. It is scheduled for ' . $scheduledAt->format('g:i A') . '.');
+                    }
                 }
             }
         }

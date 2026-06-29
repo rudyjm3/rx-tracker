@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="auth-panel--left">
     <div>
       <div class="auth-brand">
-        <img src="assets/icons/logo-round.png" alt="" class="auth-logo" aria-hidden="true">
+        <img src="assets/icons/icon-192.png" alt="" class="auth-logo" aria-hidden="true">
         <span class="auth-brand-name">RxTracker</span>
       </div>
       <p class="auth-tagline">Stay on track<br>with every dose.</p>
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <!-- Mobile-only logo header -->
       <div class="auth-mobile-header">
-        <img src="assets/icons/logo-round.png" alt="" class="auth-logo" aria-hidden="true">
+        <img src="assets/icons/icon-192.png" alt="" class="auth-logo" aria-hidden="true">
         <span class="auth-brand-name" style="color: var(--rx-navy);">RxTracker</span>
       </div>
 
@@ -158,6 +158,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <p class="auth-footer-link">
         Don't have an account? <a href="index.php?page=register">Sign up</a>
+      </p>
+
+      <p class="auth-footer-link" style="margin-top:0.5rem;font-size:0.8rem;">
+        <a href="index.php?page=terms">Terms of Use</a> &middot; <a href="index.php?page=privacy">Privacy Policy</a>
       </p>
 
     </div>

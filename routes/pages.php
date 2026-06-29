@@ -1385,15 +1385,19 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <?php endif; ?>
             </div>
             <div class="row-actions">
-              <?php $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true); ?>
-              <?php if (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== ''): ?>
-                <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable((string) $dose['postponed_until']))->format('H:i'))) ?></span>
+              <?php
+                $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true);
+                $rawPostponedUntil = is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '' ? (string) $dose['postponed_until'] : null;
+                $snoozeActive = $rawPostponedUntil !== null && new DateTimeImmutable($rawPostponedUntil) > new DateTimeImmutable('now');
+              ?>
+              <?php if ($snoozeActive): ?>
+                <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable($rawPostponedUntil))->format('H:i'))) ?></span>
               <?php endif; ?>
               <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
                 <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
                 <?php if (!$isCompleted): ?>
-                  <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= (is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '') ? ' disabled' : '' ?>>Snooze</button>
+                  <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= $snoozeActive ? ' disabled' : '' ?>>Snooze</button>
                 <?php endif; ?>
               </div>
             </div>
@@ -1785,6 +1789,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <a href="index.php?page=help" class="more-menu__item<?= $page === 'help' ? ' is-active' : '' ?>">
       <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
       Help
+    </a>
+    <a href="index.php?page=terms" class="more-menu__item">
+      <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+      Terms of Use
+    </a>
+    <a href="index.php?page=privacy" class="more-menu__item">
+      <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+      Privacy Policy
     </a>
   </div>
 </div>

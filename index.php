@@ -22,7 +22,7 @@ $page = (string) ($_GET['page'] ?? 'dashboard');
 $auth = new AuthService(db(), new SessionManager(db()));
 
 // Public auth routes — served before login check
-$authPages = ['login', 'register', 'forgot-password', 'reset-password'];
+$authPages = ['login', 'register', 'forgot-password', 'reset-password', 'terms', 'privacy'];
 if (in_array($page, $authPages, true)) {
     $routeFile = __DIR__ . '/routes/' . str_replace('-', '_', $page) . '.php';
     require $routeFile;

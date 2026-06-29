@@ -610,6 +610,30 @@ doseFeedbackModal?.addEventListener('click', (event) => {
   }
 });
 
+// ── Medication actions "more" dropdown (mobile) ───────────────────────────────
+
+document.querySelectorAll('.med-actions-more-trigger').forEach((trigger) => {
+  const wrap = trigger.closest('.med-actions-more-wrap');
+  if (!wrap) return;
+  const dropdown = wrap.querySelector('.med-actions-more-dropdown');
+  if (!dropdown) return;
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !dropdown.hidden;
+    dropdown.hidden = isOpen;
+    trigger.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+  });
+});
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.med-actions-more-dropdown').forEach((d) => {
+    d.hidden = true;
+    const trigger = d.closest('.med-actions-more-wrap')?.querySelector('.med-actions-more-trigger');
+    trigger?.setAttribute('aria-expanded', 'false');
+  });
+});
+
 document.querySelectorAll('[data-take-dose]').forEach((btn) => {
   btn.addEventListener('click', (event) => {
     if (btn.disabled) return;
@@ -625,6 +649,11 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       ? new Date(schedY, schedMo - 1, schedD, schedH, schedM, 0).getTime()
       : null;
 
+    // If the dose was snoozed and the snooze has now expired, allow taking it
+    // regardless of how far before the scheduled time we are.
+    const postponedUntil = btn.dataset.postponedUntil ?? '';
+    const snoozeExpired = postponedUntil !== '' && Date.now() >= new Date(postponedUntil).getTime();
+
     const isEffectivelyMissed = (() => {
       if (doseStatus === 'missed') return true;
       if (scheduledMs === null) return false;
@@ -634,6 +663,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
     const isPastScheduledTime = scheduledMs !== null && Date.now() > scheduledMs;
 
     const isTooEarly = (() => {
+      if (snoozeExpired) return false; // snooze fired, honour it regardless of schedule
       if (scheduledMs === null) return false;
       return Date.now() < scheduledMs - graceMinutes * 60000;
     })();
