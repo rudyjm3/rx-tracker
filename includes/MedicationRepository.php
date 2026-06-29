@@ -136,14 +136,14 @@ final class MedicationRepository
     public function adherenceForDateRange(string $startDate, string $endDate): array
     {
         $statement = $this->db->prepare(
-            'SELECT dl.medication_id, m.name, dl.status, COUNT(*) AS n
+            'SELECT dl.medication_id, m.name, m.medication_type, dl.status, COUNT(*) AS n
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE m.user_id = :user_id
                ' . $this->profileSql('m') . '
                AND m.as_needed = 0
                AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             GROUP BY dl.medication_id, m.name, dl.status'
+             GROUP BY dl.medication_id, m.name, m.medication_type, dl.status'
         );
         $statement->execute(array_merge(
             ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
@@ -155,7 +155,7 @@ final class MedicationRepository
         foreach ($rows as $row) {
             $id = (int) $row['medication_id'];
             if (!isset($perMed[$id])) {
-                $perMed[$id] = ['name' => $row['name'], 'taken' => 0, 'missed' => 0, 'skipped' => 0];
+                $perMed[$id] = ['name' => $row['name'], 'medication_type' => $row['medication_type'] ?? 'prescription', 'taken' => 0, 'missed' => 0, 'skipped' => 0];
             }
             $perMed[$id][(string) $row['status']] += (int) $row['n'];
         }
@@ -172,13 +172,14 @@ final class MedicationRepository
             $totalMissed  += $data['missed'];
             $totalSkipped += $data['skipped'];
             $perMedOut[]   = [
-                'id'      => $id,
-                'name'    => $data['name'],
-                'taken'   => $data['taken'],
-                'missed'  => $data['missed'],
-                'skipped' => $data['skipped'],
-                'total'   => $total,
-                'pct'     => $pct,
+                'id'              => $id,
+                'name'            => $data['name'],
+                'medication_type' => $data['medication_type'] ?? 'prescription',
+                'taken'           => $data['taken'],
+                'missed'          => $data['missed'],
+                'skipped'         => $data['skipped'],
+                'total'           => $total,
+                'pct'             => $pct,
             ];
         }
 
@@ -255,6 +256,7 @@ final class MedicationRepository
         $statement = $this->db->prepare(
             'SELECT dl.scheduled_for_date,
                     m.name,
+                    m.medication_type,
                     m.dose_amount,
                     m.dose_unit,
                     SUM(CASE WHEN dl.status = \'taken\'   THEN 1 ELSE 0 END) AS taken,
@@ -266,7 +268,7 @@ final class MedicationRepository
                ' . $this->profileSql('m') . '
                AND m.as_needed = 0
                AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             GROUP BY dl.scheduled_for_date, dl.medication_id, m.name, m.dose_amount, m.dose_unit
+             GROUP BY dl.scheduled_for_date, dl.medication_id, m.name, m.medication_type, m.dose_amount, m.dose_unit
              ORDER BY dl.scheduled_for_date DESC, m.name ASC'
         );
         $statement->execute(array_merge(
@@ -817,6 +819,7 @@ final class MedicationRepository
                 $schedule[] = [
                     'medication_id' => (int) $medication['id'],
                     'name' => (string) $medication['name'],
+                    'medication_type' => (string) ($medication['medication_type'] ?? 'prescription'),
                     'dose' => $medication['dose'] ?? '',
                     'dose_amount' => $medication['dose_amount'],
                     'dose_unit' => $medication['dose_unit'],
@@ -1905,7 +1908,7 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT mgm.group_id, m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
+                'SELECT mgm.group_id, m.id AS medication_id, m.name, m.medication_type, m.dose, m.dose_amount, m.dose_unit,
                         m.inventory_unit, m.track_dose_feedback,
                         mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m

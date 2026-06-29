@@ -219,12 +219,55 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
     </div>
     <div class="nav-actions">
       <?php $navShowRefillBtn = false; require __DIR__ . '/../includes/nav-bell.php'; ?>
-      <a class="nav-user-btn is-active" href="index.php?page=profile"
-         title="<?= e((string) $userRow['email']) ?>"
-         aria-label="My profile">
-        <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
-      </a>
-      <span class="nav-user-name"><?= e((string) ($userRow['display_name'] ?? $userRow['email'])) ?></span>
+      <?php
+        $navActiveProfileId = $auth->activeProfileId();
+        $navActiveProfile   = $navActiveProfileId !== null ? $familyRepo->findProfile($navActiveProfileId, $userId) : null;
+        $navAvatarColor     = (string) ($navActiveProfile['avatar_color'] ?? '#6366f1');
+        $navAvatarLetter    = mb_strtoupper(mb_substr((string) ($navActiveProfile['display_name'] ?? ($userRow['display_name'] ?? 'U')), 0, 1));
+      ?>
+      <div class="nav-user-menu" data-user-menu>
+        <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
+                title="<?= e((string) $userRow['email']) ?>" aria-label="My profile">
+          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
+        </button>
+        <div class="nav-user-menu-panel" data-user-menu-panel hidden>
+          <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top is-active">
+            <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+            My Profile
+          </a>
+          <?php if (!empty($familyProfiles)): ?>
+          <div class="nav-user-menu-section-label">Family Members</div>
+          <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="switch_family_profile">
+            <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
+            <button type="submit" name="profile_id" value="0"
+                    class="profile-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
+              <span class="profile-option-avatar" style="background:#6366f1">
+                <?= e(mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1))) ?>
+              </span>
+              <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
+            </button>
+            <?php foreach ($familyProfiles as $fp): ?>
+            <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
+                    class="profile-option<?= $navActiveProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
+              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
+                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
+              </span>
+              <?= e((string) $fp['display_name']) ?>
+              <?php if ($fp['relationship']): ?>
+                <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
+              <?php endif; ?>
+            </button>
+            <?php endforeach; ?>
+          </form>
+          <a href="index.php?page=profile#family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
+          </a>
+          <?php endif; ?>
+        </div>
+      </div>
       <a href="index.php?page=settings" class="nav-icon-link" aria-label="Settings" title="Settings">
         <i class="fa-solid fa-gear" aria-hidden="true"></i>
       </a>
@@ -429,18 +472,18 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
                    value="<?= $familyEditProfile['birth_year'] !== null ? (int)$familyEditProfile['birth_year'] : '' ?>">
           </div>
           <div class="form-group">
-            <label>Avatar Color</label>
-            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <label><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.25rem">
               <?php
               $currentColor = (string)($familyEditProfile['avatar_color'] ?? '#6366f1');
               foreach ($palette as $color): ?>
-              <label style="cursor:pointer">
+              <label style="cursor:pointer;line-height:0">
                 <input type="radio" name="avatar_color" value="<?= e($color) ?>"
                        <?= $currentColor === $color ? 'checked' : '' ?> style="position:absolute;opacity:0;width:0;height:0">
-                <span data-color-swatch style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;background:<?= e($color) ?>;outline:<?= $currentColor === $color ? '3px solid #fff' : 'none' ?>;box-shadow:<?= $currentColor === $color ? '0 0 0 2px '.$color : 'none' ?>"></span>
+                <span data-color-swatch data-color="<?= e($color) ?>" style="display:block;width:1.6rem;height:1.6rem;border-radius:50%;background:<?= e($color) ?>;box-shadow:<?= $currentColor === $color ? '0 0 0 2px #fff, 0 0 0 4px #0d1b2e' : '0 0 0 1px rgba(0,0,0,.15)' ?>;transition:box-shadow .15s"></span>
               </label>
               <?php endforeach; ?>
-              <input type="color" id="edit_color_custom" value="<?= e($currentColor) ?>" style="width:1.8rem;height:1.8rem;border-radius:50%;border:none;cursor:pointer;padding:0">
+              <input type="color" id="edit_color_custom" value="<?= e($currentColor) ?>" style="width:1.6rem;height:1.6rem;border-radius:50%;border:none;cursor:pointer;padding:0;box-shadow:0 0 0 1px rgba(0,0,0,.15)">
             </div>
             <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final" value="<?= e($currentColor) ?>">
           </div>
@@ -474,16 +517,16 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
             <input type="number" id="family_birth_year" name="birth_year" min="1900" max="<?= (int)date('Y') ?>" placeholder="e.g. 1985">
           </div>
           <div class="form-group">
-            <label>Avatar Color</label>
-            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <label><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.25rem">
               <?php foreach ($palette as $i => $color): ?>
-              <label style="cursor:pointer">
+              <label style="cursor:pointer;line-height:0">
                 <input type="radio" name="avatar_color" value="<?= e($color) ?>"
                        <?= $i === 0 ? 'checked' : '' ?> style="position:absolute;opacity:0;width:0;height:0">
-                <span data-color-swatch style="display:block;width:1.5rem;height:1.5rem;border-radius:50%;background:<?= e($color) ?>;outline:<?= $i === 0 ? '3px solid #fff' : 'none' ?>;box-shadow:<?= $i === 0 ? '0 0 0 2px '.$color : 'none' ?>"></span>
+                <span data-color-swatch data-color="<?= e($color) ?>" style="display:block;width:1.6rem;height:1.6rem;border-radius:50%;background:<?= e($color) ?>;box-shadow:<?= $i === 0 ? '0 0 0 2px #fff, 0 0 0 4px #0d1b2e' : '0 0 0 1px rgba(0,0,0,.15)' ?>;transition:box-shadow .15s"></span>
               </label>
               <?php endforeach; ?>
-              <input type="color" id="family_color_custom" value="#6366f1" style="width:1.8rem;height:1.8rem;border-radius:50%;border:none;cursor:pointer;padding:0">
+              <input type="color" id="family_color_custom" value="#6366f1" style="width:1.6rem;height:1.6rem;border-radius:50%;border:none;cursor:pointer;padding:0;box-shadow:0 0 0 1px rgba(0,0,0,.15)">
             </div>
             <input type="hidden" name="avatar_color_final" id="family_avatar_color_final" value="#6366f1">
           </div>
@@ -615,13 +658,26 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
 </div>
 <script>
 (function () {
-  function setupColorPicker(formSelector, customColorId, finalInputId) {
-    var form = document.querySelector(formSelector);
-    if (!form) return;
-    var customInput = document.getElementById(customColorId);
-    var finalInput  = document.getElementById(finalInputId);
-    if (!customInput || !finalInput) return;
-    var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
+  function updateSwatches(form, activeColor) {
+    form.querySelectorAll('[data-color-swatch]').forEach(function (sw) {
+      var swColor = sw.dataset.color;
+      sw.style.boxShadow = swColor === activeColor
+        ? '0 0 0 2px #fff, 0 0 0 4px #0d1b2e'
+        : '0 0 0 1px rgba(0,0,0,.15)';
+    });
+  }
+  document.querySelectorAll('input[name="action"]').forEach(function (inp) {
+    var isCreate = inp.value === 'create_family_profile';
+    var isEdit   = inp.value === 'update_family_profile';
+    if (!isCreate && !isEdit) { return; }
+    var form = inp.closest('form');
+    if (!form) { return; }
+    var radios      = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
+    var finalInputId = isCreate ? 'family_avatar_color_final' : 'edit_avatar_color_final';
+    var customId     = isCreate ? 'family_color_custom'       : 'edit_color_custom';
+    var finalInput   = form.querySelector('#' + finalInputId);
+    var customInput  = form.querySelector('#' + customId);
+    if (!finalInput || !customInput) { return; }
     radios.forEach(function (radio) {
       radio.addEventListener('change', function () {
         finalInput.value = radio.value;
@@ -636,51 +692,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       radios.forEach(function (r) { r.disabled = true; });
       finalInput.name = 'avatar_color';
     });
-  }
-  function updateSwatches(form, activeColor) {
-    form.querySelectorAll('[data-color-swatch]').forEach(function (sw) {
-      var bg = sw.style.background;
-      if (bg === activeColor) {
-        sw.style.outline = '3px solid #fff';
-        sw.style.boxShadow = '0 0 0 2px ' + bg;
-      } else {
-        sw.style.outline = 'none';
-        sw.style.boxShadow = 'none';
-      }
-    });
-  }
-  setupColorPicker('form[action*="create_family_profile"], form:has(#family_display_name)', 'family_color_custom', 'family_avatar_color_final');
-  setupColorPicker('form:has(#edit_display_name)', 'edit_color_custom', 'edit_avatar_color_final');
-  // Simpler approach: find forms by hidden action input
-  document.querySelectorAll('input[name="action"]').forEach(function (inp) {
-    if (inp.value === 'create_family_profile') {
-      var form = inp.closest('form');
-      if (form) {
-        var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
-        var finalInput = form.querySelector('#family_avatar_color_final');
-        var customInput = form.querySelector('#family_color_custom');
-        if (!finalInput || !customInput) return;
-        radios.forEach(function (radio) {
-          radio.addEventListener('change', function () { finalInput.value = radio.value; updateSwatches(form, radio.value); });
-        });
-        customInput.addEventListener('input', function () { finalInput.value = customInput.value; updateSwatches(form, customInput.value); });
-        form.addEventListener('submit', function () { radios.forEach(function (r) { r.disabled = true; }); finalInput.name = 'avatar_color'; });
-      }
-    }
-    if (inp.value === 'update_family_profile') {
-      var form = inp.closest('form');
-      if (form) {
-        var radios = form.querySelectorAll('input[type="radio"][name="avatar_color"]');
-        var finalInput = form.querySelector('#edit_avatar_color_final');
-        var customInput = form.querySelector('#edit_color_custom');
-        if (!finalInput || !customInput) return;
-        radios.forEach(function (radio) {
-          radio.addEventListener('change', function () { finalInput.value = radio.value; updateSwatches(form, radio.value); });
-        });
-        customInput.addEventListener('input', function () { finalInput.value = customInput.value; updateSwatches(form, customInput.value); });
-        form.addEventListener('submit', function () { radios.forEach(function (r) { r.disabled = true; }); finalInput.name = 'avatar_color'; });
-      }
-    }
   });
 })();
 </script>

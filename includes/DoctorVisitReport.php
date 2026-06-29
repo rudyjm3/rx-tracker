@@ -198,8 +198,9 @@ HTML;
             $mColor = $mp >= 71 ? '#18BFA6' : ($mp >= 51 ? '#EAB308' : ($mp >= 31 ? '#F5A524' : '#E5484D'));
             $miniRing = $this->adherenceRingSvg($mp, 44);
             $rows .= sprintf(
-                '<tr><td>%s</td><td style="text-align:center;vertical-align:middle;">%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>',
+                '<tr><td>%s%s</td><td style="text-align:center;vertical-align:middle;">%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>',
                 $this->h((string) $med['name']),
+                $this->medTypeBadgeHtml($med),
                 $miniRing,
                 (int) $med['taken'],
                 (int) $med['missed'],
@@ -250,8 +251,9 @@ HTML;
             }
             $dose = $this->h($this->formattedDose($med));
             $rows .= sprintf(
-                '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+                '<tr><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->h((string) $med['name']),
+                $this->medTypeBadgeHtml($med),
                 $dose,
                 $startDate,
                 $this->h($schedule),
@@ -285,7 +287,7 @@ HTML;
             $date    = $this->h(date('M j, Y', (int) strtotime((string) $row['scheduled_for_date'])));
             $med     = $this->h((string) $row['name']);
             $dose    = trim((string) $row['dose_amount'] . ' ' . (string) $row['dose_unit']);
-            $medCell = $dose !== '' ? "{$med} <span style=\"color:#60708A;\">{$this->h($dose)}</span>" : $med;
+            $medCell = $med . $this->medTypeBadgeHtml($row) . ($dose !== '' ? " <span style=\"color:#60708A;\">{$this->h($dose)}</span>" : '');
 
             $taken   = (int) $row['taken'];
             $missed  = (int) $row['missed'];
@@ -343,7 +345,7 @@ HTML;
                 : $this->defaultChartDays($daysOn);
 
             $html .= '<div class="chart-section">';
-            $html .= "<div class=\"chart-medname\">{$medName}</div>";
+            $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
 
             if ($daysOn < 7 || $chartDays === 0) {
                 $startedLabel = !empty($med['start_date'])
@@ -561,6 +563,20 @@ HTML;
         $dt = DateTimeImmutable::createFromFormat('H:i:s', $time)
             ?: DateTimeImmutable::createFromFormat('H:i', $time);
         return $dt ? $dt->format('g:i A') : $time;
+    }
+
+    private function medTypeBadgeHtml(array $med): string
+    {
+        $type = (string) ($med['medication_type'] ?? 'prescription');
+        $labels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+        $styles = [
+            'prescription' => 'background:#EAF4FF;color:#102B57;',
+            'otc'          => 'background:#E6FAF7;color:#0e7a68;',
+            'supplement'   => 'background:#FEF3C7;color:#8a5c00;',
+        ];
+        $label = $labels[$type] ?? 'Rx';
+        $style = $styles[$type] ?? $styles['prescription'];
+        return '<span style="' . $style . 'font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;">' . $label . '</span>';
     }
 
     /** HTML-escape a value for safe embedding in HTML output */

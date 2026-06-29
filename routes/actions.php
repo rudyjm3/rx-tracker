@@ -475,7 +475,9 @@ try {
                 setcookie('rx_dl_' . $dlToken, '1', time() + 60, '/');
             }
             header('Content-Type: application/pdf');
-            header('Content-Disposition: attachment; filename="doctor-visit-report-' . $reportStart . '.pdf"');
+            $fileStart = date('n-j-Y', (int) strtotime($reportStart));
+            $fileEnd   = date('n-j-Y', (int) strtotime($reportEnd));
+            header('Content-Disposition: attachment; filename="doctor-visit-report-' . $fileStart . '-thru-' . $fileEnd . '.pdf"');
             header('Cache-Control: private, no-cache');
             header('Content-Length: ' . strlen($pdf));
             echo $pdf;

@@ -212,7 +212,8 @@
     <?php foreach ($inactiveMedications as $medication): ?>
       <div class="medication-row" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>">
         <div>
-          <strong><?= e((string) $medication['name']) ?></strong>
+          <?php $inactiveMedTypeSlug = (string) ($medication['medication_type'] ?? 'prescription'); $inactiveMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
+          <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($inactiveMedTypeSlug) ?>"><?= e($inactiveMedTypeLabels[$inactiveMedTypeSlug] ?? 'Rx') ?></span>
           <?php if (formattedDose($medication) !== ''): ?>
           <p><?= e(formattedDose($medication)) ?></p>
           <?php endif; ?>
@@ -303,11 +304,12 @@
           <?php endif; ?>
           <?php foreach ($group['members'] as $member): ?>
             <div class="group-member-row">
-              <span class="group-member-name"><?= e((string) $member['name']) ?></span>
+              <?php $grpMedTypeSlug = (string) ($member['medication_type'] ?? 'prescription'); $grpMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
+              <span class="group-member-name"><?= e((string) $member['name']) ?></span><span class="med-type-badge med-type-badge--<?= e($grpMedTypeSlug) ?>"><?= e($grpMedTypeLabels[$grpMedTypeSlug] ?? 'Rx') ?></span>
               <?php if ($member['group_quantity_per_dose'] !== null): ?>
                 <?php $overrideUnit = (string) ($member['inventory_unit'] ?? 'tablets'); ?>
                 <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?> <?= e($overrideUnit) ?> <em class="group-dose-override-hint">(override)</em></span>
-              <?php else: ?>
+              <?php elseif (formattedDose($member) !== ''): ?>
                 <span class="group-member-dose"><?= e(formattedDose($member)) ?></span>
               <?php endif; ?>
               <?php if ((int) $member['track_dose_feedback'] === 1): ?>
