@@ -651,8 +651,14 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
 
     // If the dose was snoozed and the snooze has now expired, allow taking it
     // regardless of how far before the scheduled time we are.
+    // The DB emits YYYY-MM-DD HH:MM:SS; replace the space with 'T' so
+    // Safari/iOS (which reject the non-ISO form) parses it correctly.
     const postponedUntil = btn.dataset.postponedUntil ?? '';
-    const snoozeExpired = postponedUntil !== '' && Date.now() >= new Date(postponedUntil).getTime();
+    const snoozeExpired = (() => {
+      if (postponedUntil === '') return false;
+      const t = new Date(postponedUntil.replace(' ', 'T')).getTime();
+      return !isNaN(t) && Date.now() >= t;
+    })();
 
     const isEffectivelyMissed = (() => {
       if (doseStatus === 'missed') return true;
