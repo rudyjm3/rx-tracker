@@ -141,6 +141,14 @@
                   Deactivate
                 </button>
               </form>
+              <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
+                <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                Log refill
+              </button>
+              <button type="button" class="med-actions-item log-se-btn med-menu-item--mobile-only" data-log-se data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                Log side effect
+              </button>
             </div>
           </div>
         </div>
@@ -171,22 +179,7 @@
               data-grace-minutes="<?= e((string) $graceMinutes) ?>"
             ><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Log dose</button>
           </form>
-          <button type="button" class="secondary med-action-desktop" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Log refill</button>
           <button type="button" class="secondary log-se-btn med-action-desktop" data-log-se data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Log side effect</button>
-          <!-- Mobile-only "more actions" dropdown -->
-          <div class="med-actions-more-wrap med-action-mobile">
-            <button type="button" class="secondary med-actions-more-trigger" aria-label="More actions" aria-expanded="false" aria-haspopup="true">
-              <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
-            </button>
-            <div class="med-actions-more-dropdown" hidden>
-              <button type="button" class="med-actions-more-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
-                <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Log refill
-              </button>
-              <button type="button" class="med-actions-more-item log-se-btn" data-log-se data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
-                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Log side effect
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     <?php endforeach; ?>
