@@ -1875,7 +1875,6 @@ textarea:focus,
 /* Mobile: hide desktop-only buttons, show mobile more-menu */
 .med-action-mobile { display: none; }
 .med-action-desktop { display: inline-flex; }
-.med-menu-item--mobile-only { display: none; }
 
 .med-actions-more-wrap {
   position: relative;
@@ -3069,16 +3068,6 @@ textarea:focus,
 
   .med-action-desktop { display: none; }
   .med-action-mobile { display: flex; }
-  .med-menu-item--mobile-only { display: flex; }
-
-  .medication-actions-bottom form {
-    width: 100%;
-  }
-
-  .medication-actions-bottom [data-log-dose-now] {
-    justify-content: center;
-    width: 100%;
-  }
 
   .medication-actions-top {
     grid-column: 3;
