@@ -67,6 +67,11 @@
             <?php endif; ?>
             <?= ((int) $medication['as_needed'] === 1) ? '(As needed)' : '' ?>
           </p>
+          <?php if (!empty($medication['start_date'])): ?>
+          <p class="pill-meta">Started: <?= e((new DateTimeImmutable((string) $medication['start_date']))->format('M j, Y')) ?></p>
+          <?php elseif (!empty($medication['created_at'])): ?>
+          <p class="pill-meta">Started: <?= e((new DateTimeImmutable(date('Y-m-d', strtotime((string) $medication['created_at']))))->format('M j, Y')) ?> <span style="color:var(--rx-text-muted);font-size:0.8em;">(added to app)</span></p>
+          <?php endif; ?>
           <?php
             $curQty   = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
             $startQty = (float) ($medication['starting_quantity'] ?? $medication['starting_pill_count'] ?? 0);

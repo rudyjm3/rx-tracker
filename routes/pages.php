@@ -148,24 +148,31 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>
-      <?php if (!empty($familyProfiles)): ?>
-      <div class="profile-switcher" data-profile-switcher>
-        <button type="button" class="profile-chip" aria-haspopup="true" aria-expanded="false" data-profile-chip>
-          <span class="profile-chip-avatar" style="background:<?= e((string) ($activeProfile['avatar_color'] ?? '#6366f1')) ?>">
-            <?= e(mb_strtoupper(mb_substr((string) ($activeProfile['display_name'] ?? ($currentUser['display_name'] ?? 'M')), 0, 1))) ?>
-          </span>
-          <span class="profile-chip-name"><?= e((string) ($activeProfile['display_name'] ?? 'Me')) ?></span>
-          <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+      <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
+      <?php
+        $navAvatarColor = (string) ($activeProfile['avatar_color'] ?? '#6366f1');
+        $navAvatarLetter = mb_strtoupper(mb_substr((string) ($activeProfile['display_name'] ?? ($currentUser['display_name'] ?? 'U')), 0, 1));
+      ?>
+      <div class="nav-user-menu" data-user-menu>
+        <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
+                title="<?= e($currentUser['email'] ?? '') ?>" aria-label="My profile">
+          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
         </button>
-        <div class="profile-switcher-dropdown" data-profile-dropdown hidden>
-          <form method="post" action="index.php?page=profile">
+        <div class="nav-user-menu-panel" data-user-menu-panel hidden>
+          <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top">
+            <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
+            My Profile
+          </a>
+          <?php if (!empty($familyProfiles)): ?>
+          <div class="nav-user-menu-section-label">Family Members</div>
+          <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="switch_family_profile">
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
                     class="profile-option<?= $activeProfileId === null ? ' is-active' : '' ?>">
               <span class="profile-option-avatar" style="background:#6366f1">
-                <?= e(mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'M'), 0, 1))) ?>
+                <?= e(mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'U'), 0, 1))) ?>
               </span>
               <?= e((string) ($currentUser['display_name'] ?? 'Me')) ?>
             </button>
@@ -182,19 +189,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </button>
             <?php endforeach; ?>
           </form>
-          <a href="index.php?page=profile" class="profile-switcher-manage">Manage family</a>
+          <a href="index.php?page=profile#family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
+          </a>
+          <?php endif; ?>
         </div>
       </div>
-      <?php endif; ?>
-      <?php require __DIR__ . '/../includes/nav-bell.php'; ?>
-      <a class="nav-user-btn" href="index.php?page=profile"
-         title="<?= e($currentUser['email'] ?? '') ?>"
-         aria-label="My profile">
-        <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
-      </a>
-      <span class="nav-user-name">
-        <?= e($currentUser['display_name'] ?? $currentUser['email'] ?? '') ?>
-      </span>
       <a href="index.php?page=settings" class="nav-icon-link<?= $page === 'settings' ? ' is-active' : '' ?>"
          aria-label="Settings" title="Settings">
         <i class="fa-solid fa-gear" aria-hidden="true"></i>
@@ -351,8 +352,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <option value="supplement"   <?= (($editing['medication_type'] ?? '') === 'supplement')   ? 'selected' : '' ?>>Vitamin / Supplement</option>
             </select>
           </label>
-          <label>Start date <span class="field-optional">(when you began taking this medication)</span>
-            <input type="date" name="start_date" value="<?= e((string) ($editing['start_date'] ?? date('Y-m-d'))) ?>">
+          <label>Start date <span class="field-optional">(optional — when you began taking this medication)</span>
+            <input type="date" name="start_date" value="<?= e((string) ($editing['start_date'] ?? '')) ?>">
           </label>
           <label>Dose amount
             <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>">
@@ -1107,9 +1108,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <button type="submit" style="width:100%;" data-export-btn>
         <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
       </button>
-      <div data-export-notice style="display:none;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
+      <div data-export-notice style="display:none;align-items:center;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
         <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
         Your PDF is downloading — check your Downloads folder.
+        <a data-view-pdf-link href="#" hidden style="margin-left:auto;font-weight:600;color:#166534;text-decoration:underline;white-space:nowrap;">
+          <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open PDF
+        </a>
       </div>
     </form>
   </section>
@@ -1539,6 +1543,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <label class="slot-late-option"><input type="radio" name="slot_timing" value="on_time" checked> I took it on time &mdash; just logging it now</label>
         <label class="slot-late-option"><input type="radio" name="slot_timing" value="late"> I took it late (after the scheduled window)</label>
       </div>
+      <div class="slot-free-time" data-slot-free-time hidden>
+        <p style="margin-bottom:0.5rem;font-size:0.875rem;color:var(--rx-text-muted);">All scheduled times are logged. Log at a different time:</p>
+        <input type="time" data-slot-free-time-input class="form-control" style="width:100%;">
+      </div>
     </div>
     <div class="modal-footer slot-picker-footer">
       <button type="button" class="secondary" data-close-slot-picker>Cancel</button>
@@ -1588,6 +1596,26 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-footer slot-picker-footer">
       <button type="button" class="secondary" data-close-missed-dose-modal>Cancel</button>
       <button type="button" data-missed-dose-confirm>Log dose</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-free-log-modal>
+  <div class="modal-dialog slot-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="free-log-title">
+    <div class="modal-header">
+      <h2 class="modal-title" id="free-log-title" data-free-log-title>Log dose</h2>
+      <button type="button" class="modal-close" data-close-free-log aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <div class="modal-body slot-picker-body">
+      <p class="slot-picker-hint">Select the time you are taking this dose:</p>
+      <div class="form-row" style="margin-top:0.75rem;">
+        <label for="free-log-time" class="form-label">Time taken</label>
+        <input type="time" id="free-log-time" data-free-log-time class="form-control" style="margin-top:.375rem;width:100%;">
+      </div>
+    </div>
+    <div class="modal-footer slot-picker-footer">
+      <button type="button" class="secondary" data-close-free-log>Cancel</button>
+      <button type="button" data-free-log-confirm>Log dose</button>
     </div>
   </div>
 </div>

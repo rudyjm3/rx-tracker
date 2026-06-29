@@ -90,7 +90,7 @@ final class PainChartRenderer
                 $x0, $y, $x1, $y
             );
             $svg .= sprintf(
-                '<text x="%s" y="%s" font-size="9" fill="#94a3b8" text-anchor="end" dominant-baseline="middle" font-family="DejaVu Sans, sans-serif">%d</text>',
+                '<text x="%s" y="%s" font-size="9" fill="#94a3b8" text-anchor="end" dy="0.35em" font-family="DejaVu Sans, sans-serif">%d</text>',
                 $x0 - 4, $y, $level
             );
         }

@@ -83,11 +83,82 @@ const feedbackCharCounter = document.querySelector('[data-feedback-char-counter]
 const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
 const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
 
+// ── Free-log modal (no scheduled slots — interval/PRN meds) ──────────────────
+
+const freeLogModal   = document.querySelector('[data-free-log-modal]');
+const freeLogTitle   = document.querySelector('[data-free-log-title]');
+const freeLogTimeEl  = document.querySelector('[data-free-log-time]');
+const freeLogConfirm = document.querySelector('[data-free-log-confirm]');
+let   freeLogState   = { sourceForm: null, trackFeedback: false };
+
+const openFreeLogModal = ({ medName, sourceForm, trackFeedback }) => {
+  if (!freeLogModal) return;
+  freeLogState = { sourceForm, trackFeedback };
+  if (freeLogTitle) freeLogTitle.textContent = `Log dose for ${medName}`;
+  if (freeLogTimeEl) {
+    const now = new Date();
+    freeLogTimeEl.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  }
+  freeLogModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeFreeLogModal = () => {
+  if (!freeLogModal) return;
+  freeLogModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-close-free-log]').forEach((btn) =>
+  btn.addEventListener('click', closeFreeLogModal)
+);
+freeLogModal?.addEventListener('click', (e) => {
+  if (e.target === freeLogModal) closeFreeLogModal();
+});
+
+freeLogConfirm?.addEventListener('click', async () => {
+  const { sourceForm, trackFeedback } = freeLogState;
+  if (!sourceForm || !freeLogTimeEl) return;
+  const takenTime = freeLogTimeEl.value;
+  if (!takenTime) { freeLogTimeEl.focus(); return; }
+
+  if (trackFeedback) {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    closeFreeLogModal();
+    openDoseFeedbackModal(
+      sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
+      dateStr,
+      takenTime + ':00',
+      true,
+      false
+    );
+    return;
+  }
+
+  if (freeLogConfirm) { freeLogConfirm.disabled = true; freeLogConfirm.textContent = 'Logging…'; }
+  try {
+    const fd = new FormData(sourceForm);
+    fd.set('scheduled_time', takenTime);
+    fd.set('taken_on_time', '1');
+    const res  = await fetch('index.php', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error('Failed to log dose.');
+    closeFreeLogModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+    if (freeLogConfirm) { freeLogConfirm.disabled = false; freeLogConfirm.textContent = 'Log dose'; }
+  }
+});
+
 // ── Slot picker modal ─────────────────────────────────────────────────────────
 
 const slotPickerModal   = document.querySelector('[data-slot-picker-modal]');
 const slotPickerTitle   = document.querySelector('[data-slot-picker-title]');
 const slotPickerList    = document.querySelector('[data-slot-picker-list]');
+const slotFreeTime      = document.querySelector('[data-slot-free-time]');
+const slotFreeTimeInput = document.querySelector('[data-slot-free-time-input]');
 
 // ── Required doses modal ──────────────────────────────────────────────────────
 
@@ -197,6 +268,17 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
       row.append(radio, timeSpan, badge);
       slotPickerList.appendChild(row);
     });
+
+    // If all slots are already logged, show a free-time input as a fallback
+    const allLogged = slots.every((s) => s.status === 'taken' || s.status === 'skipped');
+    if (slotFreeTime) {
+      slotFreeTime.hidden = !allLogged;
+      if (allLogged && slotFreeTimeInput) {
+        const now = new Date();
+        slotFreeTimeInput.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        if (slotPickerConfirm) slotPickerConfirm.disabled = false;
+      }
+    }
   }
 
   slotPickerModal.classList.add('is-open');
@@ -218,6 +300,29 @@ slotPickerModal?.addEventListener('click', (e) => {
 
 slotPickerConfirm?.addEventListener('click', async () => {
   const { medicationId, selectedSlot, trackFeedback, sourceForm, today, graceMinutes } = slotPickerState;
+
+  // When free-time section is visible (all slots logged), use its time input instead
+  const usingFreeTime = slotFreeTime && !slotFreeTime.hidden;
+  if (usingFreeTime) {
+    const freeTime = slotFreeTimeInput?.value;
+    if (!freeTime) { slotFreeTimeInput?.focus(); return; }
+    if (slotPickerConfirm) { slotPickerConfirm.disabled = true; slotPickerConfirm.textContent = 'Logging…'; }
+    try {
+      const fd = new FormData(sourceForm);
+      fd.set('scheduled_time', freeTime);
+      fd.set('taken_on_time', '1');
+      const res  = await fetch('index.php', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!data.ok) throw new Error('Failed to log dose.');
+      closeSlotPickerModal();
+      window.location.reload();
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      if (slotPickerConfirm) { slotPickerConfirm.disabled = false; slotPickerConfirm.textContent = 'Log dose'; }
+    }
+    return;
+  }
+
   if (!selectedSlot) return;
 
   const slotTooEarly = (() => {
@@ -324,10 +429,10 @@ postponeModal?.addEventListener('click', (event) => {
 
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
-const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false }) => {
+const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false, title = null }) => {
   if (!missedDoseModal) return;
   missedDosePainMode = trackFeedback;
-  if (missedDoseTitle) missedDoseTitle.textContent = `Log missed dose — ${medicationName}`;
+  if (missedDoseTitle) missedDoseTitle.textContent = title ?? `Log missed dose — ${medicationName}`;
   if (missedDoseMedId) missedDoseMedId.value = medicationId;
   if (missedDoseDate) missedDoseDate.value = scheduledDate;
   if (missedDoseSchedTime) missedDoseSchedTime.value = scheduledTime;
@@ -514,23 +619,23 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
     const scheduledTime = btn.dataset.scheduledTime ?? '';
     const graceMinutes  = parseInt(btn.dataset.graceMinutes || '30', 10);
 
+    const [schedY, schedMo, schedD] = scheduledDate ? scheduledDate.split('-').map(Number) : [0,0,0];
+    const [schedH, schedM]          = scheduledTime ? scheduledTime.split(':').map(Number) : [0,0];
+    const scheduledMs = scheduledDate && scheduledTime
+      ? new Date(schedY, schedMo - 1, schedD, schedH, schedM, 0).getTime()
+      : null;
+
     const isEffectivelyMissed = (() => {
       if (doseStatus === 'missed') return true;
-      if (!scheduledDate || !scheduledTime) return false;
-      const [y, mo, d] = scheduledDate.split('-').map(Number);
-      const [h, m]     = scheduledTime.split(':').map(Number);
-      const scheduled  = new Date(y, mo - 1, d, h, m, 0);
-      const cutoff     = new Date(scheduled.getTime() + graceMinutes * 60000);
-      return Date.now() > cutoff.getTime();
+      if (scheduledMs === null) return false;
+      return Date.now() > scheduledMs + graceMinutes * 60000;
     })();
 
+    const isPastScheduledTime = scheduledMs !== null && Date.now() > scheduledMs;
+
     const isTooEarly = (() => {
-      if (!scheduledDate || !scheduledTime) return false;
-      const [y, mo, d] = scheduledDate.split('-').map(Number);
-      const [h, m]     = scheduledTime.split(':').map(Number);
-      const scheduled  = new Date(y, mo - 1, d, h, m, 0);
-      const earliest   = new Date(scheduled.getTime() - graceMinutes * 60000);
-      return Date.now() < earliest.getTime();
+      if (scheduledMs === null) return false;
+      return Date.now() < scheduledMs - graceMinutes * 60000;
     })();
 
     if (isTooEarly) {
@@ -548,6 +653,19 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         scheduledDate,
         scheduledTime,
         trackFeedback:  btn.dataset.trackDoseFeedback === '1',
+      });
+      return;
+    }
+
+    if (isPastScheduledTime) {
+      event.preventDefault();
+      openMissedDoseModal({
+        medicationId:   btn.dataset.medicationId ?? '',
+        medicationName: btn.dataset.medicationName ?? 'medication',
+        scheduledDate,
+        scheduledTime,
+        trackFeedback:  btn.dataset.trackDoseFeedback === '1',
+        title: `Log dose — ${btn.dataset.medicationName ?? 'medication'}`,
       });
       return;
     }
@@ -572,14 +690,19 @@ document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
     } catch {
       slots = [];
     }
-    if (slots.length === 0) return;
+    const medName      = btn.dataset.medicationName ?? 'medication';
+    const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    if (slots.length === 0) {
+      openFreeLogModal({ medName, sourceForm: form, trackFeedback });
+      return;
+    }
     openSlotPickerModal({
       medicationId:  btn.dataset.medicationId ?? '',
-      medName:       btn.dataset.medicationName ?? 'medication',
+      medName,
       sourceForm:    form,
       slots,
       graceMinutes:  parseInt(btn.dataset.graceMinutes || '30', 10),
-      trackFeedback: btn.dataset.trackDoseFeedback === '1',
+      trackFeedback,
     });
   });
 });
@@ -1007,7 +1130,7 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
   const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
   const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
-  const win = window.open('', '_blank', 'width=750,height=520');
+  const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
   const printScript = isMobile
     ? ''
@@ -1016,10 +1139,11 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
     ? `<p style="background:#f1f5f9;border-radius:8px;color:#475569;font-size:0.82rem;margin:0.5rem 0 1rem;padding:0.6rem 0.9rem;">Use your browser&rsquo;s print or share button to print this chart.</p>`
     : '';
   win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    @media print{body{padding:0;}}
     body{font-family:sans-serif;padding:1.5rem;color:#172033;}
     h2{font-size:1.1rem;margin:0 0 0.2rem;}
     p{font-size:0.82rem;color:#64748b;margin:0 0 1rem;}
-    svg{width:100%;max-width:680px;display:block;}
+    svg{width:90%;max-width:none;display:block;margin:0 auto;}
   </style></head><body>
   <h2>${title}</h2><p>${rangeLabel}</p>
   ${mobileHint}
@@ -3879,24 +4003,24 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
   });
 })();
 
-// Profile switcher dropdown
+// Unified user menu dropdown
 (function () {
-  const switcher = document.querySelector('[data-profile-switcher]');
-  if (!switcher) return;
-  const chip     = switcher.querySelector('[data-profile-chip]');
-  const dropdown = switcher.querySelector('[data-profile-dropdown]');
-  if (!chip || !dropdown) return;
+  const menu   = document.querySelector('[data-user-menu]');
+  if (!menu) return;
+  const btn    = menu.querySelector('[data-user-menu-btn]');
+  const panel  = menu.querySelector('[data-user-menu-panel]');
+  if (!btn || !panel) return;
 
-  chip.addEventListener('click', () => {
-    const expanded = chip.getAttribute('aria-expanded') === 'true';
-    chip.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-    dropdown.hidden = expanded;
+  btn.addEventListener('click', () => {
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    panel.hidden = expanded;
   });
 
   document.addEventListener('click', (e) => {
-    if (!switcher.contains(e.target)) {
-      chip.setAttribute('aria-expanded', 'false');
-      dropdown.hidden = true;
+    if (!menu.contains(e.target)) {
+      btn.setAttribute('aria-expanded', 'false');
+      panel.hidden = true;
     }
   });
 })();
@@ -3904,11 +4028,22 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
 // ── Export PDF download feedback ──────────────────────────────────────────────
 
 (function () {
-  const form    = document.querySelector('[data-export-form]');
-  const btn     = document.querySelector('[data-export-btn]');
-  const tokenEl = document.querySelector('[data-download-token]');
-  const notice  = document.querySelector('[data-export-notice]');
+  const form     = document.querySelector('[data-export-form]');
+  const btn      = document.querySelector('[data-export-btn]');
+  const tokenEl  = document.querySelector('[data-download-token]');
+  const notice   = document.querySelector('[data-export-notice]');
+  const viewLink = document.querySelector('[data-view-pdf-link]');
   if (!form || !btn || !tokenEl) return;
+
+  if (viewLink) {
+    viewLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const prev = form.target;
+      form.target = '_blank';
+      form.submit();
+      requestAnimationFrame(() => { form.target = prev; });
+    });
+  }
 
   form.addEventListener('submit', () => {
     const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -3928,6 +4063,7 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
         btn.disabled = false;
         btn.innerHTML = originalHtml;
         if (notice) notice.style.display = 'flex';
+        if (viewLink) viewLink.hidden = false;
       }
     }, 500);
   });

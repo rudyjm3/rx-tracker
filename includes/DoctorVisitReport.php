@@ -163,12 +163,12 @@ HTML;
         $gen   = $this->h($generatedDate);
 
         return <<<HTML
-<table style="width:100%;border-collapse:collapse;background:linear-gradient(135deg,#102B57 0%,#0754A8 60%,#14CFE0 100%);margin-bottom:0;" cellpadding="0" cellspacing="0">
+<table style="width:100%;border-collapse:collapse;margin-bottom:0;" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="padding:14pt 18pt;width:68pt;vertical-align:middle;border:none;">
-      <img src="{$logo}" width="56" height="56" style="display:block;">
+    <td style="width:38%;background:#0d1b2e;padding:16pt 18pt;vertical-align:middle;border:none;">
+      <img src="{$logo}" width="60" height="60" style="display:block;">
     </td>
-    <td style="padding:14pt 12pt;vertical-align:middle;border:none;">
+    <td style="background:#0754A8;padding:16pt 18pt 16pt 20pt;vertical-align:middle;border:none;">
       <div style="font-size:17pt;font-weight:bold;color:#ffffff;line-height:1.2;">Doctor Visit Report</div>
       <div style="font-size:9pt;color:#cde8ff;margin-top:4pt;">Prepared by RxTracker &bull; Patient: {$name}</div>
       <div style="font-size:9pt;color:#cde8ff;margin-top:2pt;">Reporting period: {$period} &bull; Generated: {$gen}</div>
@@ -192,16 +192,15 @@ HTML;
         $total   = (int) ($adherence['total_scheduled'] ?? 0);
         $perMed  = (array) ($adherence['per_medication'] ?? []);
 
-        $pctClass = $pct >= 80 ? 'badge-pct-good' : ($pct >= 50 ? 'badge-pct-warn' : 'badge-pct-bad');
-
         $rows = '';
         foreach ($perMed as $med) {
-            $mp      = (int) $med['pct'];
-            $mc      = $mp >= 80 ? 'badge-pct-good' : ($mp >= 50 ? 'badge-pct-warn' : 'badge-pct-bad');
+            $mp  = (int) $med['pct'];
+            $mColor = $mp >= 71 ? '#18BFA6' : ($mp >= 51 ? '#EAB308' : ($mp >= 31 ? '#F5A524' : '#E5484D'));
+            $miniRing = $this->adherenceRingSvg($mp, 44);
             $rows .= sprintf(
-                '<tr><td>%s</td><td><span class="badge %s">%d%%</span></td><td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>',
+                '<tr><td>%s</td><td style="text-align:center;vertical-align:middle;">%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>',
                 $this->h((string) $med['name']),
-                $mc, $mp,
+                $miniRing,
                 (int) $med['taken'],
                 (int) $med['missed'],
                 (int) $med['skipped'],
@@ -213,10 +212,12 @@ HTML;
             $rows = '<tr><td colspan="6" class="empty-state">No scheduled dose data for this period.</td></tr>';
         }
 
+        $overallRing = $this->adherenceRingSvg($pct, 90);
+
         return <<<HTML
 <div class="section-title">Adherence Summary</div>
 <div class="section-block">
-  <div class="adh-overall"><span class="badge {$pctClass}">{$pct}%</span></div>
+  <div class="adh-overall">{$overallRing}</div>
   <div class="adh-totals">
     <span>Scheduled: <strong>{$total}</strong></span>
     <span>Taken: <strong style="color:#18BFA6;">{$taken}</strong></span>
@@ -240,9 +241,13 @@ HTML;
         $rows = '';
         foreach ($medications as $med) {
             $schedule = $this->formatSchedule($med);
-            $startDate = !empty($med['start_date'])
-                ? $this->h(date('M j, Y', (int) strtotime((string) $med['start_date'])))
-                : '<span style="color:#60708A;">—</span>';
+            if (!empty($med['start_date'])) {
+                $startDate = $this->h(date('M j, Y', (int) strtotime((string) $med['start_date'])));
+            } else {
+                $fallbackTs = !empty($med['created_at']) ? strtotime((string) $med['created_at']) : time();
+                $startDate  = $this->h(date('M j, Y', (int) $fallbackTs))
+                    . '<div style="font-size:7pt;color:#64748b;margin-top:1pt;">(Date added to the app)</div>';
+            }
             $dose = $this->h($this->formattedDose($med));
             $rows .= sprintf(
                 '<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
@@ -458,11 +463,39 @@ HTML;
 
     private function logoDataUri(): string
     {
-        $path = dirname(__DIR__) . '/assets/icons/logo-round.png';
+        $path = dirname(__DIR__) . '/assets/icons/icon-192.png';
+        if (!file_exists($path)) {
+            $path = dirname(__DIR__) . '/assets/icons/logo-round.png';
+        }
         if (!file_exists($path)) {
             return '';
         }
         return 'data:image/png;base64,' . base64_encode((string) file_get_contents($path));
+    }
+
+    private function adherenceRingSvg(int $pct, int $size = 90): string
+    {
+        $color = $pct >= 71 ? '#18BFA6' : ($pct >= 51 ? '#EAB308' : ($pct >= 31 ? '#F5A524' : '#E5484D'));
+        $cx    = $size / 2;
+        $cy    = $size / 2;
+        $r     = round($cx - $size * 0.1, 2);
+        $sw    = round($size * 0.1, 2);
+        $circ  = round(2 * M_PI * $r, 2);
+        $off   = round($circ * (1 - min(100, max(0, $pct)) / 100), 2);
+        $fs    = max(7, (int) round($size * 0.22));
+
+        return sprintf(
+            '<svg width="%1$d" height="%1$d" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %1$d %1$d">' .
+            '<circle cx="%2$s" cy="%2$s" r="%3$s" fill="none" stroke="#e2e8f0" stroke-width="%4$s"/>' .
+            '<circle cx="%2$s" cy="%2$s" r="%3$s" fill="none" stroke="%5$s" stroke-width="%4$s"' .
+            ' stroke-dasharray="%6$s" stroke-dashoffset="%7$s"' .
+            ' transform="rotate(-90 %2$s %2$s)" stroke-linecap="round"/>' .
+            '<text x="%2$s" y="%2$s" text-anchor="middle" dy="0.35em"' .
+            ' font-size="%8$d" font-weight="bold" fill="%5$s"' .
+            ' font-family="DejaVu Sans, sans-serif">%9$d%%</text>' .
+            '</svg>',
+            $size, $cx, $r, $sw, $color, $circ, $off, $fs, $pct
+        );
     }
 
     private function daysOnMedication(array $med): int
