@@ -1869,7 +1869,18 @@ textarea:focus,
   display: inline-flex;
   font-size: 0.82rem;
   gap: 0.4rem;
+  justify-content: center;
   padding: 0.5rem 0.8rem;
+  width: 45%;
+}
+
+.medication-actions-bottom form {
+  width: 45%;
+}
+
+.medication-actions-bottom form button,
+.medication-actions-bottom form .secondary {
+  width: 100%;
 }
 
 /* Mobile: hide desktop-only buttons, show mobile more-menu */
