@@ -1238,7 +1238,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         $lowUnit   = (string) ($lowMed['inventory_unit'] ?? 'tablets');
         $lowCurDisplay = $lowCurQty == (int) $lowCurQty ? (string) (int) $lowCurQty : rtrim(number_format($lowCurQty, 3), '0');
       ?>
-      <p><strong><?= e((string) $lowMed['name']) ?></strong> &mdash; only <?= e($lowCurDisplay) ?> <?= e($lowUnit) ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?> <?= e($lowUnit) ?>)</p>
+      <p><strong><?= e((string) $lowMed['name']) ?><?= formattedDose($lowMed) !== '' ? ' ' . e(formattedDose($lowMed)) : '' ?></strong> &mdash; only <?= e($lowCurDisplay) ?> <?= e($lowUnit) ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?> <?= e($lowUnit) ?>)</p>
     <?php endforeach; ?>
   </div>
   <?php endif; ?>
@@ -1270,7 +1270,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </div>
             <div class="schedule-row-info">
               <?php $schMedTypeSlug = (string) ($dose['medication_type'] ?? 'prescription'); $schMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
-              <strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span>
+              <span class="med-name-row"><strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span></span>
               <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
               <?php if ($dose['group_name'] !== null): ?>
                 <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
