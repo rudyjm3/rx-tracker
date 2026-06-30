@@ -7,7 +7,7 @@ declare(strict_types=1);
 $userId     = $auth->currentUserId();
 $familyRepo = new FamilyProfileRepository(db());
 
-$stmt = db()->prepare('SELECT id, email, display_name, created_at FROM users WHERE id = :id LIMIT 1');
+$stmt = db()->prepare('SELECT id, email, display_name, google_id, profile_picture, password_hash, created_at FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
 $userRow = $stmt->fetch();
 if (!is_array($userRow)) {
@@ -202,9 +202,13 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
+  <?php if ($googleAuth->isConfigured()): ?>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="assets/js/google-auth.js?v=<?= filemtime(__DIR__ . '/../assets/js/google-auth.js') ?>" defer></script>
+  <?php endif; ?>
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
 </head>
-<body>
+<body data-google-client-id="<?= e(env_value('GOOGLE_CLIENT_ID', '')) ?>" data-google-auth-mode="connect">
 <main class="app-shell">
   <nav class="top-nav">
     <a class="nav-brand" href="index.php">
@@ -338,6 +342,41 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
           </div>
           <button type="submit" class="secondary">Save name</button>
         </form>
+      </div>
+
+      <!-- Connected Accounts -->
+      <div class="panel">
+        <div class="panel-heading">
+          <i class="fa-brands fa-google" aria-hidden="true"></i>
+          <h2>Connected Accounts</h2>
+        </div>
+        <div class="connected-account-row">
+          <div class="connected-account-info">
+            <strong>Google</strong>
+            <?php if (!empty($userRow['google_id'])): ?>
+              <span class="connected-account-status is-connected">Connected ✓</span>
+            <?php else: ?>
+              <span class="connected-account-status">Not connected</span>
+            <?php endif; ?>
+          </div>
+          <?php if (!empty($userRow['google_id'])): ?>
+            <form method="post" action="index.php?page=google-unlink">
+              <?= csrf_field() ?>
+              <button type="submit" class="secondary" aria-label="Disconnect Google account">Disconnect</button>
+            </form>
+          <?php elseif ($googleAuth->isConfigured()): ?>
+            <button type="button" class="google-auth-btn google-auth-btn--compact" data-google-auth-button aria-label="Connect Google Account">
+              <span class="google-auth-icon" aria-hidden="true">G</span>
+              <span data-google-auth-text>Connect Google Account</span>
+            </button>
+          <?php else: ?>
+            <span class="muted">Google sign-in is not configured.</span>
+          <?php endif; ?>
+        </div>
+        <div class="auth-error google-auth-message" data-google-auth-message role="alert" hidden></div>
+        <?php if (!empty($userRow['google_id']) && empty($userRow['password_hash'])): ?>
+          <p class="settings-subsection-hint">Create a password before disconnecting Google, so you do not lose access.</p>
+        <?php endif; ?>
       </div>
 
       <!-- Change Password -->

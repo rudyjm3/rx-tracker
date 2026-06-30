@@ -51,9 +51,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <link rel="stylesheet" href="assets/css/styles.css?v=<?= filemtime(__DIR__ . '/../assets/css/styles.css') ?>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
   <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+  <?php if ($googleAuth->isConfigured()): ?>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="assets/js/google-auth.js?v=<?= filemtime(__DIR__ . '/../assets/js/google-auth.js') ?>" defer></script>
+  <?php endif; ?>
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
 </head>
-<body>
+<body data-google-client-id="<?= e(env_value('GOOGLE_CLIENT_ID', '')) ?>" data-google-auth-mode="login">
 
 <div class="auth-shell">
 
@@ -154,6 +158,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <button type="submit">Sign In</button>
+      <?php if ($googleAuth->isConfigured()): ?>
+        <div class="auth-divider"><span>or</span></div>
+        <button type="button" class="google-auth-btn" data-google-auth-button aria-label="Continue with Google">
+          <span class="google-auth-icon" aria-hidden="true">G</span>
+          <span data-google-auth-text>Continue with Google</span>
+        </button>
+        <div class="auth-error google-auth-message" data-google-auth-message role="alert" hidden></div>
+      <?php endif; ?>
       </form>
 
       <p class="auth-footer-link">

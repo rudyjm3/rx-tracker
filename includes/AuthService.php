@@ -42,12 +42,12 @@ final class AuthService
     {
         $email = strtolower(trim($email));
         $stmt = $this->db->prepare(
-            'SELECT id, password_hash FROM users WHERE email = :email LIMIT 1'
+            'SELECT id, email, display_name, password_hash FROM users WHERE email = :email LIMIT 1'
         );
         $stmt->execute(['email' => $email]);
         $user = $stmt->fetch();
 
-        if (!is_array($user) || !password_verify($password, (string) $user['password_hash'])) {
+        if (!is_array($user) || empty($user['password_hash']) || !password_verify($password, (string) $user['password_hash'])) {
             return false;
         }
 
@@ -56,7 +56,12 @@ final class AuthService
         if (session_status() !== PHP_SESSION_ACTIVE) {
             session_start();
         }
+        session_regenerate_id(true);
         $_SESSION['user_id'] = $userId;
+        $_SESSION['user_name'] = (string) ($user['display_name'] ?? '');
+        $_SESSION['email'] = (string) ($user['email'] ?? '');
+        $_SESSION['logged_in'] = true;
+        $this->db->prepare('UPDATE users SET last_login = NOW() WHERE id = :id')->execute(['id' => $userId]);
 
         $this->sessionManager->issueSession($userId, $remember);
 
@@ -105,7 +110,7 @@ final class AuthService
             return null;
         }
         $stmt = $this->db->prepare(
-            'SELECT id, email, display_name FROM users WHERE id = :id LIMIT 1'
+            'SELECT id, email, display_name, profile_picture, email_verified FROM users WHERE id = :id LIMIT 1'
         );
         $stmt->execute(['id' => $userId]);
         $row = $stmt->fetch();
@@ -158,7 +163,7 @@ final class AuthService
         $stmt = $this->db->prepare('SELECT password_hash FROM users WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $userId]);
         $row = $stmt->fetch();
-        if (!is_array($row) || !password_verify($currentPassword, (string) $row['password_hash'])) {
+        if (!is_array($row) || empty($row['password_hash']) || !password_verify($currentPassword, (string) $row['password_hash'])) {
             return false;
         }
         $this->db->prepare('UPDATE users SET password_hash = :hash WHERE id = :id')

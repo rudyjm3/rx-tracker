@@ -6,6 +6,7 @@ require __DIR__ . '/config/database.php';
 require __DIR__ . '/includes/helpers.php';
 require __DIR__ . '/includes/SessionManager.php';
 require __DIR__ . '/includes/AuthService.php';
+require __DIR__ . '/includes/GoogleAuthService.php';
 require __DIR__ . '/includes/MailService.php';
 require __DIR__ . '/includes/MedicationRepository.php';
 require __DIR__ . '/includes/FamilyProfileRepository.php';
@@ -19,10 +20,12 @@ if (is_file(__DIR__ . '/vendor/autoload.php')) {
 
 $page = (string) ($_GET['page'] ?? 'dashboard');
 
-$auth = new AuthService(db(), new SessionManager(db()));
+$sessionManager = new SessionManager(db());
+$auth = new AuthService(db(), $sessionManager);
+$googleAuth = new GoogleAuthService(db(), $sessionManager, env_value('GOOGLE_CLIENT_ID', ''));
 
 // Public auth routes — served before login check
-$authPages = ['login', 'register', 'forgot-password', 'reset-password', 'terms', 'privacy'];
+$authPages = ['login', 'register', 'forgot-password', 'reset-password', 'terms', 'privacy', 'google-login'];
 if (in_array($page, $authPages, true)) {
     $routeFile = __DIR__ . '/routes/' . str_replace('-', '_', $page) . '.php';
     require $routeFile;
@@ -35,6 +38,16 @@ if ($page === 'logout') {
 }
 
 $auth->requireLogin();
+
+if ($page === 'google-link') {
+    require __DIR__ . '/routes/google_link.php';
+    exit;
+}
+
+if ($page === 'google-unlink') {
+    require __DIR__ . '/routes/google_unlink.php';
+    exit;
+}
 
 if ($page === 'profile') {
     require __DIR__ . '/routes/profile.php';
