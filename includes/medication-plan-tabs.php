@@ -57,7 +57,7 @@
           ?>
           <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($medTypeSlug) ?>"><?= e($medTypeLabel) ?></span>
           <?php if (formattedDose($medication) !== ''): ?>
-          <p><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
+          <p class="med-dose"><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
           <?php endif; ?>
           <p>
             <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
