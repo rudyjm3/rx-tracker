@@ -1659,6 +1659,11 @@ textarea:focus,
   min-width: 0;
 }
 
+.med-dose {
+  color: #46484d;
+  font-weight: 700;
+}
+
 .dose-inline {
   color: var(--rx-text-muted);
   font-size: 0.82rem;
