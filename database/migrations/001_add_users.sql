@@ -4,8 +4,12 @@
 CREATE TABLE IF NOT EXISTS users (
     id                     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     email                  VARCHAR(255) NOT NULL UNIQUE,
-    password_hash          VARCHAR(255) NOT NULL,
+    password_hash          VARCHAR(255) NULL,
     display_name           VARCHAR(100),
+    google_id              VARCHAR(255) NULL UNIQUE,
+    profile_picture        VARCHAR(500) NULL,
+    email_verified         TINYINT(1) NOT NULL DEFAULT 0,
+    last_login             DATETIME NULL,
     reset_token            VARCHAR(64),
     reset_token_expires_at DATETIME,
     created_at             TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

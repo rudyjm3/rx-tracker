@@ -5595,3 +5595,118 @@ a.nav-user-btn.is-active {
   padding: 0.5rem 1.75rem;
 }
 
+
+.auth-divider {
+  align-items: center;
+  color: var(--rx-text-muted);
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 800;
+  gap: 0.75rem;
+  margin: 0.35rem 0;
+  text-transform: uppercase;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  background: var(--rx-border);
+  content: '';
+  flex: 1;
+  height: 1px;
+}
+
+.google-auth-btn {
+  align-items: center;
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  color: var(--rx-navy);
+  display: inline-flex;
+  gap: 0.65rem;
+  justify-content: center;
+  width: 100%;
+}
+
+.google-auth-btn:hover,
+.google-auth-btn:focus-visible {
+  background: #f8fbff;
+  border-color: var(--rx-deep-blue);
+  box-shadow: 0 10px 22px rgba(7, 84, 168, 0.16);
+  color: var(--rx-deep-blue);
+}
+
+.google-auth-btn.is-loading .google-auth-icon {
+  animation: google-auth-spin 900ms linear infinite;
+}
+
+.google-auth-btn--compact {
+  width: auto;
+}
+
+.google-auth-icon {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--rx-border);
+  border-radius: 50%;
+  color: #4285f4;
+  display: inline-flex;
+  font-family: Arial, sans-serif;
+  font-weight: 900;
+  height: 1.4rem;
+  justify-content: center;
+  width: 1.4rem;
+}
+
+.google-auth-message {
+  margin-top: 0.75rem;
+}
+
+.connected-account-row {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.connected-account-info {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.connected-account-status {
+  color: var(--rx-text-muted);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.connected-account-status.is-connected {
+  color: #0e7a68;
+}
+
+@keyframes google-auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+  .connected-account-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .google-auth-btn--compact {
+    width: 100%;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .google-auth-btn {
+    background: #0f223f;
+    border-color: rgba(215, 230, 248, 0.25);
+    color: #eef6ff;
+  }
+
+  .google-auth-btn:hover,
+  .google-auth-btn:focus-visible {
+    background: #163052;
+    color: #fff;
+  }
+}
