@@ -46,7 +46,7 @@
               else: ?>&#8505;<?php endif; ?>
             </span>
             <div class="notif-item-text">
-              <strong class="notif-item-name"><?= e((string) $notif['medication_name']) ?></strong>
+              <strong class="notif-item-name"><?= e((string) $notif['medication_name']) ?><?= formattedDose($notif) !== '' ? ' ' . e(formattedDose($notif)) : '' ?></strong>
               <span class="notif-item-desc">
                 <?php if ($notifType === 'out_of_stock'): ?>
                   Out of stock &mdash; refill needed

@@ -75,8 +75,9 @@ button:hover {
 }
 
 button:disabled {
-  background: #c6d1e3;
+  background: #eaeaea;
   box-shadow: none;
+  color: #adb5bd;
   cursor: not-allowed;
   transform: none;
 }
@@ -1660,13 +1661,14 @@ textarea:focus,
 }
 
 .med-dose {
-  color: #46484d;
+  color: #6b7280;
   font-weight: 700;
 }
 
 .dose-inline {
-  color: var(--rx-text-muted);
+  color: #6b7280;
   font-size: 0.82rem;
+  font-weight: 700;
   margin-left: 0.3rem;
 }
 
@@ -1694,6 +1696,12 @@ textarea:focus,
 .med-type-badge--supplement {
   background: rgba(245, 165, 36, 0.12);
   color: #8a5c00;
+}
+
+.hero-next-dose-panel .med-type-badge {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .med-filter-wrap {
@@ -1999,6 +2007,10 @@ textarea:focus,
 .secondary:hover {
   background: var(--rx-border);
   box-shadow: none;
+}
+
+.secondary:disabled {
+  border-color: #dce0e5;
 }
 
 .schedule-list {
@@ -4334,13 +4346,16 @@ details.med-detail-section[open] .med-detail-section-title::after {
 /* ── Group badge in today schedule ──────────────────────────────────────────── */
 
 .group-badge {
+  align-items: center;
+  align-self: flex-start;
   background: rgba(7, 84, 168, 0.10);
   border: 1px solid rgba(7, 84, 168, 0.22);
   border-radius: 999px;
   color: var(--rx-deep-blue);
-  display: inline-block;
+  display: inline-flex;
   font-size: 0.7rem;
   font-weight: 700;
+  gap: 0.3rem;
   padding: 0.2rem 0.5rem;
   margin-right: 0.2rem;
 }
