@@ -1273,7 +1273,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <span class="med-name-row"><strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span></span>
               <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
               <?php if ($dose['group_name'] !== null): ?>
-                <span class="group-badge"><?= e((string) $dose['group_name']) ?></span>
+                <span class="group-badge"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><?= e((string) $dose['group_name']) ?></span>
               <?php endif; ?>
               <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
                 <?php $lateMin = minutesLate($dose, $graceMinutes); ?>
