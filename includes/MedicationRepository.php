@@ -657,10 +657,14 @@ final class MedicationRepository
                 }
                 // Skip the interval check for snoozed doses — the snooze itself is
                 // explicit user intent to take the dose later, so the original slot
-                // time should not block it. Also skip for missed→taken retroactive updates.
+                // time should not block it. Also skip for missed→taken retroactive
+                // updates, and for backfilling a prior calendar day (e.g. via "Log
+                // past dose") — the interval gate exists to stop a live double-dose,
+                // not to validate history being entered after the fact.
                 $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
                 $isMissedRetroactive = is_array($row) && (string) $row['status'] === 'missed';
-                if (!$isSnoozed && !$isMissedRetroactive) {
+                $isPastDayBackfill = $date < (new DateTimeImmutable('today'))->format('Y-m-d');
+                if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill) {
                     $this->assertIntervalAllowed($medicationId, $scheduledAt);
                 }
             }

@@ -2876,6 +2876,9 @@ textarea:focus,
 }
 
 .slot-picker-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 1rem;
 }
 
@@ -3635,6 +3638,45 @@ textarea:focus,
 .missed-pain-btn.is-selected[data-missed-pain="8"]  { background: #e05b30; border-color: #e05b30; }
 .missed-pain-btn.is-selected[data-missed-pain="9"],
 .missed-pain-btn.is-selected[data-missed-pain="10"] { background: #c9213c; border-color: #c9213c; }
+
+/* Log past dose modal pain buttons — same round appearance as the normal feedback modal */
+.log-past-dose-pain-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  color: var(--rx-text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+.log-past-dose-pain-btn:hover { border-color: var(--rx-text-muted); color: #fff; }
+.log-past-dose-pain-btn[data-log-past-dose-pain="1"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="2"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="3"]  { border-color: #2a9d49; }
+.log-past-dose-pain-btn[data-log-past-dose-pain="4"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="5"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="6"]  { border-color: #d97706; }
+.log-past-dose-pain-btn[data-log-past-dose-pain="7"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="8"]  { border-color: #e05b30; }
+.log-past-dose-pain-btn[data-log-past-dose-pain="9"],
+.log-past-dose-pain-btn[data-log-past-dose-pain="10"] { border-color: #c9213c; }
+.log-past-dose-pain-btn.is-selected { color: #fff; }
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="1"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="2"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="3"]  { background: #2a9d49; border-color: #2a9d49; }
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="4"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="5"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="6"]  { background: #d97706; border-color: #d97706; }
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="7"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="8"]  { background: #e05b30; border-color: #e05b30; }
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="9"],
+.log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="10"] { background: #c9213c; border-color: #c9213c; }
 
 .feedback-actions {
   display: flex;

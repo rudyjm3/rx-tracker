@@ -145,6 +145,19 @@
                 <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                 Log refill
               </button>
+              <button
+                type="button"
+                class="med-actions-item"
+                data-open-log-past-dose
+                data-medication-id="<?= e((string) $medication['id']) ?>"
+                data-medication-name="<?= e((string) $medication['name']) ?>"
+                data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
+                data-schedule-mode="<?= e((string) $medication['schedule_mode']) ?>"
+                data-slots="<?= e(json_encode($medication['times'])) ?>"
+              >
+                <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+                Log past dose
+              </button>
             </div>
           </div>
         </div>
