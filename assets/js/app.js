@@ -143,7 +143,7 @@ freeLogConfirm?.addEventListener('click', async () => {
     fd.set('taken_on_time', '1');
     const res  = await fetch('index.php', { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) throw new Error('Failed to log dose.');
+    if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeFreeLogModal();
     window.location.reload();
   } catch (err) {
@@ -313,7 +313,7 @@ slotPickerConfirm?.addEventListener('click', async () => {
       fd.set('taken_on_time', '1');
       const res  = await fetch('index.php', { method: 'POST', body: fd });
       const data = await res.json();
-      if (!data.ok) throw new Error('Failed to log dose.');
+      if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
       closeSlotPickerModal();
       window.location.reload();
     } catch (err) {
@@ -358,7 +358,7 @@ slotPickerConfirm?.addEventListener('click', async () => {
     fd.set('taken_on_time', takenOnTime ? '1' : '0');
     const res  = await fetch('index.php', { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) throw new Error('Failed to log dose.');
+    if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeSlotPickerModal();
     window.location.reload();
   } catch (err) {
@@ -480,7 +480,7 @@ missedDoseModal?.querySelector('[data-missed-dose-confirm]')?.addEventListener('
     const fd = new FormData(missedDoseForm);
     const res = await fetch('index.php', { method: 'POST', body: fd });
     const data = await res.json();
-    if (!data.ok) throw new Error('Failed to log dose.');
+    if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeMissedDoseModal();
     window.location.reload();
   } catch (err) {
@@ -717,8 +717,13 @@ feedbackForm?.addEventListener('submit', async (event) => {
     const medId = feedbackMedicationIdEl?.value ?? '';
     const date = feedbackScheduledDateEl?.value ?? '';
     const time = feedbackScheduledTimeEl?.value ?? '';
-    await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId);
-    meta.markDone('Taken ✓');
+    const result = await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId);
+    if (result.ok) {
+      meta.markDone('Taken ✓');
+    } else {
+      meta.markDone('Failed ✗');
+      alert(result.error || 'Failed to log dose.');
+    }
   } else if (feedbackAlarmContext) {
     event.preventDefault();
     await submitFeedbackAsAlarmAction();
@@ -735,8 +740,13 @@ skipFeedbackBtn?.addEventListener('click', async () => {
     const date = feedbackScheduledDateEl?.value ?? '';
     const time = feedbackScheduledTimeEl?.value ?? '';
     closeDoseFeedbackModal();
-    await postDose(medId, date, time, 'taken', '', '', meta.groupId);
-    meta.markDone('Taken ✓');
+    const result = await postDose(medId, date, time, 'taken', '', '', meta.groupId);
+    if (result.ok) {
+      meta.markDone('Taken ✓');
+    } else {
+      meta.markDone('Failed ✗');
+      alert(result.error || 'Failed to log dose.');
+    }
   } else if (feedbackAlarmContext) {
     closeDoseFeedbackModal();
     await alarmAction('mark_dose', { status: 'taken', note: '' });
@@ -1827,6 +1837,7 @@ const alarmAction = async (action, extra = {}) => {
 
 let feedbackQueue = [];
 let feedbackQueueMode = false;
+let feedbackQueueFailures = [];
 const feedbackQueueProgressEl = document.querySelector('[data-feedback-queue-progress]');
 
 const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '', groupId = '') => {
@@ -1843,15 +1854,23 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
   });
   if (groupId) params.set('group_id', String(groupId));
   try {
-    await window.fetch('index.php', {
+    const res = await window.fetch('index.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });
+    const data = await res.json();
+    return { ok: !!data.ok, error: data.error ?? null };
   } catch {
-    // best-effort
+    return { ok: false, error: null };
   }
+};
+
+const alertDoseFailures = (failures) => {
+  if (failures.length === 0) return;
+  const lines = failures.map((f) => `${f.name}: ${f.error || 'Failed to log dose.'}`);
+  alert(`Some doses could not be logged:\n${lines.join('\n')}`);
 };
 
 const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMinutes) => {
@@ -1879,6 +1898,8 @@ const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMin
 const processNextFeedbackQueueItem = () => {
   if (feedbackQueue.length === 0) {
     feedbackQueueMode = false;
+    alertDoseFailures(feedbackQueueFailures);
+    feedbackQueueFailures = [];
     if (!isAnyModalOpen()) window.location.reload();
     return;
   }
@@ -1896,7 +1917,8 @@ const processNextFeedbackQueueItem = () => {
 const submitCurrentQueueItem = async (note, painLevel) => {
   const item = feedbackQueue.shift();
   if (!item) return;
-  await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel, item.group_id ?? '');
+  const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel, item.group_id ?? '');
+  if (!result.ok) feedbackQueueFailures.push({ name: item.name, error: result.error });
   closeDoseFeedbackModal();
   if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
   processNextFeedbackQueueItem();
@@ -1913,15 +1935,19 @@ alarmTakeBtn?.addEventListener('click', async () => {
     stopAlarmAudio();
     hideAlarmOverlay();
 
+    const failures = [];
     for (const item of nonFeedback) {
-      await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
+      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
+      if (!result.ok) failures.push({ name: item.name, error: result.error });
     }
 
     if (withFeedback.length === 0) {
+      alertDoseFailures(failures);
       window.location.reload();
       return;
     }
 
+    feedbackQueueFailures = failures;
     feedbackQueue = withFeedback.map((item, idx) => ({
       ...item,
       positionInBatch: idx + 1,
@@ -1948,9 +1974,12 @@ alarmSkipBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
     const items = [...alarmGroupItems];
     hideAlarmOverlay();
+    const failures = [];
     for (const item of items) {
-      await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
+      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
+      if (!result.ok) failures.push({ name: item.name, error: result.error });
     }
+    alertDoseFailures(failures);
     window.location.reload();
   } else {
     alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
@@ -2019,14 +2048,24 @@ alarmIndividualBtn?.addEventListener('click', () => {
         openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
         // markDone is deferred until feedback is submitted or skipped.
       } else {
-        await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
-        markDone('Taken ✓');
+        const result = await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
+        if (result.ok) {
+          markDone('Taken ✓');
+        } else {
+          markDone('Failed ✗');
+          alert(result.error || 'Failed to log dose.');
+        }
       }
     });
 
     skipBtn?.addEventListener('click', async () => {
-      await postDose(medicationId, scheduledDate, scheduledTime, 'skipped', 'Skipped dose');
-      markDone('Skipped');
+      const result = await postDose(medicationId, scheduledDate, scheduledTime, 'skipped', 'Skipped dose');
+      if (result.ok) {
+        markDone('Skipped');
+      } else {
+        markDone('Failed ✗');
+        alert(result.error || 'Failed to log dose.');
+      }
     });
 
     snoozeBtn?.addEventListener('click', async () => {

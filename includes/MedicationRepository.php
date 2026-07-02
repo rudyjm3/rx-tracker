@@ -1695,6 +1695,28 @@ final class MedicationRepository
         return new DateTimeImmutable($value);
     }
 
+    private function latestTakenScheduledAt(int $medicationId): ?DateTimeImmutable
+    {
+        $statement = $this->db->prepare(
+            "SELECT scheduled_for_date, scheduled_time
+             FROM dose_logs
+             WHERE medication_id = :medication_id
+               AND status = 'taken'
+             ORDER BY scheduled_for_date DESC, scheduled_time DESC
+             LIMIT 1"
+        );
+        $statement->execute(['medication_id' => $medicationId]);
+        $row = $statement->fetch();
+
+        if (!is_array($row) || !isset($row['scheduled_for_date'], $row['scheduled_time'])) {
+            return null;
+        }
+
+        $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $row['scheduled_for_date'] . ' ' . $row['scheduled_time']);
+
+        return $scheduledAt instanceof DateTimeImmutable ? $scheduledAt : null;
+    }
+
     private function assertIntervalAllowed(int $medicationId, DateTimeImmutable $candidate): void
     {
         $medication = $this->findMedication($medicationId);
@@ -1702,16 +1724,18 @@ final class MedicationRepository
             return;
         }
 
-        $lastTaken = $this->latestTakenAt($medicationId);
-        if (!$lastTaken instanceof DateTimeImmutable) {
+        // Anchor the interval to the previous dose's *scheduled* slot, not the
+        // actual moment it was clicked/logged. Otherwise a dose logged even a
+        // minute after its slot pushes every later slot's "next allowed" time
+        // past its own scheduled time, permanently blocking on-time doses that
+        // happen to sit in a different group/slot exactly interval_hours later.
+        $lastScheduled = $this->latestTakenScheduledAt($medicationId);
+        if (!$lastScheduled instanceof DateTimeImmutable) {
             return;
         }
 
         $intervalHours = (int) $medication['interval_hours'];
-        // Truncate seconds from lastTaken so the interval is minute-precise,
-        // matching the H:i slot times produced by timesForDate().
-        $lastTakenMinute = $lastTaken->setTime((int) $lastTaken->format('H'), (int) $lastTaken->format('i'), 0);
-        $nextAllowed = $lastTakenMinute->modify('+' . $intervalHours . ' hours');
+        $nextAllowed = $lastScheduled->modify('+' . $intervalHours . ' hours');
         if ($candidate < $nextAllowed) {
             throw new RuntimeException(
                 'Too early for this medication. Next allowed dose is at ' . $nextAllowed->format('g:i A') . '.'
