@@ -16,6 +16,9 @@ $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 $db->exec("CREATE TABLE medications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL DEFAULT 0,
+    profile_id INTEGER NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     name TEXT,
     dose TEXT NOT NULL DEFAULT '',
     instructions TEXT,
@@ -140,6 +143,21 @@ try {
     $threw = true;
 }
 assertSameValue(true, $threw, 'Interval medication should block too-early dose.');
+
+// An interval medication logged in two scheduled slots per day (e.g. via two
+// medication groups exactly interval_hours apart) should not have its later
+// on-time slot blocked just because the earlier slot was logged a minute late.
+$repo->createMedication('Twice Daily Interval', '', 'interval', [], 12, '07:00:00', false, 0, false, '', 'prescription', 3.0, 'mg', 'tablet', 'pills', 39.0, 1.0);
+$allTwice = $repo->activeMedications();
+$twiceId = (int) array_values(array_filter($allTwice, static fn(array $r): bool => $r['name'] === 'Twice Daily Interval'))[0]['id'];
+$repo->recordDoseStatus($twiceId, $today, '07:00:00', 'taken', '', null, null, $today . ' 07:01:00');
+$eveningThrew = false;
+try {
+    $repo->recordDoseStatus($twiceId, $today, '19:00:00', 'taken', '');
+} catch (RuntimeException $exception) {
+    $eveningThrew = true;
+}
+assertSameValue(false, $eveningThrew, 'On-time evening slot should not be blocked by AM dose logged a minute late.');
 
 $repo->createMedication('Missed Med', '', 'fixed_times', ['00:00:00'], null, null, false, 1, false, '', 'prescription', null, null, null, 'pills', 5.0, 1.0);
 $allAfter = $repo->activeMedications();

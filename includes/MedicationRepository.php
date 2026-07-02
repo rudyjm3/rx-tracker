@@ -665,7 +665,7 @@ final class MedicationRepository
                 $isMissedRetroactive = is_array($row) && (string) $row['status'] === 'missed';
                 $isPastDayBackfill = $date < (new DateTimeImmutable('today'))->format('Y-m-d');
                 if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill) {
-                    $this->assertIntervalAllowed($medicationId, $scheduledAt);
+                    $this->assertIntervalAllowed($medicationId, $scheduledAt, true);
                 }
             }
 
@@ -1695,23 +1695,54 @@ final class MedicationRepository
         return new DateTimeImmutable($value);
     }
 
-    private function assertIntervalAllowed(int $medicationId, DateTimeImmutable $candidate): void
+    private function latestTakenScheduledAt(int $medicationId): ?DateTimeImmutable
+    {
+        $statement = $this->db->prepare(
+            "SELECT scheduled_for_date, scheduled_time
+             FROM dose_logs
+             WHERE medication_id = :medication_id
+               AND status = 'taken'
+             ORDER BY scheduled_for_date DESC, scheduled_time DESC
+             LIMIT 1"
+        );
+        $statement->execute(['medication_id' => $medicationId]);
+        $row = $statement->fetch();
+
+        if (!is_array($row) || !isset($row['scheduled_for_date'], $row['scheduled_time'])) {
+            return null;
+        }
+
+        $scheduledAt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $row['scheduled_for_date'] . ' ' . $row['scheduled_time']);
+
+        return $scheduledAt instanceof DateTimeImmutable ? $scheduledAt : null;
+    }
+
+    private function assertIntervalAllowed(int $medicationId, DateTimeImmutable $candidate, bool $useScheduledAnchor = false): void
     {
         $medication = $this->findMedication($medicationId);
         if (!is_array($medication) || (string) $medication['schedule_mode'] !== 'interval') {
             return;
         }
 
-        $lastTaken = $this->latestTakenAt($medicationId);
-        if (!$lastTaken instanceof DateTimeImmutable) {
+        // For scheduled-slot logging (recordDoseStatus), anchor to the previous
+        // dose's scheduled slot time so that small real-world click delays don't
+        // drift nextAllowed past the next slot's exact scheduled time, blocking it.
+        // For PRN/free-log (logDoseNow), anchor to taken_at so that a dose logged
+        // late against an earlier slot doesn't make the next dose available
+        // sooner than the actual elapsed time allows.
+        $lastAnchor = $useScheduledAnchor
+            ? $this->latestTakenScheduledAt($medicationId)
+            : $this->latestTakenAt($medicationId);
+        if (!$lastAnchor instanceof DateTimeImmutable) {
             return;
         }
 
         $intervalHours = (int) $medication['interval_hours'];
-        // Truncate seconds from lastTaken so the interval is minute-precise,
-        // matching the H:i slot times produced by timesForDate().
-        $lastTakenMinute = $lastTaken->setTime((int) $lastTaken->format('H'), (int) $lastTaken->format('i'), 0);
-        $nextAllowed = $lastTakenMinute->modify('+' . $intervalHours . ' hours');
+        // When using taken_at, truncate seconds to match H:i slot precision.
+        if (!$useScheduledAnchor) {
+            $lastAnchor = $lastAnchor->setTime((int) $lastAnchor->format('H'), (int) $lastAnchor->format('i'), 0);
+        }
+        $nextAllowed = $lastAnchor->modify('+' . $intervalHours . ' hours');
         if ($candidate < $nextAllowed) {
             throw new RuntimeException(
                 'Too early for this medication. Next allowed dose is at ' . $nextAllowed->format('g:i A') . '.'
