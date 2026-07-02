@@ -489,6 +489,158 @@ missedDoseModal?.querySelector('[data-missed-dose-confirm]')?.addEventListener('
   }
 });
 
+// ── Log past dose modal ───────────────────────────────────────────────────────
+
+const logPastDoseModal           = document.querySelector('[data-log-past-dose-modal]');
+const logPastDoseTitle           = document.querySelector('[data-log-past-dose-title]');
+const logPastDoseForm            = document.querySelector('[data-log-past-dose-form]');
+const logPastDoseMedId           = document.querySelector('[data-log-past-dose-med-id]');
+const logPastDoseDateEl          = document.querySelector('[data-log-past-dose-date]');
+const logPastDoseSlotSection     = document.querySelector('[data-log-past-dose-slot-section]');
+const logPastDoseSlotList        = document.querySelector('[data-log-past-dose-slot-list]');
+const logPastDoseFreeTimeSection = document.querySelector('[data-log-past-dose-free-time-section]');
+const logPastDoseFreeTimeInput   = document.querySelector('[data-log-past-dose-free-time]');
+const logPastDoseActualTime      = document.querySelector('[data-log-past-dose-actual-time]');
+const logPastDosePainSection     = document.querySelector('[data-log-past-dose-pain-section]');
+const logPastDosePainLevelEl     = document.querySelector('[data-log-past-dose-pain-level]');
+const logPastDoseNoteEl          = document.querySelector('[data-log-past-dose-note]');
+const logPastDoseConfirm         = document.querySelector('[data-log-past-dose-confirm]');
+
+let logPastDoseState = { medicationId: null, hasFixedSlots: false, selectedSlot: null };
+
+const localDateStr = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback }) => {
+  if (!logPastDoseModal) return;
+
+  logPastDoseForm?.reset();
+  logPastDoseState = { medicationId, hasFixedSlots: scheduleMode === 'fixed_times' && slots.length > 0, selectedSlot: null };
+
+  if (logPastDoseTitle) logPastDoseTitle.textContent = `Log past dose — ${medicationName}`;
+  if (logPastDoseMedId) logPastDoseMedId.value = medicationId;
+  if (logPastDosePainLevelEl) logPastDosePainLevelEl.value = '';
+  if (logPastDoseNoteEl) logPastDoseNoteEl.value = '';
+  if (logPastDoseActualTime) logPastDoseActualTime.value = '';
+  logPastDoseModal.querySelectorAll('.log-past-dose-pain-btn').forEach((b) => b.classList.remove('is-selected'));
+  if (logPastDosePainSection) logPastDosePainSection.hidden = !trackFeedback;
+
+  const now = new Date();
+  const today = localDateStr(now);
+  const yesterday = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const minDate = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30));
+  if (logPastDoseDateEl) {
+    logPastDoseDateEl.max = today;
+    logPastDoseDateEl.min = minDate;
+    logPastDoseDateEl.value = yesterday;
+  }
+
+  if (logPastDoseConfirm) logPastDoseConfirm.disabled = true;
+
+  if (logPastDoseState.hasFixedSlots) {
+    if (logPastDoseSlotSection) logPastDoseSlotSection.hidden = false;
+    if (logPastDoseFreeTimeSection) logPastDoseFreeTimeSection.hidden = true;
+    if (logPastDoseSlotList) {
+      logPastDoseSlotList.innerHTML = '';
+      slots.forEach((slot) => {
+        const time = typeof slot === 'string' ? slot : slot.time;
+        const row = document.createElement('label');
+        row.className = 'slot-picker-row';
+
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'slot_pick';
+        radio.value = time;
+        radio.addEventListener('change', () => {
+          logPastDoseState.selectedSlot = time;
+          if (logPastDoseConfirm) logPastDoseConfirm.disabled = false;
+        });
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'slot-time';
+        timeSpan.textContent = slotTo12h(time);
+
+        row.append(radio, timeSpan);
+        logPastDoseSlotList.appendChild(row);
+      });
+    }
+  } else {
+    if (logPastDoseSlotSection) logPastDoseSlotSection.hidden = true;
+    if (logPastDoseFreeTimeSection) logPastDoseFreeTimeSection.hidden = false;
+  }
+
+  logPastDoseModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeLogPastDoseModal = () => {
+  if (!logPastDoseModal) return;
+  logPastDoseModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-open-log-past-dose]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const medicationId = btn.dataset.medicationId ?? '';
+    const medicationName = btn.dataset.medicationName ?? 'medication';
+    const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    const scheduleMode = btn.dataset.scheduleMode ?? '';
+    let slots = [];
+    try { slots = JSON.parse(btn.dataset.slots ?? '[]'); } catch { slots = []; }
+    openLogPastDoseModal({ medicationId, medicationName, slots, scheduleMode, trackFeedback });
+  });
+});
+
+document.querySelectorAll('[data-close-log-past-dose]').forEach((btn) =>
+  btn.addEventListener('click', closeLogPastDoseModal)
+);
+logPastDoseModal?.addEventListener('click', (e) => {
+  if (e.target === logPastDoseModal) closeLogPastDoseModal();
+});
+
+logPastDoseModal?.querySelectorAll('.log-past-dose-pain-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    logPastDoseModal.querySelectorAll('.log-past-dose-pain-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (logPastDosePainLevelEl) logPastDosePainLevelEl.value = btn.dataset.logPastDosePain ?? '';
+  });
+});
+
+logPastDoseFreeTimeInput?.addEventListener('input', () => {
+  if (logPastDoseConfirm) logPastDoseConfirm.disabled = !logPastDoseFreeTimeInput.value;
+});
+
+logPastDoseConfirm?.addEventListener('click', async () => {
+  if (!logPastDoseForm) return;
+  const dateVal = logPastDoseDateEl?.value ?? '';
+  if (!dateVal) { logPastDoseDateEl?.focus(); return; }
+  if (logPastDoseDateEl && (dateVal > logPastDoseDateEl.max || dateVal < logPastDoseDateEl.min)) {
+    alert('Please choose a date within the last 30 days.');
+    return;
+  }
+
+  const slotValue = logPastDoseState.hasFixedSlots
+    ? logPastDoseState.selectedSlot
+    : logPastDoseFreeTimeInput?.value;
+  if (!slotValue) return;
+
+  if (logPastDoseConfirm) { logPastDoseConfirm.disabled = true; logPastDoseConfirm.textContent = 'Logging…'; }
+  try {
+    const fd = new FormData(logPastDoseForm);
+    fd.set('scheduled_time', slotValue + ':00');
+    const res  = await fetch('index.php', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
+    closeLogPastDoseModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+    if (logPastDoseConfirm) { logPastDoseConfirm.disabled = false; logPastDoseConfirm.textContent = 'Log dose'; }
+  }
+});
+
 // ── Dose feedback modal ───────────────────────────────────────────────────────
 
 let feedbackAlarmContext = false;

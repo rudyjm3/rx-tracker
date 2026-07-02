@@ -1544,6 +1544,68 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   </div>
 </div>
 
+<div class="modal-overlay" data-log-past-dose-modal>
+  <div class="modal-dialog slot-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="log-past-dose-title">
+    <div class="modal-header">
+      <h2 class="modal-title" id="log-past-dose-title" data-log-past-dose-title>Log past dose</h2>
+      <button type="button" class="modal-close" data-close-log-past-dose aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <div class="modal-body slot-picker-body">
+      <p class="slot-picker-hint">Which day and dose was this?</p>
+      <form method="post" action="index.php" data-log-past-dose-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="action"         value="mark_dose">
+        <input type="hidden" name="status"          value="taken">
+        <input type="hidden" name="json_response"   value="1">
+        <input type="hidden" name="pain_level"       data-log-past-dose-pain-level value="">
+        <input type="hidden" name="medication_id"    data-log-past-dose-med-id     value="">
+
+        <div class="form-row" style="margin-top:1rem;">
+          <label for="log-past-dose-date" class="form-label">Date</label>
+          <input type="date" id="log-past-dose-date" name="scheduled_date"
+                 data-log-past-dose-date class="form-control" style="margin-top:.375rem;width:100%;">
+        </div>
+
+        <div class="form-row" data-log-past-dose-slot-section style="margin-top:.75rem;">
+          <label class="form-label">Which dose?</label>
+          <div class="slot-picker-list" data-log-past-dose-slot-list style="margin-top:.375rem;"></div>
+        </div>
+
+        <div class="form-row" data-log-past-dose-free-time-section hidden style="margin-top:.75rem;">
+          <label for="log-past-dose-free-time" class="form-label">Time</label>
+          <input type="time" id="log-past-dose-free-time" name="scheduled_time"
+                 data-log-past-dose-free-time class="form-control" style="margin-top:.375rem;width:100%;">
+        </div>
+
+        <div class="form-row" style="margin-top:.75rem;">
+          <label for="log-past-dose-actual-time" class="form-label">Time actually taken <span class="field-optional">(optional — leave blank to log as "just now")</span></label>
+          <input type="time" id="log-past-dose-actual-time" name="actual_taken_time"
+                 data-log-past-dose-actual-time class="form-control" style="margin-top:.375rem;width:100%;">
+        </div>
+
+        <div data-log-past-dose-pain-section hidden style="margin-top:1.25rem;">
+          <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select pain level" style="margin-top:.4rem;">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="log-past-dose-pain-btn" data-log-past-dose-pain="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+        </div>
+
+        <label style="margin-top:.75rem;display:block;">Notes <span class="field-optional">(optional)</span>
+          <textarea name="note" data-log-past-dose-note rows="2" maxlength="250"
+                    placeholder="Any notes about this dose?"
+                    style="margin-top:.375rem;width:100%;"></textarea>
+        </label>
+      </form>
+    </div>
+    <div class="modal-footer slot-picker-footer">
+      <button type="button" class="secondary" data-close-log-past-dose>Cancel</button>
+      <button type="button" data-log-past-dose-confirm disabled>Log dose</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" data-free-log-modal>
   <div class="modal-dialog slot-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="free-log-title">
     <div class="modal-header">
