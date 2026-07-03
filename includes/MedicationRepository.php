@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class MedicationRepository
 {
-    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
+    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
 
     public function __construct(
         private readonly PDO $db,
@@ -17,6 +17,8 @@ final class MedicationRepository
         $this->ensureAppSettingsPerUser();
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
+        $this->ensureFeedbackTypeColumn();
+        $this->ensureMoodLevelColumn();
         $this->ensureSetIdColumn();
         $this->ensureGroupTables();
         $this->ensureGroupMembersUpgrade();
@@ -87,7 +89,7 @@ final class MedicationRepository
 
     public function recentLogs(?string $date = null, int $limit = 12): array
     {
-        $sql = 'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
+        $sql = 'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.mood_level, dose_logs.status,
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
                        medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed
                 FROM dose_logs
@@ -114,7 +116,7 @@ final class MedicationRepository
     public function logsForDateRange(string $startDate, string $endDate): array
     {
         $statement = $this->db->prepare(
-            'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.status,
+            'SELECT dose_logs.id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.mood_level, dose_logs.status,
                     dose_logs.scheduled_for_date, dose_logs.scheduled_time,
                     medications.name, medications.dose
              FROM dose_logs
@@ -316,6 +318,85 @@ final class MedicationRepository
         return $statement->fetchAll();
     }
 
+    /**
+     * Mood trend data for an explicit date range (used by the report PDF generator).
+     */
+    public function moodLevelTrendForRange(int $medicationId, string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.mood_level IS NOT NULL
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'user_id'       => $this->userId,
+            'start_date'    => $startDate,
+            'end_date'      => $endDate,
+        ]);
+
+        return $statement->fetchAll();
+    }
+
+    public function moodLevelTrend(int $medicationId, int $days): array
+    {
+        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.mood_level IS NOT NULL
+               AND dl.scheduled_for_date >= :start_date
+             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+        );
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+
+        return $statement->fetchAll();
+    }
+
+    public function moodLevelTrendForDate(int $medicationId, string $date): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.mood_level IS NOT NULL
+               AND dl.scheduled_for_date = :date
+             ORDER BY dl.scheduled_time ASC'
+        );
+        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+
+        return $statement->fetchAll();
+    }
+
+    /**
+     * Whether a medication has pain feedback tracking enabled.
+     */
+    public function medicationTracksPain(array $medication): bool
+    {
+        return in_array((string) ($medication['feedback_type'] ?? 'none'), ['pain', 'both'], true);
+    }
+
+    /**
+     * Whether a medication has mood feedback tracking enabled.
+     */
+    public function medicationTracksMood(array $medication): bool
+    {
+        return in_array((string) ($medication['feedback_type'] ?? 'none'), ['mood', 'both'], true);
+    }
+
     public function findMedication(int $id): ?array
     {
         $statement = $this->db->prepare(
@@ -448,20 +529,27 @@ final class MedicationRepository
         float $startingQuantity = 0.0,
         float $quantityPerDose = 1.0,
         array $doseQtys = [],
-        ?string $startDate = null
+        ?string $startDate = null,
+        string $feedbackType = 'none'
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
         $this->validateInventoryType($inventoryType);
+        $this->validateFeedbackType($feedbackType);
 
         $inventoryUnit = $this->inventoryUnitFor($inventoryType);
+        // Keep feedback_type and track_dose_feedback in sync. If a caller still only
+        // passes the legacy boolean (no explicit feedback_type), fall back to 'pain'
+        // so the two columns never disagree.
+        $effectiveFeedbackType = $feedbackType !== 'none' ? $feedbackType : ($trackDoseFeedback ? 'pain' : 'none');
+        $trackDoseFeedbackFlag = $effectiveFeedbackType !== 'none' ? 1 : 0;
 
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, set_id,
+                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :set_id,
+                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :feedback_type, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
@@ -476,7 +564,8 @@ final class MedicationRepository
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
                 'low_supply_threshold' => $lowSupplyThreshold,
-                'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
+                'track_dose_feedback' => $trackDoseFeedbackFlag,
+                'feedback_type' => $effectiveFeedbackType,
                 'set_id' => $setId,
                 'medication_type' => $medicationType,
                 'dose_amount' => $doseAmount,
@@ -518,13 +607,20 @@ final class MedicationRepository
         float $startingQuantity = 0.0,
         float $quantityPerDose = 1.0,
         array $doseQtys = [],
-        ?string $startDate = null
+        ?string $startDate = null,
+        string $feedbackType = 'none'
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
         $this->validateInventoryType($inventoryType);
+        $this->validateFeedbackType($feedbackType);
 
         $inventoryUnit = $this->inventoryUnitFor($inventoryType);
+        // Keep feedback_type and track_dose_feedback in sync. If a caller still only
+        // passes the legacy boolean (no explicit feedback_type), fall back to 'pain'
+        // so the two columns never disagree.
+        $effectiveFeedbackType = $feedbackType !== 'none' ? $feedbackType : ($trackDoseFeedback ? 'pain' : 'none');
+        $trackDoseFeedbackFlag = $effectiveFeedbackType !== 'none' ? 1 : 0;
 
         $this->db->beginTransaction();
         try {
@@ -543,6 +639,7 @@ final class MedicationRepository
                      ) THEN :starting_pill_count ELSE starting_pill_count END,
                      low_supply_threshold = :low_supply_threshold,
                      track_dose_feedback = :track_dose_feedback,
+                     feedback_type = :feedback_type,
                      set_id = :set_id,
                      medication_type = :medication_type,
                      dose_amount = :dose_amount,
@@ -572,7 +669,8 @@ final class MedicationRepository
                 'first_dose_time' => $firstDoseTime,
                 'as_needed' => $asNeeded ? 1 : 0,
                 'low_supply_threshold' => $lowSupplyThreshold,
-                'track_dose_feedback' => $trackDoseFeedback ? 1 : 0,
+                'track_dose_feedback' => $trackDoseFeedbackFlag,
+                'feedback_type' => $effectiveFeedbackType,
                 'set_id' => $setId,
                 'medication_type' => $medicationType,
                 'dose_amount' => $doseAmount,
@@ -593,7 +691,7 @@ final class MedicationRepository
         }
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): void
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
@@ -601,6 +699,10 @@ final class MedicationRepository
 
         if ($painLevel !== null && ($painLevel < 1 || $painLevel > 10)) {
             throw new RuntimeException('Pain level must be between 1 and 10.');
+        }
+
+        if ($moodLevel !== null && ($moodLevel < 1 || $moodLevel > 10)) {
+            throw new RuntimeException('Mood level must be between 1 and 10.');
         }
 
         $ownerCheck = $this->db->prepare(
@@ -672,8 +774,8 @@ final class MedicationRepository
             $takenAt = $customTakenAt ?? (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
             if (is_array($row)) {
-                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, taken_at = :taken_at WHERE id = :id');
-                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
+                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at WHERE id = :id');
+                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
                     $this->deductInventory($medicationId, $doseQtyOverride);
                 }
@@ -682,8 +784,8 @@ final class MedicationRepository
                 }
             } else {
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, mood_level, taken_at)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :mood_level, :taken_at)'
                 );
                 $insert->execute([
                     'medication_id' => $medicationId,
@@ -692,6 +794,7 @@ final class MedicationRepository
                     'status' => $status,
                     'note' => $note,
                     'pain_level' => $painLevel,
+                    'mood_level' => $moodLevel,
                     'taken_at' => $takenAt,
                 ]);
                 if ($status === 'taken') {
@@ -834,6 +937,7 @@ final class MedicationRepository
                     'low_supply_threshold' => (int) $medication['low_supply_threshold'],
                     'as_needed' => (int) $medication['as_needed'] === 1,
                     'track_dose_feedback' => (int) $medication['track_dose_feedback'] === 1,
+                    'feedback_type' => (string) ($medication['feedback_type'] ?? 'none'),
                     'reminder_time' => $time,
                     'scheduled_for_date' => $date,
                     'scheduled_time' => $time . ':00',
@@ -1135,6 +1239,7 @@ final class MedicationRepository
                 'postponed_until' => $row['postponed_until'] ?? null,
                 'as_needed' => (bool) $row['as_needed'],
                 'track_dose_feedback' => (bool) $row['track_dose_feedback'],
+                'feedback_type' => (string) ($row['feedback_type'] ?? 'none'),
                 'group_id' => $row['group_id'] !== null ? (int) $row['group_id'] : null,
                 'group_name' => $row['group_name'] !== null ? (string) $row['group_name'] : null,
             ];
@@ -1444,6 +1549,13 @@ final class MedicationRepository
     {
         if (!in_array($type, ['prescription', 'otc', 'supplement'], true)) {
             throw new RuntimeException('Invalid medication type.');
+        }
+    }
+
+    private function validateFeedbackType(string $type): void
+    {
+        if (!in_array($type, ['none', 'pain', 'mood', 'both'], true)) {
+            throw new RuntimeException('Invalid feedback type.');
         }
     }
 
@@ -2412,6 +2524,72 @@ final class MedicationRepository
                 }
                 if (!$hasColumn) {
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN pain_level INTEGER NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureFeedbackTypeColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'feedback_type'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN feedback_type ENUM('none','pain','mood','both') NOT NULL DEFAULT 'none'");
+                    $this->db->exec("UPDATE medications SET feedback_type = 'pain' WHERE track_dose_feedback = 1 AND feedback_type = 'none'");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'feedback_type') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN feedback_type TEXT NOT NULL DEFAULT 'none'");
+                    $this->db->exec("UPDATE medications SET feedback_type = 'pain' WHERE track_dose_feedback = 1 AND feedback_type = 'none'");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureMoodLevelColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE 'mood_level'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN mood_level TINYINT UNSIGNED NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(dose_logs)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'mood_level') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN mood_level INTEGER NULL');
                 }
             }
         } catch (Throwable) {
