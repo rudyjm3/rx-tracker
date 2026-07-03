@@ -100,9 +100,14 @@
                   data-view-details
                   data-medication-name="<?= e((string) $medication['name']) ?>"
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
+          <?php if (trim((string) $medication['instructions']) !== ''): ?>
+          <button type="button" class="view-instructions-link" data-view-instructions
+                  data-medication-name="<?= e((string) $medication['name']) ?>"
+                  data-instructions="<?= e((string) $medication['instructions']) ?>">View Instructions</button>
+          <?php endif; ?>
         </div>
         <div class="row-actions medication-actions-top">
-          <?php if ((int) $medication['track_dose_feedback'] === 1): ?>
+          <?php if ($repository->medicationTracksPain($medication)): ?>
           <button
             type="button"
             class="icon-button pain-graph-btn"
@@ -113,6 +118,18 @@
             aria-label="View pain level trend for <?= e((string) $medication['name']) ?>"
             title="Pain level trend"
           ><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></button>
+          <?php endif; ?>
+          <?php if ($repository->medicationTracksMood($medication)): ?>
+          <button
+            type="button"
+            class="icon-button mood-graph-btn"
+            data-open-mood-graph
+            data-medication-id="<?= e((string) $medication['id']) ?>"
+            data-medication-name="<?= e((string) $medication['name']) ?>"
+            data-medication-dose="<?= e(formattedDose($medication)) ?>"
+            aria-label="View mood trend for <?= e((string) $medication['name']) ?>"
+            title="Mood trend"
+          ><i class="fa-solid fa-face-smile" aria-hidden="true"></i></button>
           <?php endif; ?>
           <div class="med-actions-menu" data-med-actions-menu>
             <button
@@ -128,6 +145,24 @@
                 <i class="fa-solid fa-pen" aria-hidden="true"></i>
                 Edit
               </a>
+              <button
+                type="button"
+                class="med-actions-item"
+                data-open-log-past-dose
+                data-medication-id="<?= e((string) $medication['id']) ?>"
+                data-medication-name="<?= e((string) $medication['name']) ?>"
+                data-track-dose-feedback="<?= (string) $medication['feedback_type'] !== 'none' ? '1' : '0' ?>"
+                data-feedback-type="<?= e((string) $medication['feedback_type']) ?>"
+                data-schedule-mode="<?= e((string) $medication['schedule_mode']) ?>"
+                data-slots="<?= e(json_encode($medication['times'])) ?>"
+              >
+                <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+                Log past dose
+              </button>
+              <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>" data-medication-dose="<?= e(formattedDose($medication)) ?>">
+                <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                Log refill
+              </button>
               <button type="button" class="med-actions-item" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
                 <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
                 Refill history
@@ -141,23 +176,6 @@
                   Deactivate
                 </button>
               </form>
-              <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
-                <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
-                Log refill
-              </button>
-              <button
-                type="button"
-                class="med-actions-item"
-                data-open-log-past-dose
-                data-medication-id="<?= e((string) $medication['id']) ?>"
-                data-medication-name="<?= e((string) $medication['name']) ?>"
-                data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
-                data-schedule-mode="<?= e((string) $medication['schedule_mode']) ?>"
-                data-slots="<?= e(json_encode($medication['times'])) ?>"
-              >
-                <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
-                Log past dose
-              </button>
             </div>
           </div>
         </div>
@@ -183,7 +201,8 @@
               data-log-dose-now
               data-medication-id="<?= e((string) $medication['id']) ?>"
               data-medication-name="<?= e((string) $medication['name']) ?>"
-              data-track-dose-feedback="<?= (int) $medication['track_dose_feedback'] === 1 ? '1' : '0' ?>"
+              data-track-dose-feedback="<?= (string) $medication['feedback_type'] !== 'none' ? '1' : '0' ?>"
+              data-feedback-type="<?= e((string) $medication['feedback_type']) ?>"
               data-slots="<?= e(json_encode($medSlots)) ?>"
               data-grace-minutes="<?= e((string) $graceMinutes) ?>"
             ><i class="fa-regular fa-circle-check" aria-hidden="true"></i> Log dose</button>
@@ -323,7 +342,7 @@
                 <?php $overrideUnit = (string) ($member['inventory_unit'] ?? 'tablets'); ?>
                 <span class="group-member-dose"><?= e((string) (float) $member['group_quantity_per_dose']) ?> <?= e($overrideUnit) ?> <em class="group-dose-override-hint">(override)</em></span>
               <?php endif; ?>
-              <?php if ((int) $member['track_dose_feedback'] === 1): ?>
+              <?php if ((string) ($member['feedback_type'] ?? 'none') !== 'none'): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
               <?php endif; ?>
               <form method="post" action="index.php" data-ajax-remove>
