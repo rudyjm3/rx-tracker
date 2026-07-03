@@ -19,6 +19,7 @@ final class MedicationRepository
         $this->ensurePainLevelColumn();
         $this->ensureFeedbackTypeColumn();
         $this->ensureMoodLevelColumn();
+        $this->ensureInstructionsWidened();
         $this->ensureSetIdColumn();
         $this->ensureGroupTables();
         $this->ensureGroupMembersUpgrade();
@@ -2592,6 +2593,23 @@ final class MedicationRepository
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN mood_level INTEGER NULL');
                 }
             }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureInstructionsWidened(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'instructions'");
+                $column = $check !== false ? $check->fetch() : false;
+                if (is_array($column) && stripos((string) ($column['Type'] ?? ''), 'varchar') !== false) {
+                    $this->db->exec('ALTER TABLE medications MODIFY COLUMN instructions TEXT NOT NULL');
+                }
+            }
+            // SQLite has no fixed-length VARCHAR enforcement, so no migration is needed there.
         } catch (Throwable) {
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
