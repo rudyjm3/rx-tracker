@@ -1034,6 +1034,11 @@ h1 {
   color: var(--rx-deep-blue);
 }
 
+.quick-action-icon--mood {
+  background: rgba(124, 58, 237, 0.12);
+  color: #7c3aed;
+}
+
 .quick-action-label {
   flex: 1;
 }
@@ -3304,6 +3309,16 @@ textarea:focus,
   color: var(--rx-deep-blue);
 }
 
+.mood-graph-btn {
+  background: var(--rx-bg);
+  color: var(--rx-text-muted);
+}
+
+.mood-graph-btn:hover {
+  background: var(--rx-border);
+  color: var(--rx-deep-blue);
+}
+
 .pain-graph-dialog {
   max-width: 600px;
 }
@@ -3379,8 +3394,7 @@ textarea:focus,
 
 .pain-tracking-page {
   padding: 1.25rem 1rem 2rem;
-  max-width: 780px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .pain-tracking-header {
@@ -3491,6 +3505,34 @@ textarea:focus,
   color: #fff;
 }
 
+.mood-page-range-tab {
+  background: var(--rx-bg);
+  border: 1.5px solid var(--rx-border);
+  border-radius: 2rem;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--rx-text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mood-page-range-tab:hover {
+  background: var(--rx-border);
+}
+
+.mood-page-range-tab.is-active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+}
+
+.mood-tracking-med-btn.is-active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #fff;
+}
+
 /* ── Dose feedback modal ─────────────────────────────────────────────────── */
 
 .feedback-pain-section {
@@ -3499,6 +3541,15 @@ textarea:focus,
 }
 
 .feedback-pain-section.is-hidden {
+  display: none;
+}
+
+.feedback-mood-section {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.feedback-mood-section.is-hidden {
   display: none;
 }
 
@@ -3600,6 +3651,80 @@ textarea:focus,
   border-color: #c9213c;
 }
 
+/* Mood level buttons — inverted color scale from pain (low = red, high = green) */
+.mood-level-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  color: var(--rx-text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+
+.mood-level-btn:hover {
+  border-color: var(--rx-text-muted);
+  color: #fff;
+}
+
+.mood-level-btn[data-mood-level="1"],
+.mood-level-btn[data-mood-level="2"],
+.mood-level-btn[data-mood-level="3"] {
+  border-color: #c9213c;
+}
+
+.mood-level-btn[data-mood-level="4"],
+.mood-level-btn[data-mood-level="5"],
+.mood-level-btn[data-mood-level="6"] {
+  border-color: #d97706;
+}
+
+.mood-level-btn[data-mood-level="7"],
+.mood-level-btn[data-mood-level="8"] {
+  border-color: #8bb04a;
+}
+
+.mood-level-btn[data-mood-level="9"],
+.mood-level-btn[data-mood-level="10"] {
+  border-color: #2a9d49;
+}
+
+.mood-level-btn.is-selected {
+  color: #fff;
+}
+
+.mood-level-btn.is-selected[data-mood-level="1"],
+.mood-level-btn.is-selected[data-mood-level="2"],
+.mood-level-btn.is-selected[data-mood-level="3"] {
+  background: #c9213c;
+  border-color: #c9213c;
+}
+
+.mood-level-btn.is-selected[data-mood-level="4"],
+.mood-level-btn.is-selected[data-mood-level="5"],
+.mood-level-btn.is-selected[data-mood-level="6"] {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+.mood-level-btn.is-selected[data-mood-level="7"],
+.mood-level-btn.is-selected[data-mood-level="8"] {
+  background: #8bb04a;
+  border-color: #8bb04a;
+}
+
+.mood-level-btn.is-selected[data-mood-level="9"],
+.mood-level-btn.is-selected[data-mood-level="10"] {
+  background: #2a9d49;
+  border-color: #2a9d49;
+}
+
 /* Missed dose modal pain buttons — same appearance as feedback modal pain buttons */
 .missed-pain-btn {
   align-items: center;
@@ -3639,6 +3764,45 @@ textarea:focus,
 .missed-pain-btn.is-selected[data-missed-pain="9"],
 .missed-pain-btn.is-selected[data-missed-pain="10"] { background: #c9213c; border-color: #c9213c; }
 
+/* Missed dose modal mood buttons — inverted color scale from pain */
+.missed-mood-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  color: var(--rx-text-muted);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+.missed-mood-btn:hover { border-color: var(--rx-text-muted); color: #fff; }
+.missed-mood-btn[data-missed-mood="1"],
+.missed-mood-btn[data-missed-mood="2"],
+.missed-mood-btn[data-missed-mood="3"]  { border-color: #c9213c; }
+.missed-mood-btn[data-missed-mood="4"],
+.missed-mood-btn[data-missed-mood="5"],
+.missed-mood-btn[data-missed-mood="6"]  { border-color: #d97706; }
+.missed-mood-btn[data-missed-mood="7"],
+.missed-mood-btn[data-missed-mood="8"]  { border-color: #8bb04a; }
+.missed-mood-btn[data-missed-mood="9"],
+.missed-mood-btn[data-missed-mood="10"] { border-color: #2a9d49; }
+.missed-mood-btn.is-selected { color: #fff; }
+.missed-mood-btn.is-selected[data-missed-mood="1"],
+.missed-mood-btn.is-selected[data-missed-mood="2"],
+.missed-mood-btn.is-selected[data-missed-mood="3"]  { background: #c9213c; border-color: #c9213c; }
+.missed-mood-btn.is-selected[data-missed-mood="4"],
+.missed-mood-btn.is-selected[data-missed-mood="5"],
+.missed-mood-btn.is-selected[data-missed-mood="6"]  { background: #d97706; border-color: #d97706; }
+.missed-mood-btn.is-selected[data-missed-mood="7"],
+.missed-mood-btn.is-selected[data-missed-mood="8"]  { background: #8bb04a; border-color: #8bb04a; }
+.missed-mood-btn.is-selected[data-missed-mood="9"],
+.missed-mood-btn.is-selected[data-missed-mood="10"] { background: #2a9d49; border-color: #2a9d49; }
+
 /* Log past dose modal pain buttons — same round appearance as the normal feedback modal */
 .log-past-dose-pain-btn {
   align-items: center;
@@ -3677,6 +3841,45 @@ textarea:focus,
 .log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="8"]  { background: #e05b30; border-color: #e05b30; }
 .log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="9"],
 .log-past-dose-pain-btn.is-selected[data-log-past-dose-pain="10"] { background: #c9213c; border-color: #c9213c; }
+
+/* Log past dose modal mood buttons — inverted color scale from pain */
+.log-past-dose-mood-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  color: var(--rx-text-muted);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+.log-past-dose-mood-btn:hover { border-color: var(--rx-text-muted); color: #fff; }
+.log-past-dose-mood-btn[data-log-past-dose-mood="1"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="2"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="3"]  { border-color: #c9213c; }
+.log-past-dose-mood-btn[data-log-past-dose-mood="4"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="5"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="6"]  { border-color: #d97706; }
+.log-past-dose-mood-btn[data-log-past-dose-mood="7"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="8"]  { border-color: #8bb04a; }
+.log-past-dose-mood-btn[data-log-past-dose-mood="9"],
+.log-past-dose-mood-btn[data-log-past-dose-mood="10"] { border-color: #2a9d49; }
+.log-past-dose-mood-btn.is-selected { color: #fff; }
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="1"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="2"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="3"]  { background: #c9213c; border-color: #c9213c; }
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="4"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="5"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="6"]  { background: #d97706; border-color: #d97706; }
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="7"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="8"]  { background: #8bb04a; border-color: #8bb04a; }
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="9"],
+.log-past-dose-mood-btn.is-selected[data-log-past-dose-mood="10"] { background: #2a9d49; border-color: #2a9d49; }
 
 .feedback-actions {
   display: flex;
@@ -3890,6 +4093,29 @@ textarea:focus,
 }
 
 .view-details-link:hover {
+  background: none;
+  box-shadow: none;
+  color: var(--rx-blue);
+  transform: none;
+}
+
+.view-instructions-link {
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--rx-deep-blue);
+  cursor: pointer;
+  display: inline;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0;
+  margin-left: 0.6rem;
+  text-decoration: underline;
+  transform: none;
+  transition: color 160ms ease;
+}
+
+.view-instructions-link:hover {
   background: none;
   box-shadow: none;
   color: var(--rx-blue);
@@ -4501,9 +4727,23 @@ details.med-detail-section[open] .med-detail-section-title::after {
 
 .refill-modal-subtitle {
   color: var(--rx-text-muted);
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 600;
   margin: 0.15rem 0 0;
+}
+
+.refill-med-name-pill {
+  background-color: #5189d4;
+  color: #fff;
+  border-radius: 8px;
+  padding: 2px 10px;
+  display: inline-block;
+}
+
+.refill-med-dose {
+  font-size: 0.90rem;
+  color: var(--rx-text-muted);
+  margin-left: 0.4rem;
 }
 
 .refill-form-actions {

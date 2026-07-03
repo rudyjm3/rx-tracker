@@ -141,7 +141,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       RxTracker
     </a>
     <div class="nav-links">
-      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
+      <a href="index.php"<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'mood-wellbeing'], true) ? ' class="is-active"' : '' ?>>Dashboard</a>
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
@@ -224,7 +224,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   </div>
   <?php endif; ?>
 
-  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true)): ?>
+  <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'mood-wellbeing'], true)): ?>
   <section class="hero">
     <div class="hero-left">
       <div class="hero-card hero-next-dose-panel" aria-label="Next dose">
@@ -428,10 +428,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           </select>
           <small class="field-hint">If Yes, excluded from the dashboard's required dose count.</small>
         </label>
-        <label>Track dose feedback (pain &amp; comments)
-          <select name="track_dose_feedback">
-            <option value="0" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
-            <option value="1" <?= ((int) ($editing['track_dose_feedback'] ?? 0) === 1) ? 'selected' : '' ?>>Yes &mdash; show feedback after each dose</option>
+        <?php $editingFeedbackType = (string) ($editing['feedback_type'] ?? 'none'); ?>
+        <label>Track dose feedback
+          <select name="feedback_type">
+            <option value="none" <?= $editingFeedbackType === 'none' ? 'selected' : '' ?>>No tracking</option>
+            <option value="mood" <?= $editingFeedbackType === 'mood' ? 'selected' : '' ?>>Mood level</option>
+            <option value="pain" <?= $editingFeedbackType === 'pain' ? 'selected' : '' ?>>Pain level</option>
+            <option value="both" <?= $editingFeedbackType === 'both' ? 'selected' : '' ?>>Both pain and mood</option>
           </select>
         </label>
         <details class="form-disclosure" <?= (!empty($editing) && (float) ($editing['current_quantity'] ?? 0) > 0) ? 'open' : '' ?>>
@@ -475,7 +478,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         </fieldset>
         </details>
 
-        <label>Instructions<input name="instructions" value="<?= e((string) ($editing['instructions'] ?? '')) ?>"></label>
+        <label>Instructions and Notes<textarea name="instructions" rows="3"><?= e((string) ($editing['instructions'] ?? '')) ?></textarea></label>
         <label>Medication group <span class="field-optional">(optional)</span>
           <select name="group_id">
             <option value="0"<?= $editingGroupId === 0 ? ' selected' : '' ?>>No group (individual)</option>
@@ -514,6 +517,30 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
   </div>
 
+  <div class="modal-overlay" data-mood-graph-modal>
+    <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="mood-graph-title">
+      <div class="modal-header">
+        <h2 id="mood-graph-title" data-mood-graph-title>Mood Trend</h2>
+        <button type="button" class="icon-button" data-close-mood-graph aria-label="Close mood graph">&#10005;</button>
+      </div>
+      <div class="modal-scroll">
+        <div class="pain-graph-controls">
+          <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+            <button class="range-tab is-active" data-range="0">Today</button>
+            <button class="range-tab" data-range="7">7 days</button>
+            <button class="range-tab" data-range="30">30 days</button>
+            <button class="range-tab" data-range="90">90 days</button>
+          </div>
+          <button type="button" class="pain-graph-print-btn" data-mood-graph-print aria-label="Print mood graph" title="Print">
+            <i class="fa-solid fa-print" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="pain-graph-body" data-mood-graph-body></div>
+        <p class="pain-graph-empty" data-mood-graph-empty hidden>No mood data recorded for this period.</p>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" data-dose-feedback-modal>
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title">
       <div class="modal-header">
@@ -532,12 +559,22 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="scheduled_date" data-feedback-scheduled-date value="">
         <input type="hidden" name="scheduled_time" data-feedback-scheduled-time value="">
         <input type="hidden" name="pain_level" data-feedback-pain-level value="">
+        <input type="hidden" name="mood_level" data-feedback-mood-level value="">
 
         <div class="feedback-pain-section" data-feedback-pain-section>
           <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
           <div class="pain-level-selector" role="group" aria-label="Select pain level">
             <?php for ($i = 1; $i <= 10; $i++): ?>
               <button type="button" class="pain-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+        </div>
+
+        <div class="feedback-mood-section" data-feedback-mood-section>
+          <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select mood level">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="mood-level-btn" data-mood-level="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
         </div>
@@ -639,7 +676,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <?php
     $trackedMedications = array_values(array_filter(
         $medications,
-        fn(array $m): bool => (int) $m['track_dose_feedback'] === 1
+        fn(array $m): bool => $repository->medicationTracksPain($m)
     ));
   ?>
   <section class="pain-tracking-page">
@@ -679,6 +716,56 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
       <div class="pain-graph-body" data-pain-page-body></div>
       <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
+    </div>
+
+    <?php endif; ?>
+  </section>
+  <?php endif; ?>
+
+  <?php if ($page === 'mood-wellbeing'): ?>
+  <?php
+    $moodTrackedMedications = array_values(array_filter(
+        $medications,
+        fn(array $m): bool => $repository->medicationTracksMood($m)
+    ));
+  ?>
+  <section class="pain-tracking-page mood-tracking-page">
+    <div class="pain-tracking-header mood-tracking-header">
+      <h1>Mood &amp; Wellbeing</h1>
+    </div>
+
+    <?php if ($moodTrackedMedications === []): ?>
+    <div class="pain-tracking-empty mood-tracking-empty">
+      <p>No medications are currently set up for mood tracking. Set Feedback tracking to Mood or Both on a medication to start.</p>
+      <a href="index.php?page=medications" class="button secondary">Manage medications</a>
+    </div>
+    <?php else: ?>
+
+    <div class="pain-tracking-med-panel mood-tracking-med-panel">
+      <div class="panel-heading"><h2>Tracked medications</h2></div>
+      <div class="pain-tracking-med-list mood-tracking-med-list" role="group" aria-label="Select medication to view">
+        <?php foreach ($moodTrackedMedications as $trackedMed): ?>
+        <button
+          type="button"
+          class="pain-tracking-med-btn mood-tracking-med-btn"
+          data-select-mood-medication
+          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
+          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
+        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
+    <div class="pain-tracking-chart-section mood-tracking-chart-section">
+      <div class="pain-tracking-med-name mood-tracking-med-name" data-mood-page-med-name aria-live="polite"></div>
+      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+        <button class="mood-page-range-tab is-active" data-range="0">Today</button>
+        <button class="mood-page-range-tab" data-range="7">7 days</button>
+        <button class="mood-page-range-tab" data-range="30">30 days</button>
+        <button class="mood-page-range-tab" data-range="90">90 days</button>
+      </div>
+      <div class="pain-graph-body" data-mood-page-body></div>
+      <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
     </div>
 
     <?php endif; ?>
@@ -975,34 +1062,43 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
     $trackedMedications = array_values(array_filter(
         $medications,
-        static fn(array $m): bool => (bool) $m['track_dose_feedback']
+        fn(array $m): bool => $repository->medicationTracksPain($m)
+    ));
+    $moodTrackedMedicationsExport = array_values(array_filter(
+        $medications,
+        fn(array $m): bool => $repository->medicationTracksMood($m)
     ));
 
     // Compute days-on-medication and default chart range for each pain-tracked medication
-    $medChartInfo = [];
-    foreach ($trackedMedications as $m) {
-        $sd     = !empty($m['start_date']) ? (string) $m['start_date'] : date('Y-m-d');
-        $daysOn = max(0, (int) floor((time() - strtotime($sd)) / 86400));
-        if ($daysOn < 7) {
-            $defaultRange = 0;
-            $extraOpts    = [];
-        } elseif ($daysOn < 30) {
-            $defaultRange = 7;
-            $extraOpts    = [];
-        } elseif ($daysOn < 90) {
-            $defaultRange = 30;
-            $extraOpts    = [7];
-        } else {
-            $defaultRange = 90;
-            $extraOpts    = [7, 30];
+    $computeChartInfo = static function (array $meds): array {
+        $info = [];
+        foreach ($meds as $m) {
+            $sd     = !empty($m['start_date']) ? (string) $m['start_date'] : date('Y-m-d');
+            $daysOn = max(0, (int) floor((time() - strtotime($sd)) / 86400));
+            if ($daysOn < 7) {
+                $defaultRange = 0;
+                $extraOpts    = [];
+            } elseif ($daysOn < 30) {
+                $defaultRange = 7;
+                $extraOpts    = [];
+            } elseif ($daysOn < 90) {
+                $defaultRange = 30;
+                $extraOpts    = [7];
+            } else {
+                $defaultRange = 90;
+                $extraOpts    = [7, 30];
+            }
+            $info[(int) $m['id']] = [
+                'days_on'       => $daysOn,
+                'default_range' => $defaultRange,
+                'extra_opts'    => $extraOpts,
+                'start_date'    => $sd,
+            ];
         }
-        $medChartInfo[(int) $m['id']] = [
-            'days_on'       => $daysOn,
-            'default_range' => $defaultRange,
-            'extra_opts'    => $extraOpts,
-            'start_date'    => $sd,
-        ];
-    }
+        return $info;
+    };
+    $medChartInfo = $computeChartInfo($trackedMedications);
+    $moodChartInfo = $computeChartInfo($moodTrackedMedicationsExport);
   ?>
   <section class="panel export-section" style="max-width:700px;margin:1.5rem auto;">
     <div class="panel-heading">
@@ -1064,6 +1160,49 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                     <?php endif; ?>
                     <?php if ($defR === 90 || $daysOn >= 90): ?>
                       <option value="90" <?= $defR === 90 ? 'selected' : '' ?>>90 days</option>
+                    <?php endif; ?>
+                  </select>
+                </label>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </fieldset>
+      <?php endif; ?>
+
+      <?php if ($moodTrackedMedicationsExport !== []): ?>
+      <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
+        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood &amp; Wellbeing Tracking</legend>
+        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
+          Charts are based on days on medication. The default range is pre-selected; you can choose a different window if you prefer.
+        </p>
+        <?php foreach ($moodTrackedMedicationsExport as $m): ?>
+          <?php
+            $mmId   = (int) $m['id'];
+            $minfo  = $moodChartInfo[$mmId];
+            $mDaysOn = $minfo['days_on'];
+            $mDefR   = $minfo['default_range'];
+          ?>
+          <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--rx-bg);border-radius:8px;">
+            <strong><?= e((string) $m['name']) ?></strong>
+            <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $mDaysOn ?> days on medication</span>
+            <?php if ($mDefR === 0): ?>
+              <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
+                Mood tracking started <?= e(date('F j', strtotime($minfo['start_date']))) ?> — check back after a few more days of logged doses.
+              </p>
+              <input type="hidden" name="mood_chart_days[<?= $mmId ?>]" value="0">
+            <?php else: ?>
+              <div style="margin-top:0.4rem;">
+                <label style="font-size:0.88rem;">Chart window
+                  <select name="mood_chart_days[<?= $mmId ?>]" style="margin-left:0.5rem;">
+                    <?php if (in_array(7, $minfo['extra_opts'], true) || $mDefR === 7): ?>
+                      <option value="7" <?= $mDefR === 7 ? 'selected' : '' ?>>7 days</option>
+                    <?php endif; ?>
+                    <?php if (in_array(30, $minfo['extra_opts'], true) || $mDefR === 30): ?>
+                      <option value="30" <?= $mDefR === 30 ? 'selected' : '' ?>>30 days</option>
+                    <?php endif; ?>
+                    <?php if ($mDefR === 90 || $mDaysOn >= 90): ?>
+                      <option value="90" <?= $mDefR === 90 ? 'selected' : '' ?>>90 days</option>
                     <?php endif; ?>
                   </select>
                 </label>
@@ -1253,7 +1392,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
   </div>
 
-  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export', 'help', 'pain-tracking'], true)): ?>
+  <?php if (!in_array($page, ['medications', 'settings', 'calendar', 'export', 'help', 'pain-tracking', 'mood-wellbeing'], true)): ?>
   <section class="dashboard-grid" aria-label="Medication dashboard">
     <article class="panel dashboard-schedule-panel">
       <div class="panel-heading">
@@ -1292,7 +1431,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable($rawPostponedUntil))->format('H:i'))) ?></span>
               <?php endif; ?>
               <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= $dose['track_dose_feedback'] ? '1' : '0' ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= (($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none')) !== 'none') ? '1' : '0' ?>" data-feedback-type="<?= e((string) ($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none'))) ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
                 <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
                 <?php if (!$isCompleted): ?>
                   <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= $snoozeActive ? ' disabled' : '' ?>>Snooze</button>
@@ -1318,6 +1457,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <a href="index.php?page=pain-tracking" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--log"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span>
           <span class="quick-action-label">Pain tracking</span>
+          <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
+        </a>
+        <a href="index.php?page=mood-wellbeing" class="quick-action-row">
+          <span class="quick-action-icon quick-action-icon--mood"><i class="fa-solid fa-face-smile" aria-hidden="true"></i></span>
+          <span class="quick-action-label">Mood &amp; Wellbeing</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
         <a href="index.php?page=medications" class="quick-action-row">
@@ -1431,7 +1575,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-header">
       <div>
         <h2 id="refill-modal-title">Log Refill</h2>
-        <p class="refill-modal-subtitle" data-refill-med-name></p>
+        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-refill-med-name></span> <span class="refill-med-dose" data-refill-med-dose></span></p>
       </div>
       <button type="button" class="icon-button" data-close-refill-modal aria-label="Close refill modal">&#10005;</button>
     </div>
@@ -1452,6 +1596,18 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
       </div>
     </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-instructions-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="instructions-modal-title">
+    <div class="modal-header">
+      <h2 id="instructions-modal-title" data-instructions-modal-name>Instructions</h2>
+      <button type="button" class="icon-button" data-close-instructions-modal aria-label="Close instructions">&#10005;</button>
+    </div>
+    <div class="modal-scroll">
+      <p data-instructions-modal-body></p>
     </div>
   </div>
 </div>
@@ -1514,6 +1670,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="json_response"  value="1">
         <input type="hidden" name="note"           data-missed-dose-note-hidden value="Marked taken (was missed)">
         <input type="hidden" name="pain_level"     data-missed-dose-pain-level  value="">
+        <input type="hidden" name="mood_level"     data-missed-dose-mood-level  value="">
         <input type="hidden" name="medication_id"  data-missed-dose-med-id     value="">
         <input type="hidden" name="scheduled_date" data-missed-dose-date        value="">
         <input type="hidden" name="scheduled_time" data-missed-dose-sched-time  value="">
@@ -1529,7 +1686,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <button type="button" class="missed-pain-btn" data-missed-pain="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
-          <label style="margin-top:.75rem;display:block;">Notes <span class="field-optional">(optional)</span>
+        </div>
+        <div data-missed-dose-mood-section hidden style="margin-top:1.25rem;">
+          <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select mood level" style="margin-top:.4rem;">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="missed-mood-btn" data-missed-mood="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+        </div>
+        <div data-missed-dose-note-section hidden style="margin-top:.75rem;">
+          <label style="display:block;">Notes <span class="field-optional">(optional)</span>
             <textarea data-missed-dose-note-text rows="2" maxlength="250"
                       placeholder="Any notes about this dose?"
                       style="margin-top:.375rem;width:100%;"></textarea>
@@ -1558,6 +1725,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="status"          value="taken">
         <input type="hidden" name="json_response"   value="1">
         <input type="hidden" name="pain_level"       data-log-past-dose-pain-level value="">
+        <input type="hidden" name="mood_level"       data-log-past-dose-mood-level value="">
         <input type="hidden" name="medication_id"    data-log-past-dose-med-id     value="">
 
         <div class="form-row" style="margin-top:1rem;">
@@ -1588,6 +1756,15 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <div class="pain-level-selector" role="group" aria-label="Select pain level" style="margin-top:.4rem;">
             <?php for ($i = 1; $i <= 10; $i++): ?>
               <button type="button" class="log-past-dose-pain-btn" data-log-past-dose-pain="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+        </div>
+
+        <div data-log-past-dose-mood-section hidden style="margin-top:1.25rem;">
+          <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select mood level" style="margin-top:.4rem;">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+              <button type="button" class="log-past-dose-mood-btn" data-log-past-dose-mood="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
         </div>

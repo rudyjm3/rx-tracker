@@ -45,6 +45,11 @@ try {
         $asNeeded = post_string('as_needed') === '1';
         $lowSupplyThreshold = max(0, (int) post_string('low_supply_threshold'));
         $trackDoseFeedback = post_string('track_dose_feedback') === '1';
+        $feedbackType = post_string('feedback_type');
+        if (!in_array($feedbackType, ['none', 'pain', 'mood', 'both'], true)) {
+            // Back-compat: derive from the legacy checkbox when the new field is absent.
+            $feedbackType = $trackDoseFeedback ? 'pain' : 'none';
+        }
         $setId = substr(trim(post_string('set_id')), 0, 64);
         $groupIdRaw = (int) post_string('group_id');
 
@@ -98,13 +103,13 @@ try {
         $startDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDateRaw) ? $startDateRaw : null;
 
         if ($action === 'add_medication') {
-            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate);
+            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate, $feedbackType);
             $newMedicationId = $repository->lastInsertedMedicationId();
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
             }
         } else {
-            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate);
+            $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate, $feedbackType);
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $id);
             } else {
@@ -229,6 +234,8 @@ try {
     if ($action === 'mark_dose') {
         $rawPainLevel = post_string('pain_level');
         $painLevel = $rawPainLevel !== '' ? (int) $rawPainLevel : null;
+        $rawMoodLevel = post_string('mood_level');
+        $moodLevel = $rawMoodLevel !== '' ? (int) $rawMoodLevel : null;
         $rawGroupId = post_string('group_id');
         $groupId = $rawGroupId !== '' && (int) $rawGroupId > 0 ? (int) $rawGroupId : null;
         $actualTakenTime = post_string('actual_taken_time');
@@ -268,7 +275,7 @@ try {
                 }
             }
         }
-        $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt);
+        $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt, $moodLevel);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
@@ -475,14 +482,22 @@ try {
                     $chartDays[(int) $medId] = (int) $days;
                 }
             }
+            $moodChartDaysRaw = $_POST['mood_chart_days'] ?? [];
+            $moodChartDays = [];
+            if (is_array($moodChartDaysRaw)) {
+                foreach ($moodChartDaysRaw as $medId => $days) {
+                    $moodChartDays[(int) $medId] = (int) $days;
+                }
+            }
             $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
             $chart  = new PainChartRenderer();
+            $moodChart = new MoodChartRenderer();
             $currentUser = $auth->currentUser();
             $patientName = $activeProfile !== null
                 ? (string) ($activeProfile['display_name'] ?? $currentUser['display_name'] ?? 'Patient')
                 : (string) ($currentUser['display_name'] ?? 'Patient');
-            $report = new DoctorVisitReport($repository, $seRepo, $chart, $patientName);
-            $pdf    = $report->generate($reportStart, $reportEnd, $chartDays);
+            $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName);
+            $pdf    = $report->generate($reportStart, $reportEnd, $chartDays, $moodChartDays);
 
             $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));
             if ($dlToken !== '') {

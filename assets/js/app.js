@@ -78,10 +78,19 @@ const feedbackMedicationIdEl = document.querySelector('[data-feedback-medication
 const feedbackScheduledDateEl = document.querySelector('[data-feedback-scheduled-date]');
 const feedbackScheduledTimeEl = document.querySelector('[data-feedback-scheduled-time]');
 const feedbackPainLevelEl = document.querySelector('[data-feedback-pain-level]');
+const feedbackMoodLevelEl = document.querySelector('[data-feedback-mood-level]');
 const feedbackNoteEl = document.querySelector('[data-feedback-note]');
 const feedbackCharCounter = document.querySelector('[data-feedback-char-counter]');
 const feedbackPainSection = document.querySelector('[data-feedback-pain-section]');
+const feedbackMoodSection = document.querySelector('[data-feedback-mood-section]');
 const skipFeedbackBtn = document.querySelector('[data-skip-feedback]');
+
+// Resolve which feedback sections to show for a given feedback_type value,
+// falling back to legacy boolean-only track_dose_feedback semantics (pain-only).
+const feedbackSectionsFor = (feedbackType) => ({
+  pain: feedbackType === 'pain' || feedbackType === 'both',
+  mood: feedbackType === 'mood' || feedbackType === 'both',
+});
 
 // ── Free-log modal (no scheduled slots — interval/PRN meds) ──────────────────
 
@@ -89,11 +98,11 @@ const freeLogModal   = document.querySelector('[data-free-log-modal]');
 const freeLogTitle   = document.querySelector('[data-free-log-title]');
 const freeLogTimeEl  = document.querySelector('[data-free-log-time]');
 const freeLogConfirm = document.querySelector('[data-free-log-confirm]');
-let   freeLogState   = { sourceForm: null, trackFeedback: false };
+let   freeLogState   = { sourceForm: null, trackFeedback: false, feedbackType: 'none' };
 
-const openFreeLogModal = ({ medName, sourceForm, trackFeedback }) => {
+const openFreeLogModal = ({ medName, sourceForm, trackFeedback, feedbackType = 'none' }) => {
   if (!freeLogModal) return;
-  freeLogState = { sourceForm, trackFeedback };
+  freeLogState = { sourceForm, trackFeedback, feedbackType };
   if (freeLogTitle) freeLogTitle.textContent = `Log dose for ${medName}`;
   if (freeLogTimeEl) {
     const now = new Date();
@@ -117,7 +126,7 @@ freeLogModal?.addEventListener('click', (e) => {
 });
 
 freeLogConfirm?.addEventListener('click', async () => {
-  const { sourceForm, trackFeedback } = freeLogState;
+  const { sourceForm, trackFeedback, feedbackType } = freeLogState;
   if (!sourceForm || !freeLogTimeEl) return;
   const takenTime = freeLogTimeEl.value;
   if (!takenTime) { freeLogTimeEl.focus(); return; }
@@ -130,7 +139,7 @@ freeLogConfirm?.addEventListener('click', async () => {
       sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
       dateStr,
       takenTime + ':00',
-      true,
+      feedbackType ?? 'pain',
       false
     );
     return;
@@ -194,13 +203,16 @@ const missedDoseActualTime   = document.querySelector('[data-missed-dose-actual-
 const missedDoseForm         = document.querySelector('[data-missed-dose-form]');
 const missedDosePainSection  = document.querySelector('[data-missed-dose-pain-section]');
 const missedDosePainLevelEl  = document.querySelector('[data-missed-dose-pain-level]');
+const missedDoseMoodSection  = document.querySelector('[data-missed-dose-mood-section]');
+const missedDoseMoodLevelEl  = document.querySelector('[data-missed-dose-mood-level]');
+const missedDoseNoteSection  = document.querySelector('[data-missed-dose-note-section]');
 const missedDoseNoteHidden   = document.querySelector('[data-missed-dose-note-hidden]');
 const missedDoseNoteText     = document.querySelector('[data-missed-dose-note-text]');
 let   missedDosePainMode     = false;
 const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
 const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
 
-let slotPickerState = { medicationId: null, selectedSlot: null, graceMinutes: 30, trackFeedback: false, sourceForm: null, today: '' };
+let slotPickerState = { medicationId: null, selectedSlot: null, graceMinutes: 30, trackFeedback: false, feedbackType: 'none', sourceForm: null, today: '' };
 
 const slotTo12h = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -208,14 +220,14 @@ const slotTo12h = (hhmm) => {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
 };
 
-const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMinutes, trackFeedback }) => {
+const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMinutes, trackFeedback, feedbackType = 'none' }) => {
   if (!slotPickerModal) return;
   const now = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const pad = (n) => String(n).padStart(2, '0');
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-  slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, sourceForm, today };
+  slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, feedbackType, sourceForm, today };
 
   if (slotPickerTitle) slotPickerTitle.textContent = `Log dose for ${medName}`;
   if (slotPickerConfirm) slotPickerConfirm.disabled = true;
@@ -299,7 +311,7 @@ slotPickerModal?.addEventListener('click', (e) => {
 });
 
 slotPickerConfirm?.addEventListener('click', async () => {
-  const { medicationId, selectedSlot, trackFeedback, sourceForm, today, graceMinutes } = slotPickerState;
+  const { medicationId, selectedSlot, trackFeedback, feedbackType, sourceForm, today, graceMinutes } = slotPickerState;
 
   // When free-time section is visible (all slots logged), use its time input instead
   const usingFreeTime = slotFreeTime && !slotFreeTime.hidden;
@@ -341,7 +353,7 @@ slotPickerConfirm?.addEventListener('click', async () => {
 
   if (trackFeedback) {
     closeSlotPickerModal();
-    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', true, false);
+    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', feedbackType ?? 'pain', false);
     return;
   }
 
@@ -429,20 +441,25 @@ postponeModal?.addEventListener('click', (event) => {
 
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
-const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false, title = null }) => {
+const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false, feedbackType = 'none', title = null }) => {
   if (!missedDoseModal) return;
   missedDosePainMode = trackFeedback;
+  const { pain: showPain, mood: showMood } = feedbackSectionsFor(feedbackType ?? (trackFeedback ? 'pain' : 'none'));
   if (missedDoseTitle) missedDoseTitle.textContent = title ?? `Log missed dose — ${medicationName}`;
   if (missedDoseMedId) missedDoseMedId.value = medicationId;
   if (missedDoseDate) missedDoseDate.value = scheduledDate;
   if (missedDoseSchedTime) missedDoseSchedTime.value = scheduledTime;
   // Pre-fill the time input with the scheduled time, stripping seconds ("HH:MM:SS" → "HH:MM")
   if (missedDoseActualTime) missedDoseActualTime.value = scheduledTime.substring(0, 5);
-  // Show/hide pain section and reset state
-  if (missedDosePainSection) missedDosePainSection.hidden = !trackFeedback;
+  // Show/hide pain/mood sections and reset state
+  if (missedDosePainSection) missedDosePainSection.hidden = !showPain;
+  if (missedDoseMoodSection) missedDoseMoodSection.hidden = !showMood;
+  if (missedDoseNoteSection) missedDoseNoteSection.hidden = !trackFeedback;
   if (missedDosePainLevelEl) missedDosePainLevelEl.value = '';
+  if (missedDoseMoodLevelEl) missedDoseMoodLevelEl.value = '';
   if (missedDoseNoteText) missedDoseNoteText.value = '';
   missedDoseModal.querySelectorAll('.missed-pain-btn').forEach((b) => b.classList.remove('is-selected'));
+  missedDoseModal.querySelectorAll('.missed-mood-btn').forEach((b) => b.classList.remove('is-selected'));
   if (missedDoseNoteHidden) missedDoseNoteHidden.value = trackFeedback ? '' : 'Marked taken (was missed)';
   missedDoseModal.classList.add('is-open');
   lockBodyScroll();
@@ -466,6 +483,14 @@ missedDoseModal?.querySelectorAll('.missed-pain-btn').forEach((btn) => {
     missedDoseModal.querySelectorAll('.missed-pain-btn').forEach((b) => b.classList.remove('is-selected'));
     btn.classList.add('is-selected');
     if (missedDosePainLevelEl) missedDosePainLevelEl.value = btn.dataset.missedPain ?? '';
+  });
+});
+
+missedDoseModal?.querySelectorAll('.missed-mood-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    missedDoseModal.querySelectorAll('.missed-mood-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (missedDoseMoodLevelEl) missedDoseMoodLevelEl.value = btn.dataset.missedMood ?? '';
   });
 });
 
@@ -503,6 +528,8 @@ const logPastDoseFreeTimeInput   = document.querySelector('[data-log-past-dose-f
 const logPastDoseActualTime      = document.querySelector('[data-log-past-dose-actual-time]');
 const logPastDosePainSection     = document.querySelector('[data-log-past-dose-pain-section]');
 const logPastDosePainLevelEl     = document.querySelector('[data-log-past-dose-pain-level]');
+const logPastDoseMoodSection     = document.querySelector('[data-log-past-dose-mood-section]');
+const logPastDoseMoodLevelEl     = document.querySelector('[data-log-past-dose-mood-level]');
 const logPastDoseNoteEl          = document.querySelector('[data-log-past-dose-note]');
 const logPastDoseConfirm         = document.querySelector('[data-log-past-dose-confirm]');
 
@@ -513,19 +540,24 @@ const localDateStr = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
-const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback }) => {
+const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType = 'none' }) => {
   if (!logPastDoseModal) return;
 
   logPastDoseForm?.reset();
   logPastDoseState = { medicationId, hasFixedSlots: scheduleMode === 'fixed_times' && slots.length > 0, selectedSlot: null };
 
+  const { pain: showPastPain, mood: showPastMood } = feedbackSectionsFor(feedbackType ?? (trackFeedback ? 'pain' : 'none'));
+
   if (logPastDoseTitle) logPastDoseTitle.textContent = `Log past dose — ${medicationName}`;
   if (logPastDoseMedId) logPastDoseMedId.value = medicationId;
   if (logPastDosePainLevelEl) logPastDosePainLevelEl.value = '';
+  if (logPastDoseMoodLevelEl) logPastDoseMoodLevelEl.value = '';
   if (logPastDoseNoteEl) logPastDoseNoteEl.value = '';
   if (logPastDoseActualTime) logPastDoseActualTime.value = '';
   logPastDoseModal.querySelectorAll('.log-past-dose-pain-btn').forEach((b) => b.classList.remove('is-selected'));
-  if (logPastDosePainSection) logPastDosePainSection.hidden = !trackFeedback;
+  logPastDoseModal.querySelectorAll('.log-past-dose-mood-btn').forEach((b) => b.classList.remove('is-selected'));
+  if (logPastDosePainSection) logPastDosePainSection.hidden = !showPastPain;
+  if (logPastDoseMoodSection) logPastDoseMoodSection.hidden = !showPastMood;
 
   const now = new Date();
   const today = localDateStr(now);
@@ -586,10 +618,11 @@ document.querySelectorAll('[data-open-log-past-dose]').forEach((btn) => {
     const medicationId = btn.dataset.medicationId ?? '';
     const medicationName = btn.dataset.medicationName ?? 'medication';
     const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    const feedbackType = btn.dataset.feedbackType ?? (trackFeedback ? 'pain' : 'none');
     const scheduleMode = btn.dataset.scheduleMode ?? '';
     let slots = [];
     try { slots = JSON.parse(btn.dataset.slots ?? '[]'); } catch { slots = []; }
-    openLogPastDoseModal({ medicationId, medicationName, slots, scheduleMode, trackFeedback });
+    openLogPastDoseModal({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType });
   });
 });
 
@@ -605,6 +638,14 @@ logPastDoseModal?.querySelectorAll('.log-past-dose-pain-btn').forEach((btn) => {
     logPastDoseModal.querySelectorAll('.log-past-dose-pain-btn').forEach((b) => b.classList.remove('is-selected'));
     btn.classList.add('is-selected');
     if (logPastDosePainLevelEl) logPastDosePainLevelEl.value = btn.dataset.logPastDosePain ?? '';
+  });
+});
+
+logPastDoseModal?.querySelectorAll('.log-past-dose-mood-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    logPastDoseModal.querySelectorAll('.log-past-dose-mood-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (logPastDoseMoodLevelEl) logPastDoseMoodLevelEl.value = btn.dataset.logPastDoseMood ?? '';
   });
 });
 
@@ -648,18 +689,24 @@ let feedbackAlarmContext = false;
 // the callback to call after the user submits (or skips) the feedback modal.
 let manageEachFeedbackMeta = null;
 
-const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, showPain, fromAlarm = false) => {
+const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, feedbackType = 'pain', fromAlarm = false) => {
   if (!doseFeedbackModal) return;
   feedbackAlarmContext = fromAlarm;
+  const { pain: showPain, mood: showMood } = feedbackSectionsFor(feedbackType);
   if (feedbackMedicationIdEl) feedbackMedicationIdEl.value = medicationId;
   if (feedbackScheduledDateEl) feedbackScheduledDateEl.value = scheduledDate;
   if (feedbackScheduledTimeEl) feedbackScheduledTimeEl.value = scheduledTime;
   if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
+  if (feedbackMoodLevelEl) feedbackMoodLevelEl.value = '';
   if (feedbackNoteEl) feedbackNoteEl.value = '';
   if (feedbackCharCounter) feedbackCharCounter.textContent = '[0/250]';
   document.querySelectorAll('.pain-level-btn').forEach((b) => b.classList.remove('is-selected'));
+  document.querySelectorAll('.mood-level-btn').forEach((b) => b.classList.remove('is-selected'));
   if (feedbackPainSection) {
     feedbackPainSection.classList.toggle('is-hidden', !showPain);
+  }
+  if (feedbackMoodSection) {
+    feedbackMoodSection.classList.toggle('is-hidden', !showMood);
   }
   doseFeedbackModal.classList.add('is-open');
   lockBodyScroll();
@@ -693,12 +740,21 @@ document.querySelectorAll('.pain-level-btn').forEach((btn) => {
   });
 });
 
+document.querySelectorAll('.mood-level-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mood-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+    if (feedbackMoodLevelEl) feedbackMoodLevelEl.value = btn.dataset.moodLevel ?? '';
+  });
+});
+
 const submitFeedbackAsAlarmAction = async () => {
   const note = feedbackNoteEl?.value ?? '';
   const painLevel = feedbackPainLevelEl?.value ?? '';
+  const moodLevel = feedbackMoodLevelEl?.value ?? '';
   closeDoseFeedbackModal();
   hideAlarmOverlay();
-  await alarmAction('mark_dose', { status: 'taken', note, pain_level: painLevel });
+  await alarmAction('mark_dose', { status: 'taken', note, pain_level: painLevel, mood_level: moodLevel });
 };
 
 feedbackForm?.addEventListener('submit', async (event) => {
@@ -706,18 +762,20 @@ feedbackForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const note = feedbackNoteEl?.value ?? '';
     const painLevel = feedbackPainLevelEl?.value ?? '';
-    await submitCurrentQueueItem(note, painLevel);
+    const moodLevel = feedbackMoodLevelEl?.value ?? '';
+    await submitCurrentQueueItem(note, painLevel, moodLevel);
   } else if (manageEachFeedbackMeta) {
     event.preventDefault();
     const note = feedbackNoteEl?.value ?? '';
     const painLevel = feedbackPainLevelEl?.value ?? '';
+    const moodLevel = feedbackMoodLevelEl?.value ?? '';
     const meta = manageEachFeedbackMeta;
     manageEachFeedbackMeta = null;
     closeDoseFeedbackModal();
     const medId = feedbackMedicationIdEl?.value ?? '';
     const date = feedbackScheduledDateEl?.value ?? '';
     const time = feedbackScheduledTimeEl?.value ?? '';
-    const result = await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId);
+    const result = await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId, moodLevel);
     if (result.ok) {
       meta.markDone('Taken ✓');
     } else {
@@ -851,6 +909,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         scheduledDate,
         scheduledTime,
         trackFeedback:  btn.dataset.trackDoseFeedback === '1',
+        feedbackType:   btn.dataset.feedbackType ?? (btn.dataset.trackDoseFeedback === '1' ? 'pain' : 'none'),
       });
       return;
     }
@@ -863,6 +922,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         scheduledDate,
         scheduledTime,
         trackFeedback:  btn.dataset.trackDoseFeedback === '1',
+        feedbackType:   btn.dataset.feedbackType ?? (btn.dataset.trackDoseFeedback === '1' ? 'pain' : 'none'),
         title: `Log dose — ${btn.dataset.medicationName ?? 'medication'}`,
       });
       return;
@@ -872,7 +932,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       event.preventDefault();
       const medicationId = btn.dataset.medicationId ?? '';
       if (!medicationId || !scheduledDate || !scheduledTime) return;
-      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, btn.dataset.feedbackType ?? 'pain', false);
     }
   });
 });
@@ -890,8 +950,9 @@ document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
     }
     const medName      = btn.dataset.medicationName ?? 'medication';
     const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    const feedbackType = btn.dataset.feedbackType ?? (trackFeedback ? 'pain' : 'none');
     if (slots.length === 0) {
-      openFreeLogModal({ medName, sourceForm: form, trackFeedback });
+      openFreeLogModal({ medName, sourceForm: form, trackFeedback, feedbackType });
       return;
     }
     openSlotPickerModal({
@@ -901,6 +962,7 @@ document.querySelectorAll('[data-log-dose-now-form]').forEach((form) => {
       slots,
       graceMinutes:  parseInt(btn.dataset.graceMinutes || '30', 10),
       trackFeedback,
+      feedbackType,
     });
   });
 });
@@ -1274,6 +1336,154 @@ const renderPainChartToday = (container, data) => {
   </svg>`;
 };
 
+// ── Mood level chart (inverted color scale: low = red, high = green) ─────────
+
+const moodLevelColor = (level) => {
+  if (level <= 3) return '#c9213c';
+  if (level <= 6) return '#d97706';
+  if (level <= 8) return '#8bb04a';
+  return '#2a9d49';
+};
+
+// Build a smooth SVG path `d` string through a series of points using cubic
+// bezier segments (Catmull-Rom-ish midpoint control points), instead of the
+// straight-line polylines used by the pain chart.
+const buildSmoothPathD = (points) => {
+  if (points.length === 0) return '';
+  if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? i : i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+};
+
+const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, mr, mt, mb) => {
+  const gradId = `mood-gradient-${Math.random().toString(36).slice(2, 9)}`;
+  const curveD = buildSmoothPathD(points);
+  const baseline = H - mb;
+  const areaD = points.length > 0
+    ? `${curveD} L ${points[points.length - 1].x.toFixed(1)},${baseline} L ${points[0].x.toFixed(1)},${baseline} Z`
+    : '';
+
+  let circles = '';
+  points.forEach((p) => {
+    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"><title>${p.tip}</title></circle>`;
+  });
+
+  const yAxisCY = (mt + (H - mt - mb) / 2).toFixed(1);
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mood level trend chart">
+    <defs>
+      <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2a9d49"/>
+        <stop offset="55%" stop-color="#d97706"/>
+        <stop offset="100%" stop-color="#c9213c"/>
+      </linearGradient>
+    </defs>
+    <text transform="rotate(-90)" x="-${yAxisCY}" y="11" text-anchor="middle" font-size="8.5" fill="#94a3b8">Mood Level</text>
+    ${gridLines}
+    <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
+    ${xLabels}
+    ${areaD ? `<path d="${areaD}" fill="url(#${gradId})" fill-opacity="0.4" stroke="none"/>` : ''}
+    <path d="${curveD}" fill="none" stroke="#6b7a96" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>
+    ${circles}
+  </svg>`;
+};
+
+const renderMoodChart = (container, data) => {
+  const W = 500, H = 200;
+  const ml = 44, mr = 12, mt = 12, mb = 36;
+  const chartW = W - ml - mr;
+  const chartH = H - mt - mb;
+
+  const yMin = 1, yMax = 10;
+  const yScale = (v) => mt + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  const dates = data.map((d) => d.date);
+  const uniqueDates = [...new Set(dates)];
+  const n = uniqueDates.length;
+  const xScale = (i) => ml + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+
+  const byDate = uniqueDates.map((date) => {
+    const pts = data.filter((d) => d.date === date);
+    const avg = pts.reduce((s, d) => s + parseInt(d.mood_level, 10), 0) / pts.length;
+    return { date, level: avg, pts };
+  });
+
+  let gridLines = '';
+  [1, 3, 5, 7, 10].forEach((v) => {
+    const y = yScale(v).toFixed(1);
+    gridLines += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+    gridLines += `<text x="${ml - 4}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#94a3b8">${v}</text>`;
+  });
+
+  let xLabels = '';
+  const step = Math.max(1, Math.ceil(n / 6));
+  byDate.forEach(({ date }, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    const x = xScale(i).toFixed(1);
+    const label = date.slice(5);
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${label}</text>`;
+  });
+
+  const points = byDate.map(({ date, level, pts }, i) => {
+    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Mood ${escSvg(p.mood_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
+    return {
+      x: xScale(i),
+      y: yScale(level),
+      color: moodLevelColor(Math.round(level)),
+      tip: `${escSvg(date)}&#10;${tipLines}`,
+    };
+  });
+
+  renderMoodChartCommon(container, points, gridLines, xLabels, W, H, ml, mr, mt, mb);
+};
+
+const renderMoodChartToday = (container, data) => {
+  const W = 500, H = 200;
+  const ml = 44, mr = 12, mt = 12, mb = 36;
+  const chartW = W - ml - mr;
+  const chartH = H - mt - mb;
+
+  const yMin = 1, yMax = 10;
+  const yScale = (v) => mt + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+  const n = data.length;
+  const xScale = (i) => ml + (n <= 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+
+  let gridLines = '';
+  [1, 3, 5, 7, 10].forEach((v) => {
+    const y = yScale(v).toFixed(1);
+    gridLines += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`;
+    gridLines += `<text x="${ml - 4}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#94a3b8">${v}</text>`;
+  });
+
+  let xLabels = '';
+  const step = Math.max(1, Math.ceil(n / 6));
+  data.forEach((d, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    const x = xScale(i).toFixed(1);
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(d.time.slice(0, 5))}</text>`;
+  });
+
+  const points = data.map((d, i) => {
+    const level = parseInt(d.mood_level, 10);
+    const tip = `${escSvg(d.time.slice(0, 5))}: Mood ${escSvg(d.mood_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}`;
+    return { x: xScale(i), y: yScale(level), color: moodLevelColor(level), tip };
+  });
+
+  renderMoodChartCommon(container, points, gridLines, xLabels, W, H, ml, mr, mt, mb);
+};
+
 const loadPainGraph = async () => {
   if (!painGraphBody || !painGraphEmpty) return;
   painGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
@@ -1327,6 +1537,115 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
   if (!svg) return;
   const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
   const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  const win = window.open('', '_blank', 'width=1200,height=800');
+  if (!win) return;
+  const printScript = isMobile
+    ? ''
+    : `<script>window.onafterprint=function(){window.close();};window.onload=function(){window.print();}<\/script>`;
+  const mobileHint = isMobile
+    ? `<p style="background:#f1f5f9;border-radius:8px;color:#475569;font-size:0.82rem;margin:0.5rem 0 1rem;padding:0.6rem 0.9rem;">Use your browser&rsquo;s print or share button to print this chart.</p>`
+    : '';
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title><style>
+    @media print{body{padding:0;}}
+    body{font-family:sans-serif;padding:1.5rem;color:#172033;}
+    h2{font-size:1.1rem;margin:0 0 0.2rem;}
+    p{font-size:0.82rem;color:#64748b;margin:0 0 1rem;}
+    svg{width:90%;max-width:none;display:block;margin:0 auto;}
+  </style></head><body>
+  <h2>${title}</h2><p>${rangeLabel}</p>
+  ${mobileHint}
+  ${svg.outerHTML}
+  ${printScript}
+  </body></html>`);
+  win.document.close();
+});
+
+// ── Mood trend graph (medication card quick view) ────────────────────────────
+
+const moodGraphModal = document.querySelector('[data-mood-graph-modal]');
+const moodGraphTitle = document.querySelector('[data-mood-graph-title]');
+const moodGraphBody = document.querySelector('[data-mood-graph-body]');
+const moodGraphEmpty = document.querySelector('[data-mood-graph-empty]');
+
+let moodGraphMedId = null;
+let moodGraphDays = 7;
+
+const openMoodGraphModal = (medicationId, medicationName, medicationDose = '') => {
+  if (!moodGraphModal) return;
+  moodGraphMedId = medicationId;
+  moodGraphDays = 0;
+  const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
+  if (moodGraphTitle) moodGraphTitle.textContent = titleBase + ' — Mood Trend';
+  moodGraphModal.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', t.dataset.range === '0');
+  });
+  closeMedPlanModal();
+  moodGraphModal.classList.add('is-open');
+  lockBodyScroll();
+  loadMoodGraph();
+};
+
+const closeMoodGraphModal = () => {
+  if (!moodGraphModal) return;
+  if (!moodGraphModal.classList.contains('is-open')) return;
+  moodGraphModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+const loadMoodGraph = async () => {
+  if (!moodGraphBody || !moodGraphEmpty) return;
+  moodGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
+  moodGraphEmpty.hidden = true;
+  try {
+    const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodGraphMedId ?? '')}&days=${moodGraphDays}`);
+    const payload = await resp.json();
+    if (!payload.ok || payload.data.length === 0) {
+      moodGraphBody.innerHTML = '';
+      moodGraphEmpty.hidden = false;
+      return;
+    }
+    if (moodGraphDays === 0) {
+      renderMoodChartToday(moodGraphBody, payload.data);
+    } else {
+      renderMoodChart(moodGraphBody, payload.data);
+    }
+  } catch {
+    moodGraphBody.innerHTML = '';
+    moodGraphEmpty.hidden = false;
+  }
+};
+
+moodGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    moodGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+    tab.classList.add('is-active');
+    moodGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    loadMoodGraph();
+  });
+});
+
+document.querySelectorAll('[data-open-mood-graph]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const medId   = btn.dataset.medicationId ?? '';
+    const medName = btn.dataset.medicationName ?? '';
+    const medDose = btn.dataset.medicationDose ?? '';
+    if (!medId) return;
+    openMoodGraphModal(medId, medName, medDose);
+  });
+});
+
+document.querySelector('[data-close-mood-graph]')?.addEventListener('click', closeMoodGraphModal);
+
+moodGraphModal?.addEventListener('click', (event) => {
+  if (event.target === moodGraphModal) closeMoodGraphModal();
+});
+
+document.querySelector('[data-mood-graph-print]')?.addEventListener('click', () => {
+  const svg = moodGraphBody?.querySelector('svg');
+  if (!svg) return;
+  const title = moodGraphTitle?.textContent ?? 'Mood Trend';
+  const rangeLabel = moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`;
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
@@ -1407,6 +1726,64 @@ if (painPageBody) {
   });
 
   document.querySelector('[data-select-medication]')?.click();
+}
+
+// Mood & Wellbeing dedicated page
+const moodPageBody = document.querySelector('[data-mood-page-body]');
+const moodPageEmpty = document.querySelector('[data-mood-page-empty]');
+const moodPageMedName = document.querySelector('[data-mood-page-med-name]');
+
+if (moodPageBody) {
+  let moodPageMedId = 0;
+  let moodPageDays = 0;
+
+  const loadMoodPageGraph = async () => {
+    if (!moodPageMedId) return;
+    moodPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
+    moodPageEmpty.hidden = true;
+    try {
+      const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodPageMedId)}&days=${moodPageDays}`);
+      const payload = await resp.json();
+      if (!payload.ok || payload.data.length === 0) {
+        moodPageBody.innerHTML = '';
+        moodPageEmpty.hidden = false;
+        return;
+      }
+      if (moodPageDays === 0) {
+        renderMoodChartToday(moodPageBody, payload.data);
+      } else {
+        renderMoodChart(moodPageBody, payload.data);
+      }
+    } catch {
+      moodPageBody.innerHTML = '';
+      moodPageEmpty.hidden = false;
+    }
+  };
+
+  document.querySelectorAll('[data-select-mood-medication]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+      if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
+      moodPageDays = 0;
+      document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
+        t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
+      );
+      loadMoodPageGraph();
+    });
+  });
+
+  document.querySelectorAll('.mood-page-range-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+      tab.classList.add('is-active');
+      moodPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      loadMoodPageGraph();
+    });
+  });
+
+  document.querySelector('[data-select-mood-medication]')?.click();
 }
 
 const historyPanel = document.querySelector('[data-history-panel]');
@@ -1743,6 +2120,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
   alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
   alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
+  alarmOverlay.dataset.alarmFeedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
   alarmOverlay.classList.add('is-active');
   lockBodyScroll();
   if (isSoundEnabled()) startAlarmAudio();
@@ -1770,6 +2148,7 @@ const showGroupAlarmOverlay = (groupItems) => {
       li.dataset.scheduledTime = String(item.scheduled_time);
       li.dataset.groupId = String(item.group_id ?? '');
       li.dataset.trackDoseFeedback = item.track_dose_feedback ? '1' : '0';
+      li.dataset.feedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
       li.textContent = `${item.name} — ${item.dose}`;
       alarmGroupListEl.appendChild(li);
     });
@@ -1792,8 +2171,8 @@ const hideAlarmOverlay = () => {
 };
 
 const isAnyModalOpen = () =>
-  [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal,
-   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal]
+  [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
+   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
@@ -1840,7 +2219,7 @@ let feedbackQueueMode = false;
 let feedbackQueueFailures = [];
 const feedbackQueueProgressEl = document.querySelector('[data-feedback-queue-progress]');
 
-const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '', groupId = '') => {
+const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '', groupId = '', moodLevel = '') => {
   const params = new URLSearchParams({
     csrf_token: getCsrfToken(),
     json_response: '1',
@@ -1851,6 +2230,7 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
     status,
     note,
     pain_level: painLevel,
+    mood_level: moodLevel,
   });
   if (groupId) params.set('group_id', String(groupId));
   try {
@@ -1911,13 +2291,14 @@ const processNextFeedbackQueueItem = () => {
     feedbackQueueProgressEl.hidden = false;
   }
   feedbackQueueMode = true;
-  openDoseFeedbackModal(item.medication_id, item.scheduled_date, item.scheduled_time, true, false);
+  const itemFeedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
+  openDoseFeedbackModal(item.medication_id, item.scheduled_date, item.scheduled_time, itemFeedbackType, false);
 };
 
-const submitCurrentQueueItem = async (note, painLevel) => {
+const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
   const item = feedbackQueue.shift();
   if (!item) return;
-  const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel, item.group_id ?? '');
+  const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel, item.group_id ?? '', moodLevel);
   if (!result.ok) feedbackQueueFailures.push({ name: item.name, error: result.error });
   closeDoseFeedbackModal();
   if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
@@ -1963,7 +2344,7 @@ alarmTakeBtn?.addEventListener('click', async () => {
       const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
       stopAlarmAudio();
       hideAlarmOverlay();
-      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, true);
+      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, alarmOverlay?.dataset.alarmFeedbackType ?? 'pain', true);
     } else {
       alarmAction('mark_dose', { status: 'taken', note: '' });
     }
@@ -2023,6 +2404,7 @@ alarmIndividualBtn?.addEventListener('click', () => {
     const scheduledTime = li.dataset.scheduledTime ?? '';
     const groupId = li.dataset.groupId ?? '';
     const trackFeedback = li.dataset.trackDoseFeedback === '1';
+    const feedbackType = li.dataset.feedbackType ?? (trackFeedback ? 'pain' : 'none');
 
     const actions = tpl ? (tpl.content.cloneNode(true)) : null;
     if (!actions) return;
@@ -2045,7 +2427,7 @@ alarmIndividualBtn?.addEventListener('click', () => {
         // Lower the alarm overlay so the feedback modal (z-index 1000) is visible.
         if (alarmOverlay) alarmOverlay.classList.add('is-behind-modal');
         manageEachFeedbackMeta = { groupId, markDone };
-        openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, true, false);
+        openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, feedbackType, false);
         // markDone is deferred until feedback is submitted or skipped.
       } else {
         const result = await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
@@ -3471,14 +3853,16 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('submit',
 
 const refillModal = document.querySelector('[data-refill-modal]');
 const refillMedNameEl = document.querySelector('[data-refill-med-name]');
+const refillMedDoseEl = document.querySelector('[data-refill-med-dose]');
 const refillMedicationIdEl = document.querySelector('[data-refill-medication-id]');
 const refillDateInput = document.querySelector('[data-refill-date]');
 const refillForm = document.querySelector('[data-refill-form]');
 
-const openRefillModal = (medicationId, medicationName) => {
+const openRefillModal = (medicationId, medicationName, medicationDose = '') => {
   if (!refillModal) return;
   if (refillForm) refillForm.reset();
   if (refillMedNameEl) refillMedNameEl.textContent = medicationName;
+  if (refillMedDoseEl) refillMedDoseEl.textContent = medicationDose;
   if (refillMedicationIdEl) refillMedicationIdEl.value = medicationId;
   if (refillDateInput) {
     const today = new Date();
@@ -3499,9 +3883,9 @@ const closeRefillModal = () => {
 
 document.querySelectorAll('[data-open-refill-modal]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const { medicationId = '', medicationName = '' } = btn.dataset;
+    const { medicationId = '', medicationName = '', medicationDose = '' } = btn.dataset;
     if (!medicationId) return;
-    openRefillModal(medicationId, medicationName);
+    openRefillModal(medicationId, medicationName, medicationDose);
   });
 });
 
@@ -3541,6 +3925,42 @@ refillForm?.addEventListener('submit', async (event) => {
     alert(err.message || 'Failed to log refill. Please try again.');
     if (submitBtn) submitBtn.disabled = false;
   }
+});
+
+// ── Instructions modal ────────────────────────────────────────────────────────
+
+const instructionsModal = document.querySelector('[data-instructions-modal]');
+const instructionsModalNameEl = document.querySelector('[data-instructions-modal-name]');
+const instructionsModalBodyEl = document.querySelector('[data-instructions-modal-body]');
+
+const openInstructionsModal = (medicationName, instructions) => {
+  if (!instructionsModal) return;
+  if (instructionsModalNameEl) instructionsModalNameEl.textContent = medicationName;
+  if (instructionsModalBodyEl) instructionsModalBodyEl.textContent = instructions;
+  instructionsModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeInstructionsModal = () => {
+  if (!instructionsModal) return;
+  if (!instructionsModal.classList.contains('is-open')) return;
+  instructionsModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-view-instructions]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { medicationName = '', instructions = '' } = btn.dataset;
+    openInstructionsModal(medicationName, instructions);
+  });
+});
+
+document.querySelectorAll('[data-close-instructions-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeInstructionsModal);
+});
+
+instructionsModal?.addEventListener('click', (event) => {
+  if (event.target === instructionsModal) closeInstructionsModal();
 });
 
 // ── Refill history modal ──────────────────────────────────────────────────────
