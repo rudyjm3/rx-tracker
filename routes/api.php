@@ -40,6 +40,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_trend') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_trend') {
+    header('Content-Type: application/json; charset=utf-8');
+    $medicationId = (int) ($_GET['medication_id'] ?? 0);
+    $daysParam = (int) ($_GET['days'] ?? 30);
+    if ($daysParam === 0) {
+        $data = $repository->moodLevelTrendForDate($medicationId, date('Y-m-d'));
+    } else {
+        $days = max(1, min(365, $daysParam));
+        $data = $repository->moodLevelTrend($medicationId, $days);
+    }
+    echo json_encode(['ok' => true, 'data' => $data], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);

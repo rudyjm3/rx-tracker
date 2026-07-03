@@ -11,17 +11,19 @@ final class DoctorVisitReport
         private readonly MedicationRepository $repository,
         private readonly SideEffectRepository $sideEffectRepo,
         private readonly PainChartRenderer    $chartRenderer,
+        private readonly MoodChartRenderer    $moodChartRenderer,
         private readonly string               $displayName
     ) {}
 
     /**
      * Build and return the PDF binary string.
      *
-     * @param array<int,int> $perMedChartDays  medication_id => chart window in days (0 = no chart)
+     * @param array<int,int> $perMedChartDays      medication_id => pain chart window in days (0 = no chart)
+     * @param array<int,int> $perMedMoodChartDays  medication_id => mood chart window in days (0 = no chart)
      */
-    public function generate(string $startDate, string $endDate, array $perMedChartDays): string
+    public function generate(string $startDate, string $endDate, array $perMedChartDays, array $perMedMoodChartDays = []): string
     {
-        $html = $this->buildHtml($startDate, $endDate, $perMedChartDays);
+        $html = $this->buildHtml($startDate, $endDate, $perMedChartDays, $perMedMoodChartDays);
 
         $options = new Options();
         $options->set('isRemoteEnabled', false);
@@ -36,7 +38,7 @@ final class DoctorVisitReport
         return (string) $dompdf->output();
     }
 
-    private function buildHtml(string $startDate, string $endDate, array $perMedChartDays): string
+    private function buildHtml(string $startDate, string $endDate, array $perMedChartDays, array $perMedMoodChartDays = []): string
     {
         $periodLabel = date('M j, Y', (int) strtotime($startDate))
             . ' – '
@@ -56,6 +58,7 @@ final class DoctorVisitReport
         $html .= $this->sectionMedications($medications);
         $html .= $this->sectionDoseSummary($dailySummary);
         $html .= $this->sectionPainCharts($medications, $startDate, $endDate, $perMedChartDays);
+        $html .= $this->sectionMoodCharts($medications, $startDate, $endDate, $perMedMoodChartDays);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
         $html .= '</div>';
@@ -327,7 +330,7 @@ HTML;
     ): string {
         $trackedMeds = array_filter(
             $medications,
-            static fn(array $m): bool => (bool) $m['track_dose_feedback']
+            fn(array $m): bool => $this->repository->medicationTracksPain($m)
         );
 
         if ($trackedMeds === []) {
@@ -372,6 +375,91 @@ HTML;
                 $html .= $daysLogged > 0
                     ? "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>"
                     : 'No pain data in this range.';
+                $html .= '</div>';
+                $html .= $svg;
+
+                // Patient notes from dose_logs.note in this range
+                $noteRows = array_filter(
+                    $rawData,
+                    static fn(array $r): bool => !empty($r['note'])
+                );
+                if ($noteRows !== []) {
+                    $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
+                    foreach ($noteRows as $r) {
+                        $date = date('M j', (int) strtotime((string) $r['date']));
+                        $html .= sprintf(
+                            '<div class="chart-note-item">%s: %s</div>',
+                            $this->h($date),
+                            $this->h((string) $r['note'])
+                        );
+                    }
+                    $html .= '</div>';
+                }
+            }
+
+            $html .= '</div>'; // .chart-section
+        }
+
+        return $html;
+    }
+
+    // -------------------------------------------------------------------------
+    // Section 5b: Mood & Wellbeing Tracking
+    // -------------------------------------------------------------------------
+
+    private function sectionMoodCharts(
+        array $medications,
+        string $startDate,
+        string $endDate,
+        array $perMedMoodChartDays
+    ): string {
+        $trackedMeds = array_filter(
+            $medications,
+            fn(array $m): bool => $this->repository->medicationTracksMood($m)
+        );
+
+        if ($trackedMeds === []) {
+            return '';
+        }
+
+        $html = '<div class="section-title page-break">Mood & Wellbeing Tracking</div>';
+
+        foreach ($trackedMeds as $med) {
+            $medId     = (int) $med['id'];
+            $medName   = $this->h((string) $med['name']);
+            $daysOn    = $this->daysOnMedication($med);
+            $chartDays = isset($perMedMoodChartDays[$medId])
+                ? (int) $perMedMoodChartDays[$medId]
+                : $this->defaultChartDays($daysOn);
+
+            $html .= '<div class="chart-section">';
+            $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
+
+            if ($daysOn < 7 || $chartDays === 0) {
+                $startedLabel = !empty($med['start_date'])
+                    ? date('F j', (int) strtotime((string) $med['start_date']))
+                    : 'recently';
+                $html .= "<div class=\"no-chart-note\">Mood tracking started {$startedLabel} — check back after a few more days of logged doses.</div>";
+            } else {
+                // Determine the actual chart start date based on selected window
+                $chartStart = date('Y-m-d', strtotime("-{$chartDays} days", strtotime($endDate)));
+                if ($chartStart < $startDate) {
+                    $chartStart = $startDate;
+                }
+
+                $rawData = $this->repository->moodLevelTrendForRange($medId, $chartStart, $endDate);
+                $svg     = $this->moodChartRenderer->renderSvg($rawData, $chartStart, $endDate);
+
+                // Summary stats
+                $avgMood    = $this->avgMood($rawData);
+                $daysLogged = count(array_unique(array_column($rawData, 'date')));
+                $rangeLabel = $this->h("{$chartDays}-day window: " . date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
+
+                $html .= '<div class="chart-summary">';
+                $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+                $html .= $daysLogged > 0
+                    ? "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>"
+                    : 'No mood data in this range.';
                 $html .= '</div>';
                 $html .= $svg;
 
@@ -524,6 +612,21 @@ HTML;
         }
         $levels = array_filter(
             array_column($rawData, 'pain_level'),
+            static fn ($v): bool => $v !== null && $v !== ''
+        );
+        if ($levels === []) {
+            return '—';
+        }
+        return number_format(array_sum($levels) / count($levels), 1);
+    }
+
+    private function avgMood(array $rawData): string
+    {
+        if ($rawData === []) {
+            return '—';
+        }
+        $levels = array_filter(
+            array_column($rawData, 'mood_level'),
             static fn ($v): bool => $v !== null && $v !== ''
         );
         if ($levels === []) {
