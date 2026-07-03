@@ -280,6 +280,18 @@ ALTER TABLE medications
 
 UPDATE medications SET start_date = DATE(created_at) WHERE start_date IS NULL;
 
+-- Mood & Wellbeing tracking (mirrors pain-level feedback, generalized)
+ALTER TABLE medications
+    ADD COLUMN IF NOT EXISTS feedback_type ENUM('none','pain','mood','both') NOT NULL DEFAULT 'none';
+
+UPDATE medications SET feedback_type = 'pain' WHERE track_dose_feedback = 1 AND feedback_type = 'none';
+
+ALTER TABLE dose_logs
+    ADD COLUMN IF NOT EXISTS mood_level TINYINT UNSIGNED NULL;
+
+ALTER TABLE medications
+    MODIFY COLUMN instructions TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS side_effects (
     id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
