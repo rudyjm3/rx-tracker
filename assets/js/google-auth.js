@@ -55,13 +55,16 @@
       },
       cancel_on_tap_outside: true,
       ux_mode: 'popup',
+      use_fedcm_for_prompt: true,
     });
 
     button.addEventListener('click', () => {
       setLoading(true);
       setMessage('');
       google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        const dismissedWithoutCredential = notification.isDismissedMoment()
+          && notification.getDismissedReason() !== 'credential_returned';
+        if (dismissedWithoutCredential) {
           setMessage('Google sign-in popup was closed or blocked. Please try again.');
           setLoading(false);
         }
