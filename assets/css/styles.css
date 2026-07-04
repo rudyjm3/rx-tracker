@@ -2830,8 +2830,10 @@ textarea:focus,
 }
 
 .instructions-content-box {
+  background: var(--rx-bg);
   border: 1px solid var(--rx-border);
-  border-radius: 8px;
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
   overflow: auto;
   padding: 5px;
 }
@@ -2841,12 +2843,14 @@ textarea:focus,
 }
 
 .instructions-content-box {
+  background: var(--rx-bg);
   border: 1px solid var(--rx-border);
-  border-radius: 8px;
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
   overflow: auto;
   padding: 0.75rem 0.9rem;
   font-size: 0.9rem;
-  box-shadow: 0 2px 8px rgba(3, 18, 42, 0.06);
+  box-shadow: 0 8px 24px rgba(3, 18, 42, 0.12);
 }
 
 .instructions-edit-btn {
