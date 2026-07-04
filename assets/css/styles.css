@@ -1493,6 +1493,17 @@ button.medications-overview-row:active {
   padding: 0.75rem 0 0;
 }
 
+.input-with-unit {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-unit input {
+  flex: 1;
+  min-width: 0;
+}
+
 .form-section legend {
   color: var(--rx-text-muted);
   float: left;
@@ -1806,7 +1817,7 @@ textarea:focus,
   align-items: flex-start;
   display: grid;
   gap: 0 0.75rem;
-  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
 }
 
 .medication-actions-top {
@@ -1814,8 +1825,35 @@ textarea:focus,
   align-self: flex-start;
   display: flex;
   gap: 0.4rem;
-  grid-column: 3;
   justify-content: flex-end;
+}
+
+/* Top row inside the medication content: title/dose on left, action buttons on right */
+.med-top-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.med-top-left {
+  min-width: 0;
+}
+.med-title {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.med-title strong {
+  white-space: normal;
+}
+.med-top-right {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.med-dose {
+  margin: 0.15rem 0 0 0;
 }
 
 .med-actions-menu {
@@ -1871,7 +1909,7 @@ textarea:focus,
 
 .medication-actions-bottom {
   border-top: 1px solid var(--rx-border);
-  grid-column: 2 / span 2;
+  grid-column: 2;
   grid-row: 2;
   align-self: center;
   justify-content: flex-start;
@@ -1904,6 +1942,8 @@ textarea:focus,
 /* Mobile: hide desktop-only buttons, show mobile more-menu */
 .med-action-mobile { display: none; }
 .med-action-desktop { display: inline-flex; }
+
+.instructions-label-mobile { display: none; }
 
 .med-actions-more-wrap {
   position: relative;
@@ -3042,7 +3082,8 @@ textarea:focus,
 
   .hero,
   .content-grid,
-  .medication-form {
+  .medication-form,
+  .form-section {
     grid-template-columns: 1fr;
   }
 
@@ -3093,7 +3134,7 @@ textarea:focus,
   }
 
   .medication-actions-bottom {
-    grid-column: 2 / span 2;
+    grid-column: 2;
     grid-row: auto;
   }
 
@@ -3105,14 +3146,16 @@ textarea:focus,
   .med-action-desktop { display: none; }
   .med-action-mobile { display: flex; }
 
+  .instructions-label-desktop { display: none; }
+  .instructions-label-mobile { display: inline; }
+
   .medication-actions-top {
-    grid-column: 3;
     justify-content: flex-end;
     margin-top: 0;
   }
 
   .medication-row-plan {
-    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.5rem minmax(0, 1fr);
   }
 
   .dashboard-grid {
@@ -3731,7 +3774,7 @@ textarea:focus,
   background: var(--rx-bg);
   border: 2px solid var(--rx-border);
   color: var(--rx-text-muted);
-  border-radius: 0.375rem;
+  border-radius: 50%;
   cursor: pointer;
   display: inline-flex;
   font-size: 0.82rem;
@@ -3770,7 +3813,7 @@ textarea:focus,
   background: var(--rx-bg);
   border: 2px solid var(--rx-border);
   color: var(--rx-text-muted);
-  border-radius: 0.375rem;
+  border-radius: 50%;
   cursor: pointer;
   display: inline-flex;
   font-size: 0.82rem;

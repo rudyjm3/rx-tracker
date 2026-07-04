@@ -55,10 +55,87 @@
             $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
             $medTypeLabel  = $medTypeLabels[$medTypeSlug] ?? 'Rx';
           ?>
-          <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($medTypeSlug) ?>"><?= e($medTypeLabel) ?></span>
-          <?php if (formattedDose($medication) !== ''): ?>
-          <p class="med-dose"><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
-          <?php endif; ?>
+          <div class="med-top-row">
+            <div class="med-top-left">
+              <div class="med-title"><strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($medTypeSlug) ?>"><?= e($medTypeLabel) ?></span></div>
+              <?php if (formattedDose($medication) !== ''): ?>
+              <p class="med-dose"><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
+              <?php endif; ?>
+            </div>
+            <div class="med-top-right">
+              <?php if ($repository->medicationTracksPain($medication)): ?>
+              <button
+                type="button"
+                class="icon-button pain-graph-btn"
+                data-open-pain-graph
+                data-medication-id="<?= e((string) $medication['id']) ?>"
+                data-medication-name="<?= e((string) $medication['name']) ?>"
+                data-medication-dose="<?= e(formattedDose($medication)) ?>"
+                aria-label="View pain level trend for <?= e((string) $medication['name']) ?>"
+                title="Pain level trend"
+              ><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></button>
+              <?php endif; ?>
+              <?php if ($repository->medicationTracksMood($medication)): ?>
+              <button
+                type="button"
+                class="icon-button mood-graph-btn"
+                data-open-mood-graph
+                data-medication-id="<?= e((string) $medication['id']) ?>"
+                data-medication-name="<?= e((string) $medication['name']) ?>"
+                data-medication-dose="<?= e(formattedDose($medication)) ?>"
+                aria-label="View mood trend for <?= e((string) $medication['name']) ?>"
+                title="Mood trend"
+              ><i class="fa-solid fa-face-smile" aria-hidden="true"></i></button>
+              <?php endif; ?>
+              <div class="med-actions-menu" data-med-actions-menu>
+                <button
+                  type="button"
+                  class="icon-button med-actions-trigger"
+                  data-med-actions-trigger
+                  aria-label="More actions for <?= e((string) $medication['name']) ?>"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                ><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></button>
+                <div class="med-actions-dropdown" data-med-actions-dropdown hidden>
+                  <a href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>" class="med-actions-item">
+                    <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    Edit
+                  </a>
+                  <button
+                    type="button"
+                    class="med-actions-item"
+                    data-open-log-past-dose
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                    data-track-dose-feedback="<?= (string) $medication['feedback_type'] !== 'none' ? '1' : '0' ?>"
+                    data-feedback-type="<?= e((string) $medication['feedback_type']) ?>"
+                    data-schedule-mode="<?= e((string) $medication['schedule_mode']) ?>"
+                    data-slots="<?= e(json_encode($medication['times'])) ?>"
+                  >
+                    <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
+                    Log past dose
+                  </button>
+                  <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>" data-medication-dose="<?= e(formattedDose($medication)) ?>">
+                    <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
+                    Log refill
+                  </button>
+                  <button type="button" class="med-actions-item" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
+                    <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                    Refill history
+                  </button>
+                  <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="deactivate_medication">
+                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
+                    <button type="submit" class="med-actions-item med-actions-item--danger">
+                      <i class="fa-solid fa-power-off" aria-hidden="true"></i>
+                      Deactivate
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
           <p>
             <?php if ((string) $medication['schedule_mode'] === 'interval'): ?>
               Every <?= e((string) $medication['interval_hours']) ?> hours from <?= e(to12h((string) $medication['first_dose_time'])) ?>
@@ -102,83 +179,16 @@
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
           <?php if (trim((string) $medication['instructions']) !== ''): ?>
           <button type="button" class="view-instructions-link" data-view-instructions
+                  data-medication-id="<?= e((string) $medication['id']) ?>"
                   data-medication-name="<?= e((string) $medication['name']) ?>"
-                  data-instructions="<?= e((string) $medication['instructions']) ?>">View Instructions</button>
+                  data-medication-dose="<?= e(formattedDose($medication)) ?>"
+                  data-instructions="<?= e((string) $medication['instructions']) ?>">
+            <span class="instructions-label-desktop">View instructions / Notes</span>
+            <span class="instructions-label-mobile">View instr/Notes</span>
+          </button>
           <?php endif; ?>
         </div>
-        <div class="row-actions medication-actions-top">
-          <?php if ($repository->medicationTracksPain($medication)): ?>
-          <button
-            type="button"
-            class="icon-button pain-graph-btn"
-            data-open-pain-graph
-            data-medication-id="<?= e((string) $medication['id']) ?>"
-            data-medication-name="<?= e((string) $medication['name']) ?>"
-            data-medication-dose="<?= e(formattedDose($medication)) ?>"
-            aria-label="View pain level trend for <?= e((string) $medication['name']) ?>"
-            title="Pain level trend"
-          ><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></button>
-          <?php endif; ?>
-          <?php if ($repository->medicationTracksMood($medication)): ?>
-          <button
-            type="button"
-            class="icon-button mood-graph-btn"
-            data-open-mood-graph
-            data-medication-id="<?= e((string) $medication['id']) ?>"
-            data-medication-name="<?= e((string) $medication['name']) ?>"
-            data-medication-dose="<?= e(formattedDose($medication)) ?>"
-            aria-label="View mood trend for <?= e((string) $medication['name']) ?>"
-            title="Mood trend"
-          ><i class="fa-solid fa-face-smile" aria-hidden="true"></i></button>
-          <?php endif; ?>
-          <div class="med-actions-menu" data-med-actions-menu>
-            <button
-              type="button"
-              class="icon-button med-actions-trigger"
-              data-med-actions-trigger
-              aria-label="More actions for <?= e((string) $medication['name']) ?>"
-              aria-expanded="false"
-              aria-haspopup="true"
-            ><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></button>
-            <div class="med-actions-dropdown" data-med-actions-dropdown hidden>
-              <a href="index.php?page=medications&edit=<?= e((string) $medication['id']) ?>" class="med-actions-item">
-                <i class="fa-solid fa-pen" aria-hidden="true"></i>
-                Edit
-              </a>
-              <button
-                type="button"
-                class="med-actions-item"
-                data-open-log-past-dose
-                data-medication-id="<?= e((string) $medication['id']) ?>"
-                data-medication-name="<?= e((string) $medication['name']) ?>"
-                data-track-dose-feedback="<?= (string) $medication['feedback_type'] !== 'none' ? '1' : '0' ?>"
-                data-feedback-type="<?= e((string) $medication['feedback_type']) ?>"
-                data-schedule-mode="<?= e((string) $medication['schedule_mode']) ?>"
-                data-slots="<?= e(json_encode($medication['times'])) ?>"
-              >
-                <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
-                Log past dose
-              </button>
-              <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>" data-medication-dose="<?= e(formattedDose($medication)) ?>">
-                <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
-                Log refill
-              </button>
-              <button type="button" class="med-actions-item" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
-                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
-                Refill history
-              </button>
-              <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="deactivate_medication">
-                <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                <button type="submit" class="med-actions-item med-actions-item--danger">
-                  <i class="fa-solid fa-power-off" aria-hidden="true"></i>
-                  Deactivate
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
+        
         <div class="row-actions medication-actions-bottom">
           <form method="post" action="index.php" data-log-dose-now-form>
             <?= csrf_field() ?>
