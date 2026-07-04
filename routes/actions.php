@@ -169,6 +169,22 @@ try {
         redirect_home();
     }
 
+    if ($action === 'update_instructions') {
+        $medId = (int) post_string('medication_id');
+        $instructions = post_string('instructions');
+        $repository->updateInstructions($medId, $instructions);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'ok' => true,
+                'medication_id' => $medId,
+                'instructions' => $instructions,
+            ], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
     if ($action === 'delete_group') {
         $repository->deleteGroup((int) post_string('group_id'));
         if ($jsonResponse) {

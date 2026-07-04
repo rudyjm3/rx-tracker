@@ -692,6 +692,20 @@ final class MedicationRepository
         }
     }
 
+    public function updateInstructions(int $id, string $instructions): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medications
+             SET instructions = :instructions
+             WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge([
+            'id' => $id,
+            'user_id' => $this->userId,
+            'instructions' => $instructions,
+        ], $this->profileParam()));
+    }
+
     public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): void
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {

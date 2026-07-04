@@ -3932,11 +3932,29 @@ refillForm?.addEventListener('submit', async (event) => {
 const instructionsModal = document.querySelector('[data-instructions-modal]');
 const instructionsModalNameEl = document.querySelector('[data-instructions-modal-name]');
 const instructionsModalBodyEl = document.querySelector('[data-instructions-modal-body]');
+const instructionsModalEditEl = document.querySelector('[data-instructions-modal-edit]');
+const instructionsModalSaveRowEl = document.querySelector('[data-instructions-modal-save-row]');
+const instructionsModalEditBtn = document.querySelector('[data-edit-instructions]');
 
-const openInstructionsModal = (medicationName, instructions) => {
+let instructionsModalMedicationId = '';
+let instructionsModalSourceBtn = null;
+
+const setInstructionsModalEditing = (editing) => {
+  if (instructionsModalBodyEl) instructionsModalBodyEl.style.display = editing ? 'none' : '';
+  if (instructionsModalEditEl) instructionsModalEditEl.style.display = editing ? '' : 'none';
+  if (instructionsModalSaveRowEl) instructionsModalSaveRowEl.style.display = editing ? 'flex' : 'none';
+  if (instructionsModalEditBtn) instructionsModalEditBtn.style.display = editing ? 'none' : '';
+};
+
+const openInstructionsModal = (medicationId, medicationName, medicationDose, instructions) => {
   if (!instructionsModal) return;
-  if (instructionsModalNameEl) instructionsModalNameEl.textContent = medicationName;
+  instructionsModalMedicationId = medicationId;
+  if (instructionsModalNameEl) {
+    instructionsModalNameEl.textContent = medicationDose ? `${medicationName} — ${medicationDose}` : medicationName;
+  }
   if (instructionsModalBodyEl) instructionsModalBodyEl.textContent = instructions;
+  if (instructionsModalEditEl) instructionsModalEditEl.value = instructions;
+  setInstructionsModalEditing(false);
   instructionsModal.classList.add('is-open');
   lockBodyScroll();
 };
@@ -3944,14 +3962,16 @@ const openInstructionsModal = (medicationName, instructions) => {
 const closeInstructionsModal = () => {
   if (!instructionsModal) return;
   if (!instructionsModal.classList.contains('is-open')) return;
+  setInstructionsModalEditing(false);
   instructionsModal.classList.remove('is-open');
   unlockBodyScroll();
 };
 
 document.querySelectorAll('[data-view-instructions]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const { medicationName = '', instructions = '' } = btn.dataset;
-    openInstructionsModal(medicationName, instructions);
+    const { medicationId = '', medicationName = '', medicationDose = '', instructions = '' } = btn.dataset;
+    instructionsModalSourceBtn = btn;
+    openInstructionsModal(medicationId, medicationName, medicationDose, instructions);
   });
 });
 
@@ -3961,6 +3981,46 @@ document.querySelectorAll('[data-close-instructions-modal]').forEach((btn) => {
 
 instructionsModal?.addEventListener('click', (event) => {
   if (event.target === instructionsModal) closeInstructionsModal();
+});
+
+instructionsModalEditBtn?.addEventListener('click', () => {
+  setInstructionsModalEditing(true);
+  instructionsModalEditEl?.focus();
+});
+
+document.querySelector('[data-cancel-instructions-edit]')?.addEventListener('click', () => {
+  if (instructionsModalEditEl) instructionsModalEditEl.value = instructionsModalBodyEl?.textContent ?? '';
+  setInstructionsModalEditing(false);
+});
+
+document.querySelector('[data-save-instructions]')?.addEventListener('click', async (event) => {
+  const saveBtn = event.currentTarget;
+  const newInstructions = instructionsModalEditEl?.value ?? '';
+  saveBtn.disabled = true;
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'update_instructions',
+      medication_id: instructionsModalMedicationId,
+      instructions: newInstructions,
+    });
+    const resp = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to save instructions.');
+    if (instructionsModalBodyEl) instructionsModalBodyEl.textContent = newInstructions;
+    if (instructionsModalSourceBtn) instructionsModalSourceBtn.dataset.instructions = newInstructions;
+    setInstructionsModalEditing(false);
+  } catch (err) {
+    alert(err.message || 'Failed to save instructions. Please try again.');
+  } finally {
+    saveBtn.disabled = false;
+  }
 });
 
 // ── Refill history modal ──────────────────────────────────────────────────────
