@@ -2829,6 +2829,38 @@ textarea:focus,
   padding: 0 1rem 1rem;
 }
 
+.instructions-content-box {
+  border: 1px solid var(--rx-border);
+  border-radius: 8px;
+  overflow: auto;
+  padding: 5px;
+}
+
+.instructions-content-wrap {
+  position: relative;
+}
+
+.instructions-content-box {
+  border: 1px solid var(--rx-border);
+  border-radius: 8px;
+  overflow: auto;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 8px rgba(3, 18, 42, 0.06);
+}
+
+.instructions-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  float: none;
+  margin: 0;
+}
+
+.instructions-content-box p[data-instructions-modal-body], .instructions-content-box p {
+  font-weight: 500;
+}
+
 .postpone-dialog {
   max-width: 420px;
 }

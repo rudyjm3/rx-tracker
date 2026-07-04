@@ -1604,12 +1604,16 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="instructions-modal-title">
     <div class="modal-header">
       <h2 id="instructions-modal-title" data-instructions-modal-name>Instructions</h2>
-      <button type="button" class="icon-button" data-edit-instructions aria-label="Edit instructions" title="Edit instructions"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
       <button type="button" class="icon-button" data-close-instructions-modal aria-label="Close instructions">&#10005;</button>
     </div>
     <div class="modal-scroll">
-      <p data-instructions-modal-body></p>
-      <textarea data-instructions-modal-edit rows="4" style="display:none"></textarea>
+      <div class="instructions-content-wrap">
+        <div class="instructions-content-box">
+          <p data-instructions-modal-body></p>
+          <textarea data-instructions-modal-edit rows="4" style="display:none"></textarea>
+        </div>
+        <button type="button" class="icon-button med-actions-trigger instructions-edit-btn" data-edit-instructions aria-label="Edit instructions" title="Edit instructions"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+      </div>
     </div>
     <div class="refill-form-actions" data-instructions-modal-save-row style="display:none; padding: 0 1rem 1rem;">
       <button type="button" data-save-instructions>Save</button>
