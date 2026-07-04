@@ -14,6 +14,11 @@ final class MoodChartRenderer
     private const GRID_LEVELS   = [1, 3, 5, 7, 10];
     private const MAX_X_LABELS  = 6;
 
+    // dompdf's bundled php-svg-lib does not support <linearGradient> fills/strokes
+    // (fill="url(#...)" resolves to nothing and falls back to solid black), so the
+    // area chart uses a solid color instead of the red-to-green gradient.
+    private const FILL_COLOR = '#028AA9';
+
     // Mood scale: low mood = red/bad, high mood = green/good (inverted vs pain).
     private function colorForLevel(float $level): string
     {
@@ -76,22 +81,6 @@ final class MoodChartRenderer
 
         $svg = '';
 
-        // Gradient definitions: red (low mood) -> yellow/orange (mid) -> green (high mood)
-        $svg .= '<defs>'
-            . '<linearGradient id="moodFillGradient" x1="0" y1="' . $y1 . '" x2="0" y2="' . $y0 . '" gradientUnits="userSpaceOnUse">'
-            . '<stop offset="0%" stop-color="#c9213c" stop-opacity="0.40"/>'
-            . '<stop offset="35%" stop-color="#e05b30" stop-opacity="0.40"/>'
-            . '<stop offset="65%" stop-color="#d97706" stop-opacity="0.40"/>'
-            . '<stop offset="100%" stop-color="#2a9d49" stop-opacity="0.40"/>'
-            . '</linearGradient>'
-            . '<linearGradient id="moodStrokeGradient" x1="0" y1="' . $y1 . '" x2="0" y2="' . $y0 . '" gradientUnits="userSpaceOnUse">'
-            . '<stop offset="0%" stop-color="#c9213c"/>'
-            . '<stop offset="35%" stop-color="#e05b30"/>'
-            . '<stop offset="65%" stop-color="#d97706"/>'
-            . '<stop offset="100%" stop-color="#2a9d49"/>'
-            . '</linearGradient>'
-            . '</defs>';
-
         // Background
         $svg .= sprintf(
             '<rect x="0" y="0" width="%d" height="%d" fill="#f8fafc" stroke="none"/>',
@@ -151,7 +140,7 @@ final class MoodChartRenderer
             }
 
             if (count($points) === 1) {
-                // Single point — draw a short flat segment so the stroke/gradient render.
+                // Single point — draw a short flat segment so the stroke/fill render.
                 $p = $points[0];
                 $curvePath = sprintf('M %s,%s L %s,%s', $p['x'], $p['y'], $p['x'], $p['y']);
                 $areaPath  = sprintf(
@@ -162,19 +151,22 @@ final class MoodChartRenderer
                 [$curvePath, $lastPoint] = $this->buildSmoothPath($points);
 
                 // Closed area path: smooth curve across the top, then straight down to
-                // baseline and back to the start, for the gradient fill.
+                // baseline and back to the start, for the area fill.
                 $firstPoint = $points[0];
                 $areaPath = $curvePath
                     . sprintf(' L %s,%s L %s,%s Z', $lastPoint['x'], $y1, $firstPoint['x'], $y1);
             }
 
-            // Gradient-filled area under the curve
-            $svg .= sprintf('<path d="%s" fill="url(#moodFillGradient)" stroke="none"/>', $areaPath);
+            // Filled area under the curve
+            $svg .= sprintf(
+                '<path d="%s" fill="%s" fill-opacity="0.35" stroke="none"/>',
+                $areaPath, self::FILL_COLOR
+            );
 
             // Smooth curve stroke
             $svg .= sprintf(
-                '<path d="%s" fill="none" stroke="url(#moodStrokeGradient)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>',
-                $curvePath
+                '<path d="%s" fill="none" stroke="%s" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>',
+                $curvePath, self::FILL_COLOR
             );
 
             // Data point circles
