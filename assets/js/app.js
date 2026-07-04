@@ -2110,7 +2110,7 @@ const showAlarmOverlay = (item) => {
   alarmGroupItems = [];
   if (alarmSingleModeEl) alarmSingleModeEl.hidden = false;
   if (alarmGroupModeEl) alarmGroupModeEl.hidden = true;
-  if (alarmEyebrowEl) alarmEyebrowEl.textContent = 'Dose Due Now';
+  if (alarmEyebrowEl) alarmEyebrowEl.textContent = `${slotTo12h(item.scheduled_time)} - Dose Due Now`;
   if (alarmTakeBtn) alarmTakeBtn.textContent = 'Take Now';
   if (alarmSkipBtn) alarmSkipBtn.textContent = 'Skip';
   if (alarmIndividualBtn) alarmIndividualBtn.hidden = true;
@@ -2132,7 +2132,7 @@ const showGroupAlarmOverlay = (groupItems) => {
   alarmGroupItems = groupItems;
   if (alarmSingleModeEl) alarmSingleModeEl.hidden = true;
   if (alarmGroupModeEl) alarmGroupModeEl.hidden = false;
-  if (alarmEyebrowEl) alarmEyebrowEl.textContent = 'Group Dose Due Now';
+  if (alarmEyebrowEl) alarmEyebrowEl.textContent = `${slotTo12h(groupItems[0].scheduled_time)} - Group Dose Due Now`;
   if (alarmTakeBtn) { alarmTakeBtn.textContent = 'Take All'; alarmTakeBtn.hidden = false; }
   if (alarmSkipBtn) { alarmSkipBtn.textContent = 'Skip All'; alarmSkipBtn.hidden = false; }
   if (alarmIndividualBtn) alarmIndividualBtn.hidden = false;
