@@ -16,15 +16,41 @@ final class DoctorVisitReport
     ) {}
 
     /**
-     * Build and return the PDF binary string.
+     * Build and return the Pain Level Tracking (Doctor Visit Report) PDF binary string.
      *
-     * @param array<int,int> $perMedChartDays      medication_id => pain chart window in days (0 = no chart)
-     * @param array<int,int> $perMedMoodChartDays  medication_id => mood chart window in days (0 = no chart)
+     * @param array<int,int> $perMedChartDays medication_id => pain chart window in days (0 = no chart)
      */
-    public function generate(string $startDate, string $endDate, array $perMedChartDays, array $perMedMoodChartDays = []): string
+    public function generatePainReport(string $startDate, string $endDate, array $perMedChartDays): string
     {
-        $html = $this->buildHtml($startDate, $endDate, $perMedChartDays, $perMedMoodChartDays);
+        $html = $this->buildHtml(
+            'Doctor Visit Report',
+            $startDate,
+            $endDate,
+            fn(array $meds, string $s, string $e): string => $this->sectionPainCharts($meds, $s, $e, $perMedChartDays)
+        );
 
+        return $this->renderPdfFromHtml($html);
+    }
+
+    /**
+     * Build and return the Mood & Wellbeing Tracking PDF binary string.
+     *
+     * @param array<int,int> $perMedMoodChartDays medication_id => mood chart window in days (0 = no chart)
+     */
+    public function generateMoodReport(string $startDate, string $endDate, array $perMedMoodChartDays): string
+    {
+        $html = $this->buildHtml(
+            'Mood & Wellbeing Report',
+            $startDate,
+            $endDate,
+            fn(array $meds, string $s, string $e): string => $this->sectionMoodCharts($meds, $s, $e, $perMedMoodChartDays)
+        );
+
+        return $this->renderPdfFromHtml($html);
+    }
+
+    private function renderPdfFromHtml(string $html): string
+    {
         $options = new Options();
         $options->set('isRemoteEnabled', false);
         $options->set('defaultFont', 'DejaVu Sans');
@@ -38,7 +64,10 @@ final class DoctorVisitReport
         return (string) $dompdf->output();
     }
 
-    private function buildHtml(string $startDate, string $endDate, array $perMedChartDays, array $perMedMoodChartDays = []): string
+    /**
+     * @param callable(array,string,string):string $chartSection Renders the report-specific chart section.
+     */
+    private function buildHtml(string $title, string $startDate, string $endDate, callable $chartSection): string
     {
         $periodLabel = date('M j, Y', (int) strtotime($startDate))
             . ' – '
@@ -50,15 +79,14 @@ final class DoctorVisitReport
         $dailySummary = $this->repository->dailyDoseSummaryForDateRange($startDate, $endDate);
         $sideEffects  = $this->sideEffectRepo->sideEffectsForDateRange($startDate, $endDate);
 
-        $html  = $this->docHead($generatedDate);
+        $html  = $this->docHead($title, $generatedDate);
         $html .= '<body>';
-        $html .= $this->sectionHeader($periodLabel, $generatedDate);
+        $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
         $html .= $this->sectionAdherence($adherence);
         $html .= $this->sectionMedications($medications);
         $html .= $this->sectionDoseSummary($dailySummary);
-        $html .= $this->sectionPainCharts($medications, $startDate, $endDate, $perMedChartDays);
-        $html .= $this->sectionMoodCharts($medications, $startDate, $endDate, $perMedMoodChartDays);
+        $html .= $chartSection($medications, $startDate, $endDate);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
         $html .= '</div>';
@@ -71,14 +99,15 @@ final class DoctorVisitReport
     // Document head
     // -------------------------------------------------------------------------
 
-    private function docHead(string $generatedDate): string
+    private function docHead(string $title, string $generatedDate): string
     {
+        $titleEsc = $this->h($title);
         return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Doctor Visit Report — {$generatedDate}</title>
+<title>{$titleEsc} — {$generatedDate}</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #172033; background: #fff; }
@@ -158,12 +187,13 @@ HTML;
     // Section 1: Header band
     // -------------------------------------------------------------------------
 
-    private function sectionHeader(string $periodLabel, string $generatedDate): string
+    private function sectionHeader(string $title, string $periodLabel, string $generatedDate): string
     {
         $logo  = $this->logoDataUri();
         $name  = $this->h($this->displayName ?: 'Patient');
         $period = $this->h($periodLabel);
         $gen   = $this->h($generatedDate);
+        $titleEsc = $this->h($title);
 
         return <<<HTML
 <table style="width:100%;border-collapse:collapse;margin-bottom:0;" cellpadding="0" cellspacing="0">
@@ -172,7 +202,7 @@ HTML;
       <img src="{$logo}" width="60" height="60" style="display:block;">
     </td>
     <td style="background:#0754A8;padding:16pt 18pt 16pt 20pt;vertical-align:middle;border:none;">
-      <div style="font-size:17pt;font-weight:bold;color:#ffffff;line-height:1.2;">Doctor Visit Report</div>
+      <div style="font-size:17pt;font-weight:bold;color:#ffffff;line-height:1.2;">{$titleEsc}</div>
       <div style="font-size:9pt;color:#cde8ff;margin-top:4pt;">Prepared by RxTracker &bull; Patient: {$name}</div>
       <div style="font-size:9pt;color:#cde8ff;margin-top:2pt;">Reporting period: {$period} &bull; Generated: {$gen}</div>
     </td>
@@ -362,38 +392,40 @@ HTML;
                     $chartStart = $startDate;
                 }
 
-                $rawData = $this->repository->painLevelTrendForRange($medId, $chartStart, $endDate);
-                $svg     = $this->chartRenderer->renderSvg($rawData, $chartStart, $endDate);
-
-                // Summary stats
-                $avgPain   = $this->avgPain($rawData);
-                $daysLogged = count(array_unique(array_column($rawData, 'date')));
+                $rawData    = $this->repository->painLevelTrendForRange($medId, $chartStart, $endDate);
                 $rangeLabel = $this->h("{$chartDays}-day window: " . date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
 
-                $html .= '<div class="chart-summary">';
-                $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
-                $html .= $daysLogged > 0
-                    ? "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>"
-                    : 'No pain data in this range.';
-                $html .= '</div>';
-                $html .= $svg;
+                if ($rawData === []) {
+                    $html .= "<div class=\"no-chart-note\">No pain data logged in this {$rangeLabel}.</div>";
+                } else {
+                    $svg        = $this->chartRenderer->renderSvg($rawData, $chartStart, $endDate);
+                    $avgPain    = $this->avgPain($rawData);
+                    $daysLogged = count(array_unique(array_column($rawData, 'date')));
 
-                // Patient notes from dose_logs.note in this range
-                $noteRows = array_filter(
-                    $rawData,
-                    static fn(array $r): bool => !empty($r['note'])
-                );
-                if ($noteRows !== []) {
-                    $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
-                    foreach ($noteRows as $r) {
-                        $date = date('M j', (int) strtotime((string) $r['date']));
-                        $html .= sprintf(
-                            '<div class="chart-note-item">%s: %s</div>',
-                            $this->h($date),
-                            $this->h((string) $r['note'])
-                        );
-                    }
+                    $html .= '<div class="chart-summary">';
+                    $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+                    $html .= "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
                     $html .= '</div>';
+                    $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                        . '" width="500" height="200" style="display:block;">';
+
+                    // Patient notes from dose_logs.note in this range
+                    $noteRows = array_filter(
+                        $rawData,
+                        static fn(array $r): bool => !empty($r['note'])
+                    );
+                    if ($noteRows !== []) {
+                        $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
+                        foreach ($noteRows as $r) {
+                            $date = date('M j', (int) strtotime((string) $r['date']));
+                            $html .= sprintf(
+                                '<div class="chart-note-item">%s: %s</div>',
+                                $this->h($date),
+                                $this->h((string) $r['note'])
+                            );
+                        }
+                        $html .= '</div>';
+                    }
                 }
             }
 
@@ -447,38 +479,40 @@ HTML;
                     $chartStart = $startDate;
                 }
 
-                $rawData = $this->repository->moodLevelTrendForRange($medId, $chartStart, $endDate);
-                $svg     = $this->moodChartRenderer->renderSvg($rawData, $chartStart, $endDate);
-
-                // Summary stats
-                $avgMood    = $this->avgMood($rawData);
-                $daysLogged = count(array_unique(array_column($rawData, 'date')));
+                $rawData    = $this->repository->moodLevelTrendForRange($medId, $chartStart, $endDate);
                 $rangeLabel = $this->h("{$chartDays}-day window: " . date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
 
-                $html .= '<div class="chart-summary">';
-                $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
-                $html .= $daysLogged > 0
-                    ? "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>"
-                    : 'No mood data in this range.';
-                $html .= '</div>';
-                $html .= $svg;
+                if ($rawData === []) {
+                    $html .= "<div class=\"no-chart-note\">No mood data logged in this {$rangeLabel}.</div>";
+                } else {
+                    $svg        = $this->moodChartRenderer->renderSvg($rawData, $chartStart, $endDate);
+                    $avgMood    = $this->avgMood($rawData);
+                    $daysLogged = count(array_unique(array_column($rawData, 'date')));
 
-                // Patient notes from dose_logs.note in this range
-                $noteRows = array_filter(
-                    $rawData,
-                    static fn(array $r): bool => !empty($r['note'])
-                );
-                if ($noteRows !== []) {
-                    $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
-                    foreach ($noteRows as $r) {
-                        $date = date('M j', (int) strtotime((string) $r['date']));
-                        $html .= sprintf(
-                            '<div class="chart-note-item">%s: %s</div>',
-                            $this->h($date),
-                            $this->h((string) $r['note'])
-                        );
-                    }
+                    $html .= '<div class="chart-summary">';
+                    $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+                    $html .= "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
                     $html .= '</div>';
+                    $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                        . '" width="500" height="200" style="display:block;">';
+
+                    // Patient notes from dose_logs.note in this range
+                    $noteRows = array_filter(
+                        $rawData,
+                        static fn(array $r): bool => !empty($r['note'])
+                    );
+                    if ($noteRows !== []) {
+                        $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
+                        foreach ($noteRows as $r) {
+                            $date = date('M j', (int) strtotime((string) $r['date']));
+                            $html .= sprintf(
+                                '<div class="chart-note-item">%s: %s</div>',
+                                $this->h($date),
+                                $this->h((string) $r['note'])
+                            );
+                        }
+                        $html .= '</div>';
+                    }
                 }
             }
 

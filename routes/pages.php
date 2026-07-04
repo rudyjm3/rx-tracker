@@ -1100,32 +1100,40 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     $medChartInfo = $computeChartInfo($trackedMedications);
     $moodChartInfo = $computeChartInfo($moodTrackedMedicationsExport);
   ?>
-  <section class="panel export-section" style="max-width:700px;margin:1.5rem auto;">
+  <?php if ($error !== null): ?>
+    <div class="alert" style="max-width:700px;margin:1.5rem auto 0;"><?= e($error) ?></div>
+  <?php endif; ?>
+
+  <section class="panel export-section" style="max-width:700px;margin:1.5rem auto 0;">
     <div class="panel-heading">
-      <h2>Doctor Visit Report</h2>
+      <h2>Reporting Period</h2>
     </div>
-    <?php if ($error !== null): ?>
-      <div class="alert"><?= e($error) ?></div>
-    <?php endif; ?>
+    <p style="color:var(--rx-text-muted);margin-bottom:1rem;font-size:0.9rem;">
+      Shared by both reports below.
+    </p>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <label style="flex:1;min-width:140px;">From
+        <input type="date" id="report-start-shared" value="<?= e($reportStart) ?>" required>
+      </label>
+      <label style="flex:1;min-width:140px;">To
+        <input type="date" id="report-end-shared" value="<?= e($reportEnd) ?>" required>
+      </label>
+    </div>
+  </section>
+
+  <section class="panel export-section" style="max-width:700px;margin:1.25rem auto;">
+    <div class="panel-heading">
+      <h2>Pain Level Tracking (Doctor Visit Report)</h2>
+    </div>
     <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
       Generate a branded PDF summary of your medication history, adherence, pain trends, and side effects — ready to share with your doctor.
     </p>
-    <form method="post" action="index.php" class="stacked-form" data-export-form>
+    <form method="post" action="index.php" class="stacked-form" data-export-form="pain">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="generate_doctor_visit_report">
       <input type="hidden" name="download_token" data-download-token value="">
-
-      <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
-        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Reporting period</legend>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.5rem;">
-          <label style="flex:1;min-width:140px;">From
-            <input type="date" name="report_start" value="<?= e($reportStart) ?>" required>
-          </label>
-          <label style="flex:1;min-width:140px;">To
-            <input type="date" name="report_end" value="<?= e($reportEnd) ?>" required>
-          </label>
-        </div>
-      </fieldset>
+      <input type="hidden" name="report_start" data-report-start-mirror value="<?= e($reportStart) ?>">
+      <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
 
       <?php if ($trackedMedications !== []): ?>
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
@@ -1168,11 +1176,42 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           </div>
         <?php endforeach; ?>
       </fieldset>
+      <?php else: ?>
+      <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-bottom:1.25rem;font-style:italic;">
+        No medications are currently tracking pain levels.
+      </p>
       <?php endif; ?>
+
+      <button type="submit" style="width:100%;" data-export-btn>
+        <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
+      </button>
+      <div data-export-notice style="display:none;align-items:center;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
+        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+        Your PDF is downloading — check your Downloads folder.
+        <a data-view-pdf-link href="#" hidden style="margin-left:auto;font-weight:600;color:#166534;text-decoration:underline;white-space:nowrap;">
+          <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open PDF
+        </a>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel export-section" style="max-width:700px;margin:1.25rem auto;">
+    <div class="panel-heading">
+      <h2>Mood and Wellbeing Tracking</h2>
+    </div>
+    <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
+      Generate a branded PDF summary of your medication history, adherence, mood trends, and side effects — ready to share with your doctor.
+    </p>
+    <form method="post" action="index.php" class="stacked-form" data-export-form="mood">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="generate_mood_report">
+      <input type="hidden" name="download_token" data-download-token value="">
+      <input type="hidden" name="report_start" data-report-start-mirror value="<?= e($reportStart) ?>">
+      <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
 
       <?php if ($moodTrackedMedicationsExport !== []): ?>
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
-        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood &amp; Wellbeing Tracking</legend>
+        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood chart range per medication</legend>
         <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
           Charts are based on days on medication. The default range is pre-selected; you can choose a different window if you prefer.
         </p>
@@ -1211,6 +1250,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           </div>
         <?php endforeach; ?>
       </fieldset>
+      <?php else: ?>
+      <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-bottom:1.25rem;font-style:italic;">
+        No medications are currently tracking mood levels.
+      </p>
       <?php endif; ?>
 
       <button type="submit" style="width:100%;" data-export-btn>
