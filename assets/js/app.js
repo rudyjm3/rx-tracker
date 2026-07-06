@@ -1016,11 +1016,13 @@ document.addEventListener('submit', async (e) => {
   const action = form.querySelector('input[name="action"]')?.value;
   if (action !== 'deactivate_medication' && action !== 'activate_medication') return;
 
-  // ── Deactivate ──────────────────────────────────────────────────────────────
+  // ── Discontinue (deactivate) ────────────────────────────────────────────────
   if (action === 'deactivate_medication') {
-    if (e.defaultPrevented) return; // cancelled confirm
+    if (e.defaultPrevented) return;
     e.preventDefault();
     const medId = form.querySelector('input[name="medication_id"]')?.value ?? '';
+    const reason = form.querySelector('input[name="reason"]:checked')?.value ?? '';
+    const comment = form.querySelector('textarea[name="comment"]')?.value ?? '';
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
 
@@ -1030,6 +1032,8 @@ document.addEventListener('submit', async (e) => {
       params.set('csrf_token', getCsrfToken());
       params.set('json_response', '1');
       params.set('medication_id', medId);
+      params.set('reason', reason);
+      params.set('comment', comment);
 
       const res = await fetch('index.php', {
         method: 'POST',
@@ -1037,41 +1041,32 @@ document.addEventListener('submit', async (e) => {
         body: params.toString(),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error('Failed to deactivate medication.');
+      if (!json.ok) throw new Error('Failed to discontinue medication.');
 
-      const activeCard = form.closest('.medication-row-plan');
-      const name = activeCard?.querySelector('.medication-content strong')?.textContent ?? '';
-      const dose = activeCard?.querySelector('.medication-content p')?.textContent ?? '';
+      const activeCard = document
+        .querySelector(`[data-open-discontinue-modal][data-medication-id="${CSS.escape(medId)}"]`)
+        ?.closest('.medication-row-plan');
       activeCard?.remove();
 
       // Update active tab count
       const n = document.querySelectorAll('[data-plan-panel="active"] .medication-row-plan').length;
       document.querySelectorAll('[data-plan-tab="active"]').forEach((t) => { t.textContent = `Active (${n})`; });
 
-      // Add a row to inactive panel
+      // Add the server-rendered row to the inactive panel
       const inactiveList = document.querySelector('.inactive-list');
       inactiveList?.querySelector('.empty-state')?.remove();
-      if (inactiveList) {
-        const row = document.createElement('div');
-        row.className = 'medication-row';
-        row.dataset.inactiveMedId = medId;
-        row.innerHTML = `<div><strong>${escHtml(name)}</strong><p>${escHtml(dose)}</p></div>
-          <div class="row-actions">
-            <form method="post" action="index.php" data-activate-form>
-              <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
-              <input type="hidden" name="json_response" value="1">
-              <input type="hidden" name="action" value="activate_medication">
-              <input type="hidden" name="medication_id" value="${escHtml(medId)}">
-              <button type="submit">Activate</button>
-            </form>
-          </div>`;
-        inactiveList.appendChild(row);
+      if (inactiveList && json.inactive_row_html) {
+        inactiveList.insertAdjacentHTML('beforeend', json.inactive_row_html);
       }
 
       const ni = document.querySelectorAll('[data-plan-panel="inactive"] .medication-row').length;
       document.querySelectorAll('[data-plan-tab="inactive"]').forEach((t) => { t.textContent = `Inactive (${ni})`; });
+
+      closeDiscontinueModal();
+      form.reset();
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
+    } finally {
       if (submitBtn) submitBtn.disabled = false;
     }
     return;
@@ -1130,6 +1125,8 @@ document.addEventListener('keydown', (event) => {
     closeRefillHistoryModal();
   } else if (refillModal?.classList.contains('is-open')) {
     closeRefillModal();
+  } else if (discontinueModal?.classList.contains('is-open')) {
+    closeDiscontinueModal();
   } else if (medDetailModal?.classList.contains('is-open')) {
     closeMedDetailModal();
   } else if (medPlanModal && !medPlanModal.hidden) {
@@ -1182,14 +1179,20 @@ const painGraphModal = document.querySelector('[data-pain-graph-modal]');
 const painGraphTitle = document.querySelector('[data-pain-graph-title]');
 const painGraphBody = document.querySelector('[data-pain-graph-body]');
 const painGraphEmpty = document.querySelector('[data-pain-graph-empty]');
+const painGraphDayBanner = document.querySelector('[data-pain-graph-day-banner]');
+const painGraphDayLabel = document.querySelector('[data-pain-graph-day-label]');
 
 let painGraphMedId = null;
 let painGraphDays = 7;
+let painGraphDate = null;     // set when a multi-day point is clicked (single-day view)
+let painGraphPrevDays = 7;    // range to restore when leaving the single-day view
 
 const openPainGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!painGraphModal) return;
   painGraphMedId = medicationId;
   painGraphDays = 0;
+  painGraphDate = null;
+  painGraphPrevDays = 7;
   const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
   if (painGraphTitle) painGraphTitle.textContent = titleBase + ' — Pain Trend';
   painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
@@ -1221,6 +1224,9 @@ const escSvg = (str) => String(str)
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
+
+const formatGraphDay = (d) =>
+  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 const renderPainChart = (container, data) => {
   const W = 500, H = 200;
@@ -1264,14 +1270,14 @@ const renderPainChart = (container, data) => {
   // Polyline
   const points = byDate.map(({ level }, i) => `${xScale(i).toFixed(1)},${yScale(level).toFixed(1)}`).join(' ');
 
-  // Circles with tooltip
+  // Circles with tooltip; clicking one drills into that day's levels
   let circles = '';
   byDate.forEach(({ date, level, pts }, i) => {
     const x = xScale(i).toFixed(1);
     const y = yScale(level).toFixed(1);
     const color = painLevelColor(Math.round(level));
     const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
-    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escSvg(date)}&#10;${tipLines}</title></circle>`;
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5" data-date="${escSvg(date)}" style="cursor:pointer"><title>${escSvg(date)}&#10;${tipLines}&#10;Click to view this day</title></circle>`;
   });
 
   const yAxisCY = (mt + chartH / 2).toFixed(1);
@@ -1366,6 +1372,9 @@ const buildSmoothPathD = (points) => {
   return d;
 };
 
+const getMoodChartScheme = () =>
+  document.body.dataset.moodChartScheme === 'teal' ? 'teal' : 'classic';
+
 const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, mr, mt, mb) => {
   const gradId = `mood-gradient-${Math.random().toString(36).slice(2, 9)}`;
   const curveD = buildSmoothPathD(points);
@@ -1376,16 +1385,26 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
 
   let circles = '';
   points.forEach((p) => {
-    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"><title>${p.tip}</title></circle>`;
+    const clickable = p.date ? ` data-date="${escSvg(p.date)}" style="cursor:pointer"` : '';
+    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"${clickable}><title>${p.tip}</title></circle>`;
   });
+
+  // Two selectable schemes: classic red-to-green, or teal matching the PDF
+  // report (darker teal = higher mood, lighter teal = lower mood).
+  const teal = getMoodChartScheme() === 'teal';
+  const gradientStops = teal
+    ? `<stop offset="0%" stop-color="#028AA9"/>
+        <stop offset="100%" stop-color="#BFE4EE"/>`
+    : `<stop offset="0%" stop-color="#2a9d49"/>
+        <stop offset="55%" stop-color="#d97706"/>
+        <stop offset="100%" stop-color="#c9213c"/>`;
+  const strokeColor = teal ? '#028AA9' : '#6b7a96';
 
   const yAxisCY = (mt + (H - mt - mb) / 2).toFixed(1);
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mood level trend chart">
     <defs>
       <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#2a9d49"/>
-        <stop offset="55%" stop-color="#d97706"/>
-        <stop offset="100%" stop-color="#c9213c"/>
+        ${gradientStops}
       </linearGradient>
     </defs>
     <text transform="rotate(-90)" x="-${yAxisCY}" y="11" text-anchor="middle" font-size="8.5" fill="#94a3b8">Mood Level</text>
@@ -1394,7 +1413,7 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
     <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
     ${xLabels}
     ${areaD ? `<path d="${areaD}" fill="url(#${gradId})" fill-opacity="0.4" stroke="none"/>` : ''}
-    <path d="${curveD}" fill="none" stroke="#6b7a96" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${curveD}" fill="none" stroke="${strokeColor}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>
     ${circles}
   </svg>`;
 };
@@ -1441,7 +1460,8 @@ const renderMoodChart = (container, data) => {
       x: xScale(i),
       y: yScale(level),
       color: moodLevelColor(Math.round(level)),
-      tip: `${escSvg(date)}&#10;${tipLines}`,
+      tip: `${escSvg(date)}&#10;${tipLines}&#10;Click to view this day`,
+      date,
     };
   });
 
@@ -1488,15 +1508,25 @@ const loadPainGraph = async () => {
   if (!painGraphBody || !painGraphEmpty) return;
   painGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
   painGraphEmpty.hidden = true;
+
+  const singleDay = painGraphDate !== null || painGraphDays === 0;
+  if (painGraphDayBanner) {
+    painGraphDayBanner.hidden = painGraphDate === null;
+    if (painGraphDate !== null && painGraphDayLabel) {
+      painGraphDayLabel.textContent = `Showing ${formatGraphDay(painGraphDate)}`;
+    }
+  }
+
   try {
-    const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painGraphMedId ?? '')}&days=${painGraphDays}`);
+    const dateParam = painGraphDate !== null ? `&date=${encodeURIComponent(painGraphDate)}` : '';
+    const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painGraphMedId ?? '')}&days=${singleDay ? 0 : painGraphDays}${dateParam}`);
     const payload = await resp.json();
     if (!payload.ok || payload.data.length === 0) {
       painGraphBody.innerHTML = '';
       painGraphEmpty.hidden = false;
       return;
     }
-    if (painGraphDays === 0) {
+    if (singleDay) {
       renderPainChartToday(painGraphBody, payload.data);
     } else {
       renderPainChart(painGraphBody, payload.data);
@@ -1512,8 +1542,28 @@ painGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
     painGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
     tab.classList.add('is-active');
     painGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    painGraphDate = null;
     loadPainGraph();
   });
+});
+
+// Clicking a point on a multi-day pain chart drills into that day's levels
+painGraphBody?.addEventListener('click', (event) => {
+  const dot = event.target.closest('circle[data-date]');
+  if (!dot) return;
+  painGraphPrevDays = painGraphDays;
+  painGraphDate = dot.dataset.date ?? null;
+  painGraphModal?.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+  loadPainGraph();
+});
+
+document.querySelector('[data-pain-graph-day-back]')?.addEventListener('click', () => {
+  painGraphDate = null;
+  painGraphDays = painGraphPrevDays;
+  painGraphModal?.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === painGraphDays);
+  });
+  loadPainGraph();
 });
 
 document.querySelectorAll('[data-open-pain-graph]').forEach((btn) => {
@@ -1536,7 +1586,9 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
   const svg = painGraphBody?.querySelector('svg');
   if (!svg) return;
   const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
-  const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
+  const rangeLabel = painGraphDate !== null
+    ? formatGraphDay(painGraphDate)
+    : (painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`);
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
@@ -1567,14 +1619,20 @@ const moodGraphModal = document.querySelector('[data-mood-graph-modal]');
 const moodGraphTitle = document.querySelector('[data-mood-graph-title]');
 const moodGraphBody = document.querySelector('[data-mood-graph-body]');
 const moodGraphEmpty = document.querySelector('[data-mood-graph-empty]');
+const moodGraphDayBanner = document.querySelector('[data-mood-graph-day-banner]');
+const moodGraphDayLabel = document.querySelector('[data-mood-graph-day-label]');
 
 let moodGraphMedId = null;
 let moodGraphDays = 7;
+let moodGraphDate = null;     // set when a multi-day point is clicked (single-day view)
+let moodGraphPrevDays = 7;    // range to restore when leaving the single-day view
 
 const openMoodGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!moodGraphModal) return;
   moodGraphMedId = medicationId;
   moodGraphDays = 0;
+  moodGraphDate = null;
+  moodGraphPrevDays = 7;
   const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
   if (moodGraphTitle) moodGraphTitle.textContent = titleBase + ' — Mood Trend';
   moodGraphModal.querySelectorAll('.range-tab').forEach((t) => {
@@ -1597,15 +1655,25 @@ const loadMoodGraph = async () => {
   if (!moodGraphBody || !moodGraphEmpty) return;
   moodGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
   moodGraphEmpty.hidden = true;
+
+  const singleDay = moodGraphDate !== null || moodGraphDays === 0;
+  if (moodGraphDayBanner) {
+    moodGraphDayBanner.hidden = moodGraphDate === null;
+    if (moodGraphDate !== null && moodGraphDayLabel) {
+      moodGraphDayLabel.textContent = `Showing ${formatGraphDay(moodGraphDate)}`;
+    }
+  }
+
   try {
-    const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodGraphMedId ?? '')}&days=${moodGraphDays}`);
+    const dateParam = moodGraphDate !== null ? `&date=${encodeURIComponent(moodGraphDate)}` : '';
+    const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodGraphMedId ?? '')}&days=${singleDay ? 0 : moodGraphDays}${dateParam}`);
     const payload = await resp.json();
     if (!payload.ok || payload.data.length === 0) {
       moodGraphBody.innerHTML = '';
       moodGraphEmpty.hidden = false;
       return;
     }
-    if (moodGraphDays === 0) {
+    if (singleDay) {
       renderMoodChartToday(moodGraphBody, payload.data);
     } else {
       renderMoodChart(moodGraphBody, payload.data);
@@ -1621,8 +1689,28 @@ moodGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
     moodGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
     tab.classList.add('is-active');
     moodGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    moodGraphDate = null;
     loadMoodGraph();
   });
+});
+
+// Clicking a point on a multi-day mood chart drills into that day's levels
+moodGraphBody?.addEventListener('click', (event) => {
+  const dot = event.target.closest('circle[data-date]');
+  if (!dot) return;
+  moodGraphPrevDays = moodGraphDays;
+  moodGraphDate = dot.dataset.date ?? null;
+  moodGraphModal?.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+  loadMoodGraph();
+});
+
+document.querySelector('[data-mood-graph-day-back]')?.addEventListener('click', () => {
+  moodGraphDate = null;
+  moodGraphDays = moodGraphPrevDays;
+  moodGraphModal?.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === moodGraphDays);
+  });
+  loadMoodGraph();
 });
 
 document.querySelectorAll('[data-open-mood-graph]').forEach((btn) => {
@@ -1645,7 +1733,9 @@ document.querySelector('[data-mood-graph-print]')?.addEventListener('click', () 
   const svg = moodGraphBody?.querySelector('svg');
   if (!svg) return;
   const title = moodGraphTitle?.textContent ?? 'Mood Trend';
-  const rangeLabel = moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`;
+  const rangeLabel = moodGraphDate !== null
+    ? formatGraphDay(moodGraphDate)
+    : (moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`);
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
@@ -1678,20 +1768,34 @@ const painPageMedName = document.querySelector('[data-pain-page-med-name]');
 if (painPageBody) {
   let painPageMedId = 0;
   let painPageDays = 0;
+  let painPageDate = null;
+  let painPagePrevDays = 0;
+  const painPageDayBanner = document.querySelector('[data-pain-page-day-banner]');
+  const painPageDayLabel = document.querySelector('[data-pain-page-day-label]');
 
   const loadPainPageGraph = async () => {
     if (!painPageMedId) return;
     painPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     painPageEmpty.hidden = true;
+
+    const singleDay = painPageDate !== null || painPageDays === 0;
+    if (painPageDayBanner) {
+      painPageDayBanner.hidden = painPageDate === null;
+      if (painPageDate !== null && painPageDayLabel) {
+        painPageDayLabel.textContent = `Showing ${formatGraphDay(painPageDate)}`;
+      }
+    }
+
     try {
-      const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painPageMedId)}&days=${painPageDays}`);
+      const dateParam = painPageDate !== null ? `&date=${encodeURIComponent(painPageDate)}` : '';
+      const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painPageMedId)}&days=${singleDay ? 0 : painPageDays}${dateParam}`);
       const payload = await resp.json();
       if (!payload.ok || payload.data.length === 0) {
         painPageBody.innerHTML = '';
         painPageEmpty.hidden = false;
         return;
       }
-      if (painPageDays === 0) {
+      if (singleDay) {
         renderPainChartToday(painPageBody, payload.data);
       } else {
         renderPainChart(painPageBody, payload.data);
@@ -1702,6 +1806,24 @@ if (painPageBody) {
     }
   };
 
+  painPageBody.addEventListener('click', (event) => {
+    const dot = event.target.closest('circle[data-date]');
+    if (!dot) return;
+    painPagePrevDays = painPageDays;
+    painPageDate = dot.dataset.date ?? null;
+    document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+    loadPainPageGraph();
+  });
+
+  document.querySelector('[data-pain-page-day-back]')?.addEventListener('click', () => {
+    painPageDate = null;
+    painPageDays = painPagePrevDays;
+    document.querySelectorAll('.pain-page-range-tab').forEach((t) => {
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === painPageDays);
+    });
+    loadPainPageGraph();
+  });
+
   document.querySelectorAll('[data-select-medication]').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
@@ -1709,6 +1831,7 @@ if (painPageBody) {
       painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
       if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
       painPageDays = 0;
+      painPageDate = null;
       document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -1721,6 +1844,7 @@ if (painPageBody) {
       document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       painPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      painPageDate = null;
       loadPainPageGraph();
     });
   });
@@ -1736,20 +1860,34 @@ const moodPageMedName = document.querySelector('[data-mood-page-med-name]');
 if (moodPageBody) {
   let moodPageMedId = 0;
   let moodPageDays = 0;
+  let moodPageDate = null;
+  let moodPagePrevDays = 0;
+  const moodPageDayBanner = document.querySelector('[data-mood-page-day-banner]');
+  const moodPageDayLabel = document.querySelector('[data-mood-page-day-label]');
 
   const loadMoodPageGraph = async () => {
     if (!moodPageMedId) return;
     moodPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     moodPageEmpty.hidden = true;
+
+    const singleDay = moodPageDate !== null || moodPageDays === 0;
+    if (moodPageDayBanner) {
+      moodPageDayBanner.hidden = moodPageDate === null;
+      if (moodPageDate !== null && moodPageDayLabel) {
+        moodPageDayLabel.textContent = `Showing ${formatGraphDay(moodPageDate)}`;
+      }
+    }
+
     try {
-      const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodPageMedId)}&days=${moodPageDays}`);
+      const dateParam = moodPageDate !== null ? `&date=${encodeURIComponent(moodPageDate)}` : '';
+      const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodPageMedId)}&days=${singleDay ? 0 : moodPageDays}${dateParam}`);
       const payload = await resp.json();
       if (!payload.ok || payload.data.length === 0) {
         moodPageBody.innerHTML = '';
         moodPageEmpty.hidden = false;
         return;
       }
-      if (moodPageDays === 0) {
+      if (singleDay) {
         renderMoodChartToday(moodPageBody, payload.data);
       } else {
         renderMoodChart(moodPageBody, payload.data);
@@ -1760,6 +1898,24 @@ if (moodPageBody) {
     }
   };
 
+  moodPageBody.addEventListener('click', (event) => {
+    const dot = event.target.closest('circle[data-date]');
+    if (!dot) return;
+    moodPagePrevDays = moodPageDays;
+    moodPageDate = dot.dataset.date ?? null;
+    document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+    loadMoodPageGraph();
+  });
+
+  document.querySelector('[data-mood-page-day-back]')?.addEventListener('click', () => {
+    moodPageDate = null;
+    moodPageDays = moodPagePrevDays;
+    document.querySelectorAll('.mood-page-range-tab').forEach((t) => {
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === moodPageDays);
+    });
+    loadMoodPageGraph();
+  });
+
   document.querySelectorAll('[data-select-mood-medication]').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
@@ -1767,6 +1923,7 @@ if (moodPageBody) {
       moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
       if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
       moodPageDays = 0;
+      moodPageDate = null;
       document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -1779,6 +1936,7 @@ if (moodPageBody) {
       document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       moodPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      moodPageDate = null;
       loadMoodPageGraph();
     });
   });
@@ -2172,7 +2330,8 @@ const hideAlarmOverlay = () => {
 
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
-   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal]
+   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal,
+   discontinueModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
@@ -3317,12 +3476,45 @@ const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
   return sections.join('') + `<div class="med-detail-links"><p class="disclaimer">This information is for general reference only. Always follow your doctor&rsquo;s or pharmacist&rsquo;s instructions.</p>${dailyMedLink}</div>`;
 };
 
+const fetchDoseChangeHistoryHtml = async (medicationId) => {
+  if (!medicationId) return '';
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'dose_change_history',
+      medication_id: medicationId,
+    });
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok || !Array.isArray(json.changes) || json.changes.length === 0) return '';
+    const fmtDose = (amount, unit) => {
+      if (amount === null || amount === '' || amount === undefined) return '—';
+      return `${parseFloat(amount)} ${unit || ''}`.trim();
+    };
+    const items = json.changes.map((c) => {
+      const date = c.changed_at ? new Date(c.changed_at.replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const comment = c.comment ? `<br><span class="muted">${escHtml(c.comment)}</span>` : '';
+      return `<li>${escHtml(date)}: ${escHtml(fmtDose(c.old_dose_amount, c.old_dose_unit))} &rarr; <strong>${escHtml(fmtDose(c.new_dose_amount, c.new_dose_unit))}</strong>${comment}</li>`;
+    }).join('');
+    return `<details class="med-detail-section" open><summary class="med-detail-section-title">Dose Change History</summary><div class="med-detail-section-body"><ul class="dose-change-history-list">${items}</ul></div></details>`;
+  } catch {
+    return '';
+  }
+};
+
 document.querySelectorAll('[data-view-details]').forEach((btn) => {
   btn.addEventListener('click', async () => {
-    const { medicationName = '', setId = '' } = btn.dataset;
+    const { medicationId = '', medicationName = '', setId = '' } = btn.dataset;
     if (medDetailTitle) medDetailTitle.textContent = medicationName;
     if (medDetailBody) medDetailBody.innerHTML = '<p class="pain-graph-loading">Loading&hellip;</p>';
     openMedDetailModal();
+
+    const doseHistoryPromise = fetchDoseChangeHistoryHtml(medicationId);
 
     const cacheKey = setId || `name_${medicationName}`;
     if (!medDetailCache[cacheKey]) {
@@ -3341,7 +3533,8 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
     if (medDetailBody) {
       try {
         const { ofda, productLabelUrl } = medDetailCache[cacheKey];
-        medDetailBody.innerHTML = renderDetailContent(medicationName, setId, ofda, productLabelUrl);
+        const doseHistoryHtml = await doseHistoryPromise;
+        medDetailBody.innerHTML = doseHistoryHtml + renderDetailContent(medicationName, setId, ofda, productLabelUrl);
         // Wire up lightbox on both images
         medDetailBody.querySelectorAll('[data-detail-img-url]').forEach((fig) => {
           fig.style.cursor = 'zoom-in';
@@ -3896,6 +4089,91 @@ document.querySelectorAll('[data-close-refill-modal]').forEach((btn) => {
 refillModal?.addEventListener('click', (event) => {
   if (event.target === refillModal) closeRefillModal();
 });
+
+// ── Discontinue Use modal ─────────────────────────────────────────────────────
+
+const discontinueModal = document.querySelector('[data-discontinue-modal]');
+const discontinueMedNameEl = document.querySelector('[data-discontinue-med-name]');
+const discontinueMedicationIdEl = document.querySelector('[data-discontinue-medication-id]');
+const discontinueForm = document.querySelector('[data-discontinue-form]');
+
+const openDiscontinueModal = (medicationId, medicationName) => {
+  if (!discontinueModal) return;
+  if (discontinueForm) discontinueForm.reset();
+  if (discontinueMedNameEl) discontinueMedNameEl.textContent = medicationName;
+  if (discontinueMedicationIdEl) discontinueMedicationIdEl.value = medicationId;
+  closeMedPlanModal();
+  discontinueModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeDiscontinueModal = () => {
+  if (!discontinueModal) return;
+  if (!discontinueModal.classList.contains('is-open')) return;
+  discontinueModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-open-discontinue-modal]');
+  if (!trigger) return;
+  const { medicationId = '', medicationName = '' } = trigger.dataset;
+  if (!medicationId) return;
+  openDiscontinueModal(medicationId, medicationName);
+});
+
+document.querySelectorAll('[data-close-discontinue-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeDiscontinueModal);
+});
+
+discontinueModal?.addEventListener('click', (event) => {
+  if (event.target === discontinueModal) closeDiscontinueModal();
+});
+
+// ── Mood chart color scheme toggle (saved to account) ────────────────────────
+
+document.querySelector('[data-mood-scheme-toggle]')?.addEventListener('change', async (event) => {
+  const toggle = event.target;
+  const scheme = toggle.checked ? 'teal' : 'classic';
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'set_mood_chart_scheme',
+      scheme,
+    });
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error('Failed to save chart color scheme.');
+    document.body.dataset.moodChartScheme = scheme;
+  } catch (err) {
+    toggle.checked = !toggle.checked;
+    alert(err.message ?? 'Something went wrong.');
+  }
+});
+
+// ── Dose-change comment reveal (edit-medication form) ─────────────────────────
+
+(function () {
+  const commentRow = document.querySelector('[data-dose-change-comment-row]');
+  if (!commentRow) return;
+  const amountEl = document.querySelector('[data-initial-dose-amount]');
+  const unitEl = document.querySelector('[data-initial-dose-unit]');
+  const asFloat = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v));
+  const update = () => {
+    const amountChanged = amountEl
+      ? asFloat(amountEl.value) !== asFloat(amountEl.dataset.initialDoseAmount)
+      : false;
+    const unitChanged = unitEl ? unitEl.value !== unitEl.dataset.initialDoseUnit : false;
+    commentRow.hidden = !(amountChanged || unitChanged);
+  };
+  amountEl?.addEventListener('input', update);
+  unitEl?.addEventListener('change', update);
+})();
 
 refillForm?.addEventListener('submit', async (event) => {
   event.preventDefault();

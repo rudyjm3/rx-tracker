@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 $graceMinutes = $repository->getMissedGraceMinutes();
 $snoozeMinutes = $repository->getSnoozeMinutes();
+$moodChartScheme = $repository->getMoodChartScheme();
 $repository->finalizeMissedDoses(new DateTimeImmutable('now'), $graceMinutes);
 $notice = trim((string) ($_GET['notice'] ?? '')) ?: null;
 
@@ -133,7 +134,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
 </head>
-<body>
+<body data-mood-chart-scheme="<?= e($moodChartScheme) ?>">
 <main class="app-shell">
   <nav class="top-nav">
     <a class="nav-brand" href="index.php">
@@ -359,10 +360,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <input type="date" name="start_date" value="<?= e((string) ($editing['start_date'] ?? '')) ?>">
           </label>
           <label>Dose amount
-            <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>">
+            <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount data-initial-dose-amount="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>" value="<?= e($editing && ($editing['dose_amount'] ?? '') !== '' ? (string)(float)$editing['dose_amount'] : '') ?>">
           </label>
           <label>Dose unit
-            <select name="dose_unit" data-dailymed-dose-unit>
+            <select name="dose_unit" data-dailymed-dose-unit data-initial-dose-unit="<?= e((string) ($editing['dose_unit'] ?? 'mg')) ?>">
               <?php
               $doseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
               $selectedDoseUnit = (string) ($editing['dose_unit'] ?? 'mg');
@@ -371,6 +372,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <?php endforeach; ?>
             </select>
           </label>
+          <?php if ($editing): ?>
+          <label data-dose-change-comment-row hidden>Reason for dose change <span class="field-optional">(optional)</span>
+            <input name="dose_change_comment" maxlength="500" placeholder="e.g. Doctor increased dose at last visit">
+          </label>
+          <?php endif; ?>
           <label>Dose form <span class="field-optional">(optional)</span>
             <select name="dose_form" data-dailymed-dose-form>
               <?php
@@ -511,8 +517,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <i class="fa-solid fa-print" aria-hidden="true"></i>
           </button>
         </div>
+        <p class="mood-graph-day-banner" data-pain-graph-day-banner hidden>
+          <span data-pain-graph-day-label></span>
+          <button type="button" class="mood-graph-day-back" data-pain-graph-day-back>&larr; Back to trend</button>
+        </p>
         <div class="pain-graph-body" data-pain-graph-body></div>
         <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
+        <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
       </div>
     </div>
   </div>
@@ -535,8 +546,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <i class="fa-solid fa-print" aria-hidden="true"></i>
           </button>
         </div>
+        <p class="mood-graph-day-banner" data-mood-graph-day-banner hidden>
+          <span data-mood-graph-day-label></span>
+          <button type="button" class="mood-graph-day-back" data-mood-graph-day-back>&larr; Back to trend</button>
+        </p>
         <div class="pain-graph-body" data-mood-graph-body></div>
         <p class="pain-graph-empty" data-mood-graph-empty hidden>No mood data recorded for this period.</p>
+        <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
       </div>
     </div>
   </div>
@@ -714,8 +730,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button class="pain-page-range-tab" data-range="30">30 days</button>
         <button class="pain-page-range-tab" data-range="90">90 days</button>
       </div>
+      <p class="mood-graph-day-banner" data-pain-page-day-banner hidden>
+        <span data-pain-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-pain-page-day-back>&larr; Back to trend</button>
+      </p>
       <div class="pain-graph-body" data-pain-page-body></div>
       <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
     </div>
 
     <?php endif; ?>
@@ -764,8 +785,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button class="mood-page-range-tab" data-range="30">30 days</button>
         <button class="mood-page-range-tab" data-range="90">90 days</button>
       </div>
+      <p class="mood-graph-day-banner" data-mood-page-day-banner hidden>
+        <span data-mood-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-mood-page-day-back>&larr; Back to trend</button>
+      </p>
       <div class="pain-graph-body" data-mood-page-body></div>
       <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
     </div>
 
     <?php endif; ?>
@@ -821,6 +847,14 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <span class="toggle-label">Vibration</span>
           </label>
           <p class="toggle-description">Device vibration for in-app alarms. On by default. Turn off if you only want sound (e.g. when your phone is on a surface in a meeting).</p>
+        </div>
+        <div class="notification-toggle-row">
+          <label class="toggle-control" for="mood-scheme-toggle">
+            <input type="checkbox" id="mood-scheme-toggle" data-mood-scheme-toggle<?= $moodChartScheme === 'teal' ? ' checked' : '' ?>>
+            <span class="toggle-slider" aria-hidden="true"></span>
+            <span class="toggle-label">Teal mood chart</span>
+          </label>
+          <p class="toggle-description">Use a teal gradient for the mood trend chart (matches the PDF report) instead of the red-to-green scale. Saved to your account.</p>
         </div>
         <div class="notification-toggle-row">
           <label class="toggle-control" for="reminders-toggle">
@@ -1312,7 +1346,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li><strong>Inventory</strong> (optional) &mdash; starting quantity, quantity per dose, and a low-supply alert threshold. The supply bar turns yellow below 50% and red below 25%.</li>
       <li><strong>Track dose feedback</strong> (optional) &mdash; prompts for a 1&ndash;10 pain/symptom rating and optional note after each dose.</li>
     </ul>
-    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>deactivate</strong>: click Deactivate on the card; reactivate it from the <em>Inactive</em> tab.</p>
+    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>discontinue</strong>: click Discontinue Use on the card, choose a reason, and the medication moves to the <em>Inactive</em> tab; reactivate it from there.</p>
 
     <h3 id="help-doses">Marking Doses</h3>
     <p>Each scheduled dose on the Dashboard has three action buttons:</p>
@@ -1637,6 +1671,51 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <div class="refill-form-actions">
         <button type="submit">Log refill</button>
         <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
+      </div>
+    </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-discontinue-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="discontinue-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="discontinue-modal-title">Discontinue Use</h2>
+        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-discontinue-med-name></span></p>
+      </div>
+      <button type="button" class="icon-button" data-close-discontinue-modal aria-label="Close discontinue modal">&#10005;</button>
+    </div>
+    <div class="modal-scroll">
+    <form class="stacked-form" method="post" action="index.php" data-discontinue-form>
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="deactivate_medication">
+      <input type="hidden" name="medication_id" data-discontinue-medication-id value="">
+      <fieldset class="form-section discontinue-reasons">
+        <legend>Why are you discontinuing this medication?</legend>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="End of regimen" required>
+          End of regimen
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Side effects (moderate to severe)">
+          Side effects (moderate to severe)
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Doctor's orders">
+          Doctor's orders
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Other">
+          Other
+        </label>
+      </fieldset>
+      <label>Comment <span class="field-optional">(optional)</span>
+        <textarea name="comment" rows="3" maxlength="500" placeholder="Add more detail about why you're stopping this medication"></textarea>
+      </label>
+      <div class="refill-form-actions">
+        <button type="submit" class="danger">Discontinue Use</button>
+        <button type="button" class="secondary" data-close-discontinue-modal>Cancel</button>
       </div>
     </form>
     </div>

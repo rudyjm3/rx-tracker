@@ -31,7 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_trend') {
     $medicationId = (int) ($_GET['medication_id'] ?? 0);
     $daysParam = (int) ($_GET['days'] ?? 30);
     if ($daysParam === 0) {
-        $data = $repository->painLevelTrendForDate($medicationId, date('Y-m-d'));
+        // Optional specific date for the single-day view (defaults to today),
+        // used when a point on a multi-day chart is clicked.
+        $dateParam = (string) ($_GET['date'] ?? '');
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateParam) === 1 ? $dateParam : date('Y-m-d');
+        $data = $repository->painLevelTrendForDate($medicationId, $date);
     } else {
         $days = max(1, min(365, $daysParam));
         $data = $repository->painLevelTrend($medicationId, $days);
@@ -45,7 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_trend') {
     $medicationId = (int) ($_GET['medication_id'] ?? 0);
     $daysParam = (int) ($_GET['days'] ?? 30);
     if ($daysParam === 0) {
-        $data = $repository->moodLevelTrendForDate($medicationId, date('Y-m-d'));
+        // Optional specific date for the single-day view (defaults to today),
+        // used when a point on a multi-day chart is clicked.
+        $dateParam = (string) ($_GET['date'] ?? '');
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateParam) === 1 ? $dateParam : date('Y-m-d');
+        $data = $repository->moodLevelTrendForDate($medicationId, $date);
     } else {
         $days = max(1, min(365, $daysParam));
         $data = $repository->moodLevelTrend($medicationId, $days);

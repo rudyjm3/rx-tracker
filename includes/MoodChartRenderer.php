@@ -7,7 +7,7 @@ final class MoodChartRenderer
     // Canvas dimensions matching PainChartRenderer for visual consistency.
     private const WIDTH         = 500;
     private const HEIGHT        = 200;
-    private const PAD_LEFT      = 32;
+    private const PAD_LEFT      = 44;
     private const PAD_RIGHT     = 12;
     private const PAD_TOP       = 12;
     private const PAD_BOTTOM    = 36;
@@ -20,11 +20,13 @@ final class MoodChartRenderer
     private const FILL_COLOR = '#028AA9';
 
     // Mood scale: low mood = red/bad, high mood = green/good (inverted vs pain).
+    // Mirrors moodLevelColor() in app.js so report dots match the in-app chart.
     private function colorForLevel(float $level): string
     {
+        $level = round($level); // app.js colors by Math.round(average)
         if ($level <= 3) return '#c9213c';
-        if ($level <= 6) return '#e05b30';
-        if ($level <= 8) return '#d97706';
+        if ($level <= 6) return '#d97706';
+        if ($level <= 8) return '#8bb04a';
         return '#2a9d49';
     }
 
@@ -99,6 +101,13 @@ final class MoodChartRenderer
                 $x0 - 4, $y, $level
             );
         }
+
+        // Y-axis title, rotated to run up the left edge (matches the in-app chart)
+        $axisTitleCY = round($y0 + $chartH / 2, 2);
+        $svg .= sprintf(
+            '<text x="11" y="%s" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" transform="rotate(-90 11 %s)">Mood Level</text>',
+            $axisTitleCY, $axisTitleCY
+        );
 
         // Axis lines
         $svg .= sprintf(
