@@ -161,6 +161,66 @@ function formatLate(int $minutes): string
     return $mins > 0 ? $hrs . 'hr ' . $mins . 'mins late' : $hrs . 'hr late';
 }
 
+function render_inactive_medication_row(array $medication): string
+{
+    $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
+    $medTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+    $dose          = formattedDose($medication);
+    $events        = (array) ($medication['status_events'] ?? []);
+    $lastDiscontinued = $medication['last_discontinued'] ?? null;
+
+    $formatEventDate = static function (string $eventAt): string {
+        $ts = strtotime($eventAt);
+        return $ts !== false ? date('M j, Y', $ts) : $eventAt;
+    };
+
+    $html  = '<div class="medication-row" data-med-type="' . e($medTypeSlug) . '" data-inactive-med-id="' . e((string) $medication['id']) . '">';
+    $html .= '<div>';
+    $html .= '<strong>' . e((string) $medication['name']) . '</strong>';
+    $html .= '<span class="med-type-badge med-type-badge--' . e($medTypeSlug) . '">' . e($medTypeLabels[$medTypeSlug] ?? 'Rx') . '</span>';
+    if ($dose !== '') {
+        $html .= '<p>' . e($dose) . '</p>';
+    }
+    if (is_array($lastDiscontinued)) {
+        $line = 'Discontinued ' . $formatEventDate((string) $lastDiscontinued['event_at']);
+        if ((string) $lastDiscontinued['reason'] !== '') {
+            $line .= ' — ' . (string) $lastDiscontinued['reason'];
+        }
+        $html .= '<p class="inactive-discontinued-line">' . e($line) . '</p>';
+        if ((string) $lastDiscontinued['comment'] !== '') {
+            $html .= '<p class="inactive-discontinued-comment">' . e((string) $lastDiscontinued['comment']) . '</p>';
+        }
+    }
+    if (count($events) > 1) {
+        $html .= '<details class="inactive-history"><summary>Stop / resume history</summary><ul class="inactive-history-list">';
+        foreach ($events as $event) {
+            $isDiscontinued = (string) $event['event'] === 'discontinued';
+            $entry = ($isDiscontinued ? 'Discontinued ' : 'Resumed ') . $formatEventDate((string) $event['event_at']);
+            if ($isDiscontinued && (string) $event['reason'] !== '') {
+                $entry .= ' (' . (string) $event['reason'] . ')';
+            }
+            $html .= '<li>' . e($entry);
+            if ($isDiscontinued && (string) $event['comment'] !== '') {
+                $html .= '<br><span class="inactive-history-comment">' . e((string) $event['comment']) . '</span>';
+            }
+            $html .= '</li>';
+        }
+        $html .= '</ul></details>';
+    }
+    $html .= '</div>';
+    $html .= '<div class="row-actions">';
+    $html .= '<form method="post" action="index.php">';
+    $html .= csrf_field();
+    $html .= '<input type="hidden" name="action" value="activate_medication">';
+    $html .= '<input type="hidden" name="medication_id" value="' . e((string) $medication['id']) . '">';
+    $html .= '<button type="submit">Activate</button>';
+    $html .= '</form>';
+    $html .= '</div>';
+    $html .= '</div>';
+
+    return $html;
+}
+
 function daysUntilRunout(array $medication): ?int
 {
     $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);

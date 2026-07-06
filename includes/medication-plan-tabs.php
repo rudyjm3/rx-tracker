@@ -123,15 +123,16 @@
                     <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
                     Refill history
                   </button>
-                  <form method="post" action="index.php" data-confirm="Move this medication to inactive?">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="deactivate_medication">
-                    <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-                    <button type="submit" class="med-actions-item med-actions-item--danger">
-                      <i class="fa-solid fa-power-off" aria-hidden="true"></i>
-                      Deactivate
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    class="med-actions-item med-actions-item--danger"
+                    data-open-discontinue-modal
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                  >
+                    <i class="fa-solid fa-power-off" aria-hidden="true"></i>
+                    Discontinue Use
+                  </button>
                 </div>
               </div>
             </div>
@@ -175,6 +176,7 @@
           <?php endif; ?>
           <button type="button" class="view-details-link"
                   data-view-details
+                  data-medication-id="<?= e((string) $medication['id']) ?>"
                   data-medication-name="<?= e((string) $medication['name']) ?>"
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
           <?php if (trim((string) $medication['instructions']) !== ''): ?>
@@ -252,23 +254,7 @@
       <div class="empty-state"><p>No inactive medications.</p></div>
     <?php endif; ?>
     <?php foreach ($inactiveMedications as $medication): ?>
-      <div class="medication-row" data-med-type="<?= e((string) ($medication['medication_type'] ?? 'prescription')) ?>">
-        <div>
-          <?php $inactiveMedTypeSlug = (string) ($medication['medication_type'] ?? 'prescription'); $inactiveMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
-          <strong><?= e((string) $medication['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($inactiveMedTypeSlug) ?>"><?= e($inactiveMedTypeLabels[$inactiveMedTypeSlug] ?? 'Rx') ?></span>
-          <?php if (formattedDose($medication) !== ''): ?>
-          <p><?= e(formattedDose($medication)) ?></p>
-          <?php endif; ?>
-        </div>
-        <div class="row-actions">
-          <form method="post" action="index.php">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="activate_medication">
-            <input type="hidden" name="medication_id" value="<?= e((string) $medication['id']) ?>">
-            <button type="submit">Activate</button>
-          </form>
-        </div>
-      </div>
+      <?= render_inactive_medication_row($medication) ?>
     <?php endforeach; ?>
   </div>
 </div>

@@ -2049,6 +2049,81 @@ textarea:focus,
   color: var(--rx-navy);
 }
 
+button.danger {
+  background: var(--rx-danger);
+  border: 1px solid var(--rx-danger);
+  color: #fff;
+}
+
+button.danger:hover {
+  background: #c93a3f;
+  box-shadow: none;
+}
+
+/* Discontinue modal */
+.discontinue-reasons {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.discontinue-reason-option {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.discontinue-reason-option input[type="radio"] {
+  margin: 0;
+  width: auto;
+}
+
+/* Inactive medication rows: discontinue info */
+.inactive-discontinued-line {
+  color: var(--rx-danger);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.2rem 0 0;
+}
+
+.inactive-discontinued-comment {
+  color: var(--rx-text-muted);
+  font-size: 0.82rem;
+  margin: 0.15rem 0 0;
+}
+
+.inactive-history {
+  font-size: 0.82rem;
+  margin-top: 0.25rem;
+}
+
+.inactive-history summary {
+  color: var(--rx-text-muted);
+  cursor: pointer;
+}
+
+.inactive-history-list {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0 0 0 0.25rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.inactive-history-comment {
+  color: var(--rx-text-muted);
+}
+
+.dose-change-history-list {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.88rem;
+}
+
 .secondary:hover {
   background: var(--rx-border);
   box-shadow: none;

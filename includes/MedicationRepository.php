@@ -24,6 +24,8 @@ final class MedicationRepository
         $this->ensureGroupTables();
         $this->ensureGroupMembersUpgrade();
         $this->ensureRefillsTable();
+        $this->ensureStatusEventsTable();
+        $this->ensureDoseChangesTable();
         $this->ensurePushActionNonceColumn();
         $this->ensureMedicationTypeColumn();
         $this->ensureDoseStructuredColumns();
@@ -79,9 +81,11 @@ final class MedicationRepository
         $ids = array_column($medications, 'id');
         $allTimes     = $this->scheduleTimesByMedicationIds($ids);
         $allTimeDoses = $this->scheduleTimeDosesByMedicationIds($ids);
+        $allEvents    = $this->statusEventsByMedicationIds($ids);
         foreach ($medications as &$medication) {
             $medication['times']      = $allTimes[(int) $medication['id']] ?? [];
             $medication['time_doses'] = $allTimeDoses[(int) $medication['id']] ?? [];
+            $this->attachStatusEvents($medication, $allEvents);
         }
         unset($medication);
 
@@ -236,7 +240,7 @@ final class MedicationRepository
     {
         $statement = $this->db->prepare(
             'SELECT dl.scheduled_for_date, dl.scheduled_time, dl.status,
-                    m.name
+                    m.name, m.medication_type
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE m.user_id = :user_id
@@ -244,7 +248,7 @@ final class MedicationRepository
                AND m.as_needed = 0
                AND dl.status IN (\'missed\', \'skipped\')
                AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+             ORDER BY dl.scheduled_for_date DESC, dl.scheduled_time DESC'
         );
         $statement->execute(array_merge(
             ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
@@ -1029,16 +1033,118 @@ final class MedicationRepository
         return $statement->fetchAll();
     }
 
-    public function deactivateMedication(int $medicationId): void
+    public function deactivateMedication(int $medicationId, string $reason = '', string $comment = ''): void
     {
         $statement = $this->db->prepare('UPDATE medications SET active = 0 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if ($statement->rowCount() > 0) {
+            $this->recordStatusEvent($medicationId, 'discontinued', $reason, $comment);
+        }
     }
 
     public function activateMedication(int $medicationId): void
     {
         $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if ($statement->rowCount() > 0) {
+            $this->recordStatusEvent($medicationId, 'resumed');
+        }
+    }
+
+    private function recordStatusEvent(int $medicationId, string $event, string $reason = '', string $comment = ''): void
+    {
+        $statement = $this->db->prepare(
+            'INSERT INTO medication_status_events (medication_id, event, reason, comment) VALUES (:medication_id, :event, :reason, :comment)'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'event'         => $event,
+            'reason'        => $reason,
+            'comment'       => $comment,
+        ]);
+    }
+
+    public function statusEventsByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT medication_id, event, event_at, reason, comment
+             FROM medication_status_events
+             WHERE medication_id IN ({$placeholders})
+             ORDER BY event_at DESC, id DESC"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $result[(int) $row['medication_id']][] = $row;
+        }
+        return $result;
+    }
+
+    public function findInactiveMedication(int $medicationId): ?array
+    {
+        $statement = $this->db->prepare(
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.id = :id AND m.active = 0 AND m.user_id = :user_id ' . $this->profileSql()
+        );
+        $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        $medication = $statement->fetch();
+        if ($medication === false) {
+            return null;
+        }
+        $events = $this->statusEventsByMedicationIds([(int) $medication['id']]);
+        $this->attachStatusEvents($medication, $events);
+        return $medication;
+    }
+
+    private function attachStatusEvents(array &$medication, array $eventsByMedId): void
+    {
+        $events = $eventsByMedId[(int) $medication['id']] ?? [];
+        $medication['status_events'] = $events;
+        $medication['last_discontinued'] = null;
+        foreach ($events as $event) {
+            if ((string) $event['event'] === 'discontinued') {
+                $medication['last_discontinued'] = $event;
+                break;
+            }
+        }
+    }
+
+    public function recordDoseChange(
+        int $medicationId,
+        ?float $oldAmount,
+        string $oldUnit,
+        ?float $newAmount,
+        string $newUnit,
+        string $comment = ''
+    ): void {
+        $statement = $this->db->prepare(
+            'INSERT INTO medication_dose_changes (medication_id, old_dose_amount, old_dose_unit, new_dose_amount, new_dose_unit, comment)
+             VALUES (:medication_id, :old_amount, :old_unit, :new_amount, :new_unit, :comment)'
+        );
+        $statement->execute([
+            'medication_id' => $medicationId,
+            'old_amount'    => $oldAmount,
+            'old_unit'      => $oldUnit,
+            'new_amount'    => $newAmount,
+            'new_unit'      => $newUnit,
+            'comment'       => $comment,
+        ]);
+    }
+
+    public function doseChangesByMedicationId(int $medicationId): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dc.changed_at, dc.old_dose_amount, dc.old_dose_unit, dc.new_dose_amount, dc.new_dose_unit, dc.comment
+             FROM medication_dose_changes dc
+             INNER JOIN medications m ON m.id = dc.medication_id
+             WHERE dc.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql() . '
+             ORDER BY dc.changed_at DESC, dc.id DESC'
+        );
+        $statement->execute(array_merge(['medication_id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        return $statement->fetchAll();
     }
 
     public function getMissedGraceMinutes(): int
@@ -1112,6 +1218,42 @@ final class MedicationRepository
             'key'          => 'missed_grace_minutes',
             'insert_value' => (string) $minutes,
             'update_value' => (string) $minutes,
+        ]);
+    }
+
+    public function getMoodChartScheme(): string
+    {
+        $statement = $this->db->prepare('SELECT setting_value FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1');
+        $statement->execute(['user_id' => $this->userId, 'key' => 'mood_chart_scheme']);
+        $value = (string) ($statement->fetchColumn() ?: 'classic');
+
+        return in_array($value, ['classic', 'teal'], true) ? $value : 'classic';
+    }
+
+    public function setMoodChartScheme(string $scheme): void
+    {
+        if (!in_array($scheme, ['classic', 'teal'], true)) {
+            throw new RuntimeException('Mood chart scheme must be classic or teal.');
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $sql = $driver === 'sqlite'
+            ? 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :value)
+               ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+            : 'INSERT INTO app_settings (user_id, setting_key, setting_value)
+               VALUES (:user_id, :key, :insert_value)
+               ON DUPLICATE KEY UPDATE setting_value = :update_value';
+        $statement = $this->db->prepare($sql);
+        if ($driver === 'sqlite') {
+            $statement->execute(['user_id' => $this->userId, 'key' => 'mood_chart_scheme', 'value' => $scheme]);
+            return;
+        }
+        $statement->execute([
+            'user_id'      => $this->userId,
+            'key'          => 'mood_chart_scheme',
+            'insert_value' => $scheme,
+            'update_value' => $scheme,
         ]);
     }
 
@@ -2692,6 +2834,90 @@ final class MedicationRepository
                         amount INTEGER NOT NULL,
                         pills_on_hand INTEGER NOT NULL,
                         note TEXT NOT NULL DEFAULT '',
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureStatusEventsTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_status_events (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        event VARCHAR(20) NOT NULL,
+                        event_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        reason VARCHAR(64) NOT NULL DEFAULT '',
+                        comment VARCHAR(500) NOT NULL DEFAULT '',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_status_events_med_date (medication_id, event_at),
+                        CONSTRAINT fk_status_events_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_status_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        event TEXT NOT NULL,
+                        event_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        reason TEXT NOT NULL DEFAULT '',
+                        comment TEXT NOT NULL DEFAULT '',
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureDoseChangesTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_dose_changes (
+                        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        old_dose_amount DECIMAL(10,3) NULL,
+                        old_dose_unit VARCHAR(20) NOT NULL DEFAULT '',
+                        new_dose_amount DECIMAL(10,3) NULL,
+                        new_dose_unit VARCHAR(20) NOT NULL DEFAULT '',
+                        comment VARCHAR(500) NOT NULL DEFAULT '',
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_dose_changes_med_date (medication_id, changed_at),
+                        CONSTRAINT fk_dose_changes_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_dose_changes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        changed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                        old_dose_amount REAL NULL,
+                        old_dose_unit TEXT NOT NULL DEFAULT '',
+                        new_dose_amount REAL NULL,
+                        new_dose_unit TEXT NOT NULL DEFAULT '',
+                        comment TEXT NOT NULL DEFAULT '',
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )"
                 );

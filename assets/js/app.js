@@ -1016,11 +1016,13 @@ document.addEventListener('submit', async (e) => {
   const action = form.querySelector('input[name="action"]')?.value;
   if (action !== 'deactivate_medication' && action !== 'activate_medication') return;
 
-  // ── Deactivate ──────────────────────────────────────────────────────────────
+  // ── Discontinue (deactivate) ────────────────────────────────────────────────
   if (action === 'deactivate_medication') {
-    if (e.defaultPrevented) return; // cancelled confirm
+    if (e.defaultPrevented) return;
     e.preventDefault();
     const medId = form.querySelector('input[name="medication_id"]')?.value ?? '';
+    const reason = form.querySelector('input[name="reason"]:checked')?.value ?? '';
+    const comment = form.querySelector('textarea[name="comment"]')?.value ?? '';
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
 
@@ -1030,6 +1032,8 @@ document.addEventListener('submit', async (e) => {
       params.set('csrf_token', getCsrfToken());
       params.set('json_response', '1');
       params.set('medication_id', medId);
+      params.set('reason', reason);
+      params.set('comment', comment);
 
       const res = await fetch('index.php', {
         method: 'POST',
@@ -1037,41 +1041,32 @@ document.addEventListener('submit', async (e) => {
         body: params.toString(),
       });
       const json = await res.json();
-      if (!json.ok) throw new Error('Failed to deactivate medication.');
+      if (!json.ok) throw new Error('Failed to discontinue medication.');
 
-      const activeCard = form.closest('.medication-row-plan');
-      const name = activeCard?.querySelector('.medication-content strong')?.textContent ?? '';
-      const dose = activeCard?.querySelector('.medication-content p')?.textContent ?? '';
+      const activeCard = document
+        .querySelector(`[data-open-discontinue-modal][data-medication-id="${CSS.escape(medId)}"]`)
+        ?.closest('.medication-row-plan');
       activeCard?.remove();
 
       // Update active tab count
       const n = document.querySelectorAll('[data-plan-panel="active"] .medication-row-plan').length;
       document.querySelectorAll('[data-plan-tab="active"]').forEach((t) => { t.textContent = `Active (${n})`; });
 
-      // Add a row to inactive panel
+      // Add the server-rendered row to the inactive panel
       const inactiveList = document.querySelector('.inactive-list');
       inactiveList?.querySelector('.empty-state')?.remove();
-      if (inactiveList) {
-        const row = document.createElement('div');
-        row.className = 'medication-row';
-        row.dataset.inactiveMedId = medId;
-        row.innerHTML = `<div><strong>${escHtml(name)}</strong><p>${escHtml(dose)}</p></div>
-          <div class="row-actions">
-            <form method="post" action="index.php" data-activate-form>
-              <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
-              <input type="hidden" name="json_response" value="1">
-              <input type="hidden" name="action" value="activate_medication">
-              <input type="hidden" name="medication_id" value="${escHtml(medId)}">
-              <button type="submit">Activate</button>
-            </form>
-          </div>`;
-        inactiveList.appendChild(row);
+      if (inactiveList && json.inactive_row_html) {
+        inactiveList.insertAdjacentHTML('beforeend', json.inactive_row_html);
       }
 
       const ni = document.querySelectorAll('[data-plan-panel="inactive"] .medication-row').length;
       document.querySelectorAll('[data-plan-tab="inactive"]').forEach((t) => { t.textContent = `Inactive (${ni})`; });
+
+      closeDiscontinueModal();
+      form.reset();
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
+    } finally {
       if (submitBtn) submitBtn.disabled = false;
     }
     return;
@@ -1130,6 +1125,8 @@ document.addEventListener('keydown', (event) => {
     closeRefillHistoryModal();
   } else if (refillModal?.classList.contains('is-open')) {
     closeRefillModal();
+  } else if (discontinueModal?.classList.contains('is-open')) {
+    closeDiscontinueModal();
   } else if (medDetailModal?.classList.contains('is-open')) {
     closeMedDetailModal();
   } else if (medPlanModal && !medPlanModal.hidden) {
@@ -1366,6 +1363,9 @@ const buildSmoothPathD = (points) => {
   return d;
 };
 
+const getMoodChartScheme = () =>
+  document.body.dataset.moodChartScheme === 'teal' ? 'teal' : 'classic';
+
 const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, mr, mt, mb) => {
   const gradId = `mood-gradient-${Math.random().toString(36).slice(2, 9)}`;
   const curveD = buildSmoothPathD(points);
@@ -1379,13 +1379,22 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
     circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"><title>${p.tip}</title></circle>`;
   });
 
+  // Two selectable schemes: classic red-to-green, or teal matching the PDF
+  // report (darker teal = higher mood, lighter teal = lower mood).
+  const teal = getMoodChartScheme() === 'teal';
+  const gradientStops = teal
+    ? `<stop offset="0%" stop-color="#028AA9"/>
+        <stop offset="100%" stop-color="#BFE4EE"/>`
+    : `<stop offset="0%" stop-color="#2a9d49"/>
+        <stop offset="55%" stop-color="#d97706"/>
+        <stop offset="100%" stop-color="#c9213c"/>`;
+  const strokeColor = teal ? '#028AA9' : '#6b7a96';
+
   const yAxisCY = (mt + (H - mt - mb) / 2).toFixed(1);
   container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mood level trend chart">
     <defs>
       <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#2a9d49"/>
-        <stop offset="55%" stop-color="#d97706"/>
-        <stop offset="100%" stop-color="#c9213c"/>
+        ${gradientStops}
       </linearGradient>
     </defs>
     <text transform="rotate(-90)" x="-${yAxisCY}" y="11" text-anchor="middle" font-size="8.5" fill="#94a3b8">Mood Level</text>
@@ -1394,7 +1403,7 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
     <line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#cbd5e1" stroke-width="1"/>
     ${xLabels}
     ${areaD ? `<path d="${areaD}" fill="url(#${gradId})" fill-opacity="0.4" stroke="none"/>` : ''}
-    <path d="${curveD}" fill="none" stroke="#6b7a96" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${curveD}" fill="none" stroke="${strokeColor}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"/>
     ${circles}
   </svg>`;
 };
@@ -2172,7 +2181,8 @@ const hideAlarmOverlay = () => {
 
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
-   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal]
+   imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal,
+   discontinueModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
@@ -3317,12 +3327,45 @@ const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
   return sections.join('') + `<div class="med-detail-links"><p class="disclaimer">This information is for general reference only. Always follow your doctor&rsquo;s or pharmacist&rsquo;s instructions.</p>${dailyMedLink}</div>`;
 };
 
+const fetchDoseChangeHistoryHtml = async (medicationId) => {
+  if (!medicationId) return '';
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'dose_change_history',
+      medication_id: medicationId,
+    });
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok || !Array.isArray(json.changes) || json.changes.length === 0) return '';
+    const fmtDose = (amount, unit) => {
+      if (amount === null || amount === '' || amount === undefined) return '—';
+      return `${parseFloat(amount)} ${unit || ''}`.trim();
+    };
+    const items = json.changes.map((c) => {
+      const date = c.changed_at ? new Date(c.changed_at.replace(' ', 'T')).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+      const comment = c.comment ? `<br><span class="muted">${escHtml(c.comment)}</span>` : '';
+      return `<li>${escHtml(date)}: ${escHtml(fmtDose(c.old_dose_amount, c.old_dose_unit))} &rarr; <strong>${escHtml(fmtDose(c.new_dose_amount, c.new_dose_unit))}</strong>${comment}</li>`;
+    }).join('');
+    return `<details class="med-detail-section" open><summary class="med-detail-section-title">Dose Change History</summary><div class="med-detail-section-body"><ul class="dose-change-history-list">${items}</ul></div></details>`;
+  } catch {
+    return '';
+  }
+};
+
 document.querySelectorAll('[data-view-details]').forEach((btn) => {
   btn.addEventListener('click', async () => {
-    const { medicationName = '', setId = '' } = btn.dataset;
+    const { medicationId = '', medicationName = '', setId = '' } = btn.dataset;
     if (medDetailTitle) medDetailTitle.textContent = medicationName;
     if (medDetailBody) medDetailBody.innerHTML = '<p class="pain-graph-loading">Loading&hellip;</p>';
     openMedDetailModal();
+
+    const doseHistoryPromise = fetchDoseChangeHistoryHtml(medicationId);
 
     const cacheKey = setId || `name_${medicationName}`;
     if (!medDetailCache[cacheKey]) {
@@ -3341,7 +3384,8 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
     if (medDetailBody) {
       try {
         const { ofda, productLabelUrl } = medDetailCache[cacheKey];
-        medDetailBody.innerHTML = renderDetailContent(medicationName, setId, ofda, productLabelUrl);
+        const doseHistoryHtml = await doseHistoryPromise;
+        medDetailBody.innerHTML = doseHistoryHtml + renderDetailContent(medicationName, setId, ofda, productLabelUrl);
         // Wire up lightbox on both images
         medDetailBody.querySelectorAll('[data-detail-img-url]').forEach((fig) => {
           fig.style.cursor = 'zoom-in';
@@ -3896,6 +3940,91 @@ document.querySelectorAll('[data-close-refill-modal]').forEach((btn) => {
 refillModal?.addEventListener('click', (event) => {
   if (event.target === refillModal) closeRefillModal();
 });
+
+// ── Discontinue Use modal ─────────────────────────────────────────────────────
+
+const discontinueModal = document.querySelector('[data-discontinue-modal]');
+const discontinueMedNameEl = document.querySelector('[data-discontinue-med-name]');
+const discontinueMedicationIdEl = document.querySelector('[data-discontinue-medication-id]');
+const discontinueForm = document.querySelector('[data-discontinue-form]');
+
+const openDiscontinueModal = (medicationId, medicationName) => {
+  if (!discontinueModal) return;
+  if (discontinueForm) discontinueForm.reset();
+  if (discontinueMedNameEl) discontinueMedNameEl.textContent = medicationName;
+  if (discontinueMedicationIdEl) discontinueMedicationIdEl.value = medicationId;
+  closeMedPlanModal();
+  discontinueModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeDiscontinueModal = () => {
+  if (!discontinueModal) return;
+  if (!discontinueModal.classList.contains('is-open')) return;
+  discontinueModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-open-discontinue-modal]');
+  if (!trigger) return;
+  const { medicationId = '', medicationName = '' } = trigger.dataset;
+  if (!medicationId) return;
+  openDiscontinueModal(medicationId, medicationName);
+});
+
+document.querySelectorAll('[data-close-discontinue-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeDiscontinueModal);
+});
+
+discontinueModal?.addEventListener('click', (event) => {
+  if (event.target === discontinueModal) closeDiscontinueModal();
+});
+
+// ── Mood chart color scheme toggle (saved to account) ────────────────────────
+
+document.querySelector('[data-mood-scheme-toggle]')?.addEventListener('change', async (event) => {
+  const toggle = event.target;
+  const scheme = toggle.checked ? 'teal' : 'classic';
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'set_mood_chart_scheme',
+      scheme,
+    });
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error('Failed to save chart color scheme.');
+    document.body.dataset.moodChartScheme = scheme;
+  } catch (err) {
+    toggle.checked = !toggle.checked;
+    alert(err.message ?? 'Something went wrong.');
+  }
+});
+
+// ── Dose-change comment reveal (edit-medication form) ─────────────────────────
+
+(function () {
+  const commentRow = document.querySelector('[data-dose-change-comment-row]');
+  if (!commentRow) return;
+  const amountEl = document.querySelector('[data-initial-dose-amount]');
+  const unitEl = document.querySelector('[data-initial-dose-unit]');
+  const asFloat = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v));
+  const update = () => {
+    const amountChanged = amountEl
+      ? asFloat(amountEl.value) !== asFloat(amountEl.dataset.initialDoseAmount)
+      : false;
+    const unitChanged = unitEl ? unitEl.value !== unitEl.dataset.initialDoseUnit : false;
+    commentRow.hidden = !(amountChanged || unitChanged);
+  };
+  amountEl?.addEventListener('input', update);
+  unitEl?.addEventListener('change', update);
+})();
 
 refillForm?.addEventListener('submit', async (event) => {
   event.preventDefault();

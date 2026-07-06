@@ -109,7 +109,20 @@ try {
                 $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
             }
         } else {
+            $existingMed = $repository->findMedication($id);
             $repository->updateMedication($id, $name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate, $feedbackType);
+            if ($existingMed !== null) {
+                $oldAmountRaw = $existingMed['dose_amount'] ?? null;
+                $oldAmount = ($oldAmountRaw !== null && $oldAmountRaw !== '') ? (float) $oldAmountRaw : null;
+                $oldUnit = (string) ($existingMed['dose_unit'] ?? '');
+                $newUnit = (string) ($doseUnit ?? '');
+                $amountChanged = ($oldAmount === null) !== ($doseAmount === null)
+                    || ($oldAmount !== null && $doseAmount !== null && abs($oldAmount - $doseAmount) > 0.0001);
+                if ($amountChanged || ($oldUnit !== $newUnit && ($oldAmount !== null || $doseAmount !== null))) {
+                    $doseChangeComment = substr(trim(post_string('dose_change_comment')), 0, 500);
+                    $repository->recordDoseChange($id, $oldAmount, $oldUnit, $doseAmount, $newUnit, $doseChangeComment);
+                }
+            }
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $id);
             } else {
@@ -318,13 +331,38 @@ try {
 
     if ($action === 'deactivate_medication') {
         $medId = (int) post_string('medication_id');
-        $repository->deactivateMedication($medId);
+        $reason = post_string('reason');
+        $allowedReasons = ['End of regimen', 'Side effects (moderate to severe)', "Doctor's orders", 'Other'];
+        if (!in_array($reason, $allowedReasons, true)) {
+            $reason = '';
+        }
+        $comment = substr(trim(post_string('comment')), 0, 500);
+        $repository->deactivateMedication($medId, $reason, $comment);
         if ($jsonResponse) {
+            $inactiveRowHtml = '';
+            $inactiveMed = $repository->findInactiveMedication($medId);
+            if ($inactiveMed !== null) {
+                $inactiveRowHtml = render_inactive_medication_row($inactiveMed);
+            }
             header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['ok' => true, 'medication_id' => $medId], JSON_THROW_ON_ERROR);
+            echo json_encode([
+                'ok'                => true,
+                'medication_id'     => $medId,
+                'inactive_row_html' => $inactiveRowHtml,
+            ], JSON_THROW_ON_ERROR);
             exit;
         }
         redirect_home();
+    }
+
+    if ($action === 'dose_change_history') {
+        $medId = (int) post_string('medication_id');
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok'      => true,
+            'changes' => $repository->doseChangesByMedicationId($medId),
+        ], JSON_THROW_ON_ERROR);
+        exit;
     }
 
     if ($action === 'activate_medication') {
@@ -425,6 +463,17 @@ try {
         $repository->setMissedGraceMinutes($graceMinutes);
         $repository->setSnoozeMinutes((int) post_string('snooze_minutes'));
         header('Location: index.php?page=settings&notice=Settings saved');
+        exit;
+    }
+
+    if ($action === 'set_mood_chart_scheme') {
+        $scheme = post_string('scheme');
+        if (!in_array($scheme, ['classic', 'teal'], true)) {
+            throw new RuntimeException('Invalid mood chart scheme.');
+        }
+        $repository->setMoodChartScheme($scheme);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'scheme' => $scheme], JSON_THROW_ON_ERROR);
         exit;
     }
 
