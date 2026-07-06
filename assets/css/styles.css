@@ -2124,6 +2124,44 @@ button.danger:hover {
   font-size: 0.88rem;
 }
 
+/* Mood graph: hint + single-day drill-down banner */
+.graph-hint {
+  color: var(--rx-text-muted);
+  font-size: 0.78rem;
+  margin: 0.5rem 0 0;
+}
+
+.mood-graph-day-banner {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  display: flex;
+  font-size: 0.82rem;
+  font-weight: 600;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.mood-graph-day-back {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--rx-deep-blue);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.1rem 0.25rem;
+}
+
+.mood-graph-day-back:hover {
+  background: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
 .secondary:hover {
   background: var(--rx-border);
   box-shadow: none;

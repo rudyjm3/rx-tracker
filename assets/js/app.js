@@ -1376,7 +1376,8 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
 
   let circles = '';
   points.forEach((p) => {
-    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"><title>${p.tip}</title></circle>`;
+    const clickable = p.date ? ` data-date="${escSvg(p.date)}" style="cursor:pointer"` : '';
+    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"${clickable}><title>${p.tip}</title></circle>`;
   });
 
   // Two selectable schemes: classic red-to-green, or teal matching the PDF
@@ -1450,7 +1451,8 @@ const renderMoodChart = (container, data) => {
       x: xScale(i),
       y: yScale(level),
       color: moodLevelColor(Math.round(level)),
-      tip: `${escSvg(date)}&#10;${tipLines}`,
+      tip: `${escSvg(date)}&#10;${tipLines}&#10;Click to view this day`,
+      date,
     };
   });
 
@@ -1576,14 +1578,23 @@ const moodGraphModal = document.querySelector('[data-mood-graph-modal]');
 const moodGraphTitle = document.querySelector('[data-mood-graph-title]');
 const moodGraphBody = document.querySelector('[data-mood-graph-body]');
 const moodGraphEmpty = document.querySelector('[data-mood-graph-empty]');
+const moodGraphDayBanner = document.querySelector('[data-mood-graph-day-banner]');
+const moodGraphDayLabel = document.querySelector('[data-mood-graph-day-label]');
 
 let moodGraphMedId = null;
 let moodGraphDays = 7;
+let moodGraphDate = null;     // set when a multi-day point is clicked (single-day view)
+let moodGraphPrevDays = 7;    // range to restore when leaving the single-day view
+
+const formatMoodDay = (d) =>
+  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 const openMoodGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!moodGraphModal) return;
   moodGraphMedId = medicationId;
   moodGraphDays = 0;
+  moodGraphDate = null;
+  moodGraphPrevDays = 7;
   const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
   if (moodGraphTitle) moodGraphTitle.textContent = titleBase + ' — Mood Trend';
   moodGraphModal.querySelectorAll('.range-tab').forEach((t) => {
@@ -1606,15 +1617,25 @@ const loadMoodGraph = async () => {
   if (!moodGraphBody || !moodGraphEmpty) return;
   moodGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
   moodGraphEmpty.hidden = true;
+
+  const singleDay = moodGraphDate !== null || moodGraphDays === 0;
+  if (moodGraphDayBanner) {
+    moodGraphDayBanner.hidden = moodGraphDate === null;
+    if (moodGraphDate !== null && moodGraphDayLabel) {
+      moodGraphDayLabel.textContent = `Showing ${formatMoodDay(moodGraphDate)}`;
+    }
+  }
+
   try {
-    const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodGraphMedId ?? '')}&days=${moodGraphDays}`);
+    const dateParam = moodGraphDate !== null ? `&date=${encodeURIComponent(moodGraphDate)}` : '';
+    const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodGraphMedId ?? '')}&days=${singleDay ? 0 : moodGraphDays}${dateParam}`);
     const payload = await resp.json();
     if (!payload.ok || payload.data.length === 0) {
       moodGraphBody.innerHTML = '';
       moodGraphEmpty.hidden = false;
       return;
     }
-    if (moodGraphDays === 0) {
+    if (singleDay) {
       renderMoodChartToday(moodGraphBody, payload.data);
     } else {
       renderMoodChart(moodGraphBody, payload.data);
@@ -1630,8 +1651,28 @@ moodGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
     moodGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
     tab.classList.add('is-active');
     moodGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    moodGraphDate = null;
     loadMoodGraph();
   });
+});
+
+// Clicking a point on a multi-day mood chart drills into that day's levels
+moodGraphBody?.addEventListener('click', (event) => {
+  const dot = event.target.closest('circle[data-date]');
+  if (!dot) return;
+  moodGraphPrevDays = moodGraphDays;
+  moodGraphDate = dot.dataset.date ?? null;
+  moodGraphModal?.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+  loadMoodGraph();
+});
+
+document.querySelector('[data-mood-graph-day-back]')?.addEventListener('click', () => {
+  moodGraphDate = null;
+  moodGraphDays = moodGraphPrevDays;
+  moodGraphModal?.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === moodGraphDays);
+  });
+  loadMoodGraph();
 });
 
 document.querySelectorAll('[data-open-mood-graph]').forEach((btn) => {
@@ -1654,7 +1695,9 @@ document.querySelector('[data-mood-graph-print]')?.addEventListener('click', () 
   const svg = moodGraphBody?.querySelector('svg');
   if (!svg) return;
   const title = moodGraphTitle?.textContent ?? 'Mood Trend';
-  const rangeLabel = moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`;
+  const rangeLabel = moodGraphDate !== null
+    ? formatMoodDay(moodGraphDate)
+    : (moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`);
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
@@ -1745,20 +1788,34 @@ const moodPageMedName = document.querySelector('[data-mood-page-med-name]');
 if (moodPageBody) {
   let moodPageMedId = 0;
   let moodPageDays = 0;
+  let moodPageDate = null;
+  let moodPagePrevDays = 0;
+  const moodPageDayBanner = document.querySelector('[data-mood-page-day-banner]');
+  const moodPageDayLabel = document.querySelector('[data-mood-page-day-label]');
 
   const loadMoodPageGraph = async () => {
     if (!moodPageMedId) return;
     moodPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     moodPageEmpty.hidden = true;
+
+    const singleDay = moodPageDate !== null || moodPageDays === 0;
+    if (moodPageDayBanner) {
+      moodPageDayBanner.hidden = moodPageDate === null;
+      if (moodPageDate !== null && moodPageDayLabel) {
+        moodPageDayLabel.textContent = `Showing ${formatMoodDay(moodPageDate)}`;
+      }
+    }
+
     try {
-      const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodPageMedId)}&days=${moodPageDays}`);
+      const dateParam = moodPageDate !== null ? `&date=${encodeURIComponent(moodPageDate)}` : '';
+      const resp = await window.fetch(`index.php?action=mood_trend&medication_id=${encodeURIComponent(moodPageMedId)}&days=${singleDay ? 0 : moodPageDays}${dateParam}`);
       const payload = await resp.json();
       if (!payload.ok || payload.data.length === 0) {
         moodPageBody.innerHTML = '';
         moodPageEmpty.hidden = false;
         return;
       }
-      if (moodPageDays === 0) {
+      if (singleDay) {
         renderMoodChartToday(moodPageBody, payload.data);
       } else {
         renderMoodChart(moodPageBody, payload.data);
@@ -1769,6 +1826,24 @@ if (moodPageBody) {
     }
   };
 
+  moodPageBody.addEventListener('click', (event) => {
+    const dot = event.target.closest('circle[data-date]');
+    if (!dot) return;
+    moodPagePrevDays = moodPageDays;
+    moodPageDate = dot.dataset.date ?? null;
+    document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+    loadMoodPageGraph();
+  });
+
+  document.querySelector('[data-mood-page-day-back]')?.addEventListener('click', () => {
+    moodPageDate = null;
+    moodPageDays = moodPagePrevDays;
+    document.querySelectorAll('.mood-page-range-tab').forEach((t) => {
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === moodPageDays);
+    });
+    loadMoodPageGraph();
+  });
+
   document.querySelectorAll('[data-select-mood-medication]').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
@@ -1776,6 +1851,7 @@ if (moodPageBody) {
       moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
       if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
       moodPageDays = 0;
+      moodPageDate = null;
       document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -1788,6 +1864,7 @@ if (moodPageBody) {
       document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       moodPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      moodPageDate = null;
       loadMoodPageGraph();
     });
   });

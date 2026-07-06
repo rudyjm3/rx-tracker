@@ -541,8 +541,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <i class="fa-solid fa-print" aria-hidden="true"></i>
           </button>
         </div>
+        <p class="mood-graph-day-banner" data-mood-graph-day-banner hidden>
+          <span data-mood-graph-day-label></span>
+          <button type="button" class="mood-graph-day-back" data-mood-graph-day-back>&larr; Back to trend</button>
+        </p>
         <div class="pain-graph-body" data-mood-graph-body></div>
         <p class="pain-graph-empty" data-mood-graph-empty hidden>No mood data recorded for this period.</p>
+        <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
       </div>
     </div>
   </div>
@@ -770,8 +775,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button class="mood-page-range-tab" data-range="30">30 days</button>
         <button class="mood-page-range-tab" data-range="90">90 days</button>
       </div>
+      <p class="mood-graph-day-banner" data-mood-page-day-banner hidden>
+        <span data-mood-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-mood-page-day-back>&larr; Back to trend</button>
+      </p>
       <div class="pain-graph-body" data-mood-page-body></div>
       <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
     </div>
 
     <?php endif; ?>
