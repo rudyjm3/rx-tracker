@@ -204,7 +204,7 @@ HTML;
         return <<<HTML
 <table style="width:100%;border-collapse:collapse;margin-bottom:0;" cellpadding="0" cellspacing="0">
   <tr>
-    <td style="width:38%;background:#0d1b2e;padding:16pt 18pt;vertical-align:middle;border:none;">
+    <td style="width:77pt;background:#0d1b2e;padding:16pt;vertical-align:middle;border:none;">
       <img src="{$logo}" width="60" height="60" style="display:block;">
     </td>
     <td style="background:#0754A8;padding:16pt 18pt 16pt 20pt;vertical-align:middle;border:none;">
