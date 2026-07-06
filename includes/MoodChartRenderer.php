@@ -7,7 +7,7 @@ final class MoodChartRenderer
     // Canvas dimensions matching PainChartRenderer for visual consistency.
     private const WIDTH         = 500;
     private const HEIGHT        = 200;
-    private const PAD_LEFT      = 32;
+    private const PAD_LEFT      = 44;
     private const PAD_RIGHT     = 12;
     private const PAD_TOP       = 12;
     private const PAD_BOTTOM    = 36;
@@ -99,6 +99,13 @@ final class MoodChartRenderer
                 $x0 - 4, $y, $level
             );
         }
+
+        // Y-axis title, rotated to run up the left edge (matches the in-app chart)
+        $axisTitleCY = round($y0 + $chartH / 2, 2);
+        $svg .= sprintf(
+            '<text x="11" y="%s" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" transform="rotate(-90 11 %s)">Mood Level</text>',
+            $axisTitleCY, $axisTitleCY
+        );
 
         // Axis lines
         $svg .= sprintf(

@@ -102,7 +102,7 @@ final class SideEffectRepository
              WHERE m.user_id = :user_id
                ' . $this->profileSql('m') . '
                AND se.occurred_date BETWEEN :start_date AND :end_date
-             ORDER BY se.occurred_date ASC, se.created_at ASC'
+             ORDER BY se.occurred_date DESC, se.created_at DESC'
         );
         $stmt->execute(array_merge(
             ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],

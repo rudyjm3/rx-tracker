@@ -76,7 +76,7 @@ final class DoctorVisitReport
 
         $medications  = $this->repository->activeMedications();
         $adherence    = $this->repository->adherenceForDateRange($startDate, $endDate);
-        $dailySummary = $this->repository->dailyDoseSummaryForDateRange($startDate, $endDate);
+        $missedDoses  = $this->repository->missedAndSkippedForDateRange($startDate, $endDate);
         $sideEffects  = $this->sideEffectRepo->sideEffectsForDateRange($startDate, $endDate);
 
         $html  = $this->docHead($title, $generatedDate);
@@ -85,7 +85,7 @@ final class DoctorVisitReport
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
         $html .= $this->sectionAdherence($adherence);
         $html .= $this->sectionMedications($medications);
-        $html .= $this->sectionDoseSummary($dailySummary);
+        $html .= $this->sectionMissedDoseDetail($missedDoses);
         $html .= $chartSection($medications, $startDate, $endDate);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
@@ -133,6 +133,12 @@ tbody tr:nth-child(even) { background: #f8fbff; }
 }
 .section-block { page-break-inside: avoid; }
 .page-break    { page-break-before: always; }
+.section-caption {
+    font-size: 8.5pt;
+    color: #60708A;
+    margin: 0 0 8pt;
+    page-break-after: avoid;
+}
 
 /* Badges */
 .badge {
@@ -227,39 +233,43 @@ HTML;
 
         $rows = '';
         foreach ($perMed as $med) {
-            $mp  = (int) $med['pct'];
-            $mColor = $mp >= 71 ? '#18BFA6' : ($mp >= 51 ? '#EAB308' : ($mp >= 31 ? '#F5A524' : '#E5484D'));
-            $miniRing = $this->adherenceRingSvg($mp, 44);
+            $mp      = (int) $med['pct'];
+            $mColor  = $this->adherenceColor($mp);
             $rows .= sprintf(
-                '<tr><td>%s%s</td><td style="text-align:center;vertical-align:middle;">%s</td><td>%d</td><td>%d</td><td>%d</td><td>%d</td></tr>',
+                '<tr><td>%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $miniRing,
-                (int) $med['taken'],
+                $mColor,
+                $mp,
                 (int) $med['missed'],
-                (int) $med['skipped'],
                 (int) $med['total']
             );
         }
 
         if ($rows === '') {
-            $rows = '<tr><td colspan="6" class="empty-state">No scheduled dose data for this period.</td></tr>';
+            $rows = '<tr><td colspan="3" class="empty-state">No scheduled dose data for this period.</td></tr>';
         }
 
-        $overallRing = $this->adherenceRingSvg($pct, 90);
+        $donut = $this->adherenceDonutImg($pct, 72);
 
         return <<<HTML
 <div class="section-title">Adherence Summary</div>
 <div class="section-block">
-  <div class="adh-overall">{$overallRing}</div>
-  <div class="adh-totals">
-    <span>Scheduled: <strong>{$total}</strong></span>
-    <span>Taken: <strong style="color:#18BFA6;">{$taken}</strong></span>
-    <span>Missed: <strong style="color:#E5484D;">{$missed}</strong></span>
-    <span>Skipped: <strong style="color:#F5A524;">{$skipped}</strong></span>
-  </div>
-  <table style="margin-top:10pt;">
-    <thead><tr><th>Medication</th><th>Adherence</th><th>Taken</th><th>Missed</th><th>Skipped</th><th>Total Scheduled</th></tr></thead>
+  <table>
+    <thead><tr><th>Overall adherence</th><th>Doses scheduled</th><th>Doses taken</th><th>Doses missed</th><th>Doses skipped</th></tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center;vertical-align:middle;">{$donut}</td>
+        <td style="vertical-align:middle;">{$total}</td>
+        <td style="vertical-align:middle;"><strong style="color:#18BFA6;">{$taken}</strong></td>
+        <td style="vertical-align:middle;"><strong style="color:#E5484D;">{$missed}</strong></td>
+        <td style="vertical-align:middle;"><strong style="color:#F5A524;">{$skipped}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="section-caption">Adherence by medication is broken out below where rates differ from the overall average.</div>
+  <table>
+    <thead><tr><th>Medication</th><th>Adherence</th><th>Missed</th></tr></thead>
     <tbody>{$rows}</tbody>
   </table>
 </div>
@@ -310,40 +320,46 @@ HTML;
     }
 
     // -------------------------------------------------------------------------
-    // Section 4: Daily Dose Summary
+    // Section 4: Missed Dose Detail
     // -------------------------------------------------------------------------
 
-    private function sectionDoseSummary(array $rows): string
+    private function sectionMissedDoseDetail(array $rows): string
     {
+        $maxRows   = 25;
+        $totalRows = count($rows);
+        $shown     = array_slice($rows, 0, $maxRows);
+
         $tableRows = '';
-        foreach ($rows as $row) {
+        foreach ($shown as $row) {
             $date    = $this->h(date('M j, Y', (int) strtotime((string) $row['scheduled_for_date'])));
-            $med     = $this->h((string) $row['name']);
-            $dose    = trim((string) $row['dose_amount'] . ' ' . (string) $row['dose_unit']);
-            $medCell = $med . $this->medTypeBadgeHtml($row) . ($dose !== '' ? " <span style=\"color:#60708A;\">{$this->h($dose)}</span>" : '');
+            $medCell = $this->h((string) $row['name']) . $this->medTypeBadgeHtml($row);
+            $time    = $this->h(date('g:i A', (int) strtotime((string) $row['scheduled_time'])));
+            $status  = (string) $row['status'] === 'skipped'
+                ? '<span class="badge badge-skipped">Skipped</span>'
+                : '<span class="badge badge-missed">Missed</span>';
 
-            $taken   = (int) $row['taken'];
-            $missed  = (int) $row['missed'];
-            $skipped = (int) $row['skipped'];
-
-            $takenCell   = $taken   > 0 ? "<strong style=\"color:#18BFA6;\">{$taken}</strong>"   : '0';
-            $missedCell  = $missed  > 0 ? "<strong style=\"color:#E5484D;\">{$missed}</strong>"  : '0';
-            $skippedCell = $skipped > 0 ? "<strong style=\"color:#F5A524;\">{$skipped}</strong>" : '0';
-
-            $tableRows .= "<tr><td>{$date}</td><td>{$medCell}</td><td>{$takenCell}</td><td>{$missedCell}</td><td>{$skippedCell}</td></tr>";
+            $tableRows .= "<tr><td>{$date}</td><td>{$medCell}</td><td>{$time}</td><td>{$status}</td></tr>";
         }
 
         if ($tableRows === '') {
-            $tableRows = '<tr><td colspan="5" class="empty-state">No scheduled dose data for this period.</td></tr>';
+            $tableRows = '<tr><td colspan="4" class="empty-state">No missed or skipped doses in this period.</td></tr>';
+        }
+
+        $overflowNote = '';
+        if ($totalRows > $maxRows) {
+            $extra = $totalRows - $maxRows;
+            $overflowNote = "<div class=\"section-caption\" style=\"margin-top:4pt;\">+ {$extra} additional missed/skipped doses in this period (full list available in app).</div>";
         }
 
         return <<<HTML
-<div class="section-title page-break">Dose History</div>
-<div class="section-block">
+<div class="section-title">Missed Dose Detail</div>
+<div class="section-caption">Showing missed and skipped doses for the reporting period, most recent first.</div>
+<div>
   <table>
-    <thead><tr><th>Date</th><th>Medication</th><th>Taken</th><th>Missed</th><th>Skipped</th></tr></thead>
+    <thead><tr><th>Date</th><th>Medication</th><th>Scheduled Time</th><th>Status</th></tr></thead>
     <tbody>{$tableRows}</tbody>
   </table>
+  {$overflowNote}
 </div>
 HTML;
     }
@@ -368,6 +384,7 @@ HTML;
         }
 
         $html = '<div class="section-title page-break">Pain Level Tracking</div>';
+        $html .= '<div class="section-caption">Recorded after each dose for medications with pain tracking enabled. Chart shows daily pain level (1–10) over the reporting period. Detailed single-day levels can be viewed in the app.</div>';
 
         foreach ($trackedMeds as $med) {
             $medId     = (int) $med['id'];
@@ -455,6 +472,7 @@ HTML;
         }
 
         $html = '<div class="section-title page-break">Mood & Wellbeing Tracking</div>';
+        $html .= '<div class="section-caption">Recorded after each dose for medications with mood tracking enabled. Chart shows daily mood level (1–10) over the reporting period. Detailed single-day levels can be viewed in the app.</div>';
 
         foreach ($trackedMeds as $med) {
             $medId     = (int) $med['id'];
@@ -548,6 +566,7 @@ HTML;
 
         return <<<HTML
 <div class="section-title page-break">Reported Side Effects</div>
+<div class="section-caption">Patient-logged side effects for the reporting period, most recent first.</div>
 <div class="section-block">
   <table>
     <thead><tr><th>Date</th><th>Medication</th><th>Severity</th><th>Side Effect</th><th>Notes</th></tr></thead>
@@ -569,8 +588,9 @@ HTML;
   <table style="border:none;margin-bottom:0;" cellpadding="0" cellspacing="0">
     <tr>
       <td style="border:none;padding:0;font-size:8pt;color:#60708A;">
-        RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.
-        This report is for informational use only. Always consult your healthcare provider.
+        RxTracker is a self-tracking aid and does not provide medical advice or clinical decision support.
+        This report reflects patient-logged data only and has not been independently verified.
+        Always consult your healthcare provider.
       </td>
       <td style="border:none;padding:0;text-align:right;white-space:nowrap;font-size:8pt;color:#60708A;width:120pt;">
         Generated {$gen}
@@ -597,29 +617,74 @@ HTML;
         return 'data:image/png;base64,' . base64_encode((string) file_get_contents($path));
     }
 
-    private function adherenceRingSvg(int $pct, int $size = 90): string
+    private function adherenceColor(int $pct): string
     {
-        $color = $pct >= 71 ? '#18BFA6' : ($pct >= 51 ? '#EAB308' : ($pct >= 31 ? '#F5A524' : '#E5484D'));
+        if ($pct >= 85) {
+            return '#18BFA6';
+        }
+        if ($pct >= 70) {
+            return '#EAB308';
+        }
+        if ($pct >= 50) {
+            return '#F5A524';
+        }
+        return '#E5484D';
+    }
+
+    /**
+     * Colored adherence donut with the percent in the center, embedded as a
+     * base64 <img> data URI. dompdf ignores inline <svg> markup (it renders
+     * only the text node), and its php-svg-lib backend does not reliably
+     * support stroke-dasharray — so the progress arc is drawn as an explicit
+     * arc path and the whole SVG is delivered through an <img>, the same
+     * embedding already proven to work for the report charts.
+     */
+    private function adherenceDonutImg(int $pct, int $size = 72): string
+    {
+        $pct   = min(100, max(0, $pct));
+        $color = $this->adherenceColor($pct);
         $cx    = $size / 2;
         $cy    = $size / 2;
-        $r     = round($cx - $size * 0.1, 2);
-        $sw    = round($size * 0.1, 2);
-        $circ  = round(2 * M_PI * $r, 2);
-        $off   = round($circ * (1 - min(100, max(0, $pct)) / 100), 2);
-        $fs    = max(7, (int) round($size * 0.22));
+        $sw    = round($size * 0.11, 2);
+        $r     = round($cx - $sw / 2 - 1, 2);
+        $fs    = max(7, (int) round($size * 0.21));
+        $textY = round($cy + $fs * 0.35, 2);
 
-        return sprintf(
-            '<svg width="%1$d" height="%1$d" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %1$d %1$d">' .
-            '<circle cx="%2$s" cy="%2$s" r="%3$s" fill="none" stroke="#e2e8f0" stroke-width="%4$s"/>' .
-            '<circle cx="%2$s" cy="%2$s" r="%3$s" fill="none" stroke="%5$s" stroke-width="%4$s"' .
-            ' stroke-dasharray="%6$s" stroke-dashoffset="%7$s"' .
-            ' transform="rotate(-90 %2$s %2$s)" stroke-linecap="round"/>' .
-            '<text x="%2$s" y="%2$s" text-anchor="middle" dy="0.35em"' .
-            ' font-size="%8$d" font-weight="bold" fill="%5$s"' .
-            ' font-family="DejaVu Sans, sans-serif">%9$d%%</text>' .
-            '</svg>',
-            $size, $cx, $r, $sw, $color, $circ, $off, $fs, $pct
+        $track = sprintf(
+            '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="#e2e8f0" stroke-width="%s"/>',
+            $cx, $cy, $r, $sw
         );
+
+        if ($pct >= 100) {
+            $arc = sprintf(
+                '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="%s"/>',
+                $cx, $cy, $r, $color, $sw
+            );
+        } elseif ($pct <= 0) {
+            $arc = '';
+        } else {
+            $startAngle = -M_PI / 2; // 12 o'clock
+            $endAngle   = $startAngle + 2 * M_PI * $pct / 100;
+            $x0 = round($cx + $r * cos($startAngle), 2);
+            $y0 = round($cy + $r * sin($startAngle), 2);
+            $x1 = round($cx + $r * cos($endAngle), 2);
+            $y1 = round($cy + $r * sin($endAngle), 2);
+            $largeArc = $pct > 50 ? 1 : 0;
+            $arc = sprintf(
+                '<path d="M %s %s A %s %s 0 %d 1 %s %s" fill="none" stroke="%s" stroke-width="%s" stroke-linecap="round"/>',
+                $x0, $y0, $r, $r, $largeArc, $x1, $y1, $color, $sw
+            );
+        }
+
+        $svg = sprintf(
+            '<svg width="%1$d" height="%1$d" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %1$d %1$d">%2$s%3$s' .
+            '<text x="%4$s" y="%5$s" text-anchor="middle" font-size="%6$d" font-weight="bold" fill="%7$s"' .
+            ' font-family="DejaVu Sans, sans-serif">%8$d%%</text></svg>',
+            $size, $track, $arc, $cx, $textY, $fs, $color, $pct
+        );
+
+        return '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+            . '" width="' . $size . '" height="' . $size . '" style="display:inline-block;">';
     }
 
     private function daysOnMedication(array $med): int
