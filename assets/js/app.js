@@ -1179,14 +1179,20 @@ const painGraphModal = document.querySelector('[data-pain-graph-modal]');
 const painGraphTitle = document.querySelector('[data-pain-graph-title]');
 const painGraphBody = document.querySelector('[data-pain-graph-body]');
 const painGraphEmpty = document.querySelector('[data-pain-graph-empty]');
+const painGraphDayBanner = document.querySelector('[data-pain-graph-day-banner]');
+const painGraphDayLabel = document.querySelector('[data-pain-graph-day-label]');
 
 let painGraphMedId = null;
 let painGraphDays = 7;
+let painGraphDate = null;     // set when a multi-day point is clicked (single-day view)
+let painGraphPrevDays = 7;    // range to restore when leaving the single-day view
 
 const openPainGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!painGraphModal) return;
   painGraphMedId = medicationId;
   painGraphDays = 0;
+  painGraphDate = null;
+  painGraphPrevDays = 7;
   const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
   if (painGraphTitle) painGraphTitle.textContent = titleBase + ' — Pain Trend';
   painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
@@ -1218,6 +1224,9 @@ const escSvg = (str) => String(str)
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
+
+const formatGraphDay = (d) =>
+  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 const renderPainChart = (container, data) => {
   const W = 500, H = 200;
@@ -1261,14 +1270,14 @@ const renderPainChart = (container, data) => {
   // Polyline
   const points = byDate.map(({ level }, i) => `${xScale(i).toFixed(1)},${yScale(level).toFixed(1)}`).join(' ');
 
-  // Circles with tooltip
+  // Circles with tooltip; clicking one drills into that day's levels
   let circles = '';
   byDate.forEach(({ date, level, pts }, i) => {
     const x = xScale(i).toFixed(1);
     const y = yScale(level).toFixed(1);
     const color = painLevelColor(Math.round(level));
     const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
-    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${escSvg(date)}&#10;${tipLines}</title></circle>`;
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5" data-date="${escSvg(date)}" style="cursor:pointer"><title>${escSvg(date)}&#10;${tipLines}&#10;Click to view this day</title></circle>`;
   });
 
   const yAxisCY = (mt + chartH / 2).toFixed(1);
@@ -1499,15 +1508,25 @@ const loadPainGraph = async () => {
   if (!painGraphBody || !painGraphEmpty) return;
   painGraphBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
   painGraphEmpty.hidden = true;
+
+  const singleDay = painGraphDate !== null || painGraphDays === 0;
+  if (painGraphDayBanner) {
+    painGraphDayBanner.hidden = painGraphDate === null;
+    if (painGraphDate !== null && painGraphDayLabel) {
+      painGraphDayLabel.textContent = `Showing ${formatGraphDay(painGraphDate)}`;
+    }
+  }
+
   try {
-    const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painGraphMedId ?? '')}&days=${painGraphDays}`);
+    const dateParam = painGraphDate !== null ? `&date=${encodeURIComponent(painGraphDate)}` : '';
+    const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painGraphMedId ?? '')}&days=${singleDay ? 0 : painGraphDays}${dateParam}`);
     const payload = await resp.json();
     if (!payload.ok || payload.data.length === 0) {
       painGraphBody.innerHTML = '';
       painGraphEmpty.hidden = false;
       return;
     }
-    if (painGraphDays === 0) {
+    if (singleDay) {
       renderPainChartToday(painGraphBody, payload.data);
     } else {
       renderPainChart(painGraphBody, payload.data);
@@ -1523,8 +1542,28 @@ painGraphModal?.querySelectorAll('.range-tab').forEach((tab) => {
     painGraphModal.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
     tab.classList.add('is-active');
     painGraphDays = parseInt(tab.dataset.range ?? '7', 10);
+    painGraphDate = null;
     loadPainGraph();
   });
+});
+
+// Clicking a point on a multi-day pain chart drills into that day's levels
+painGraphBody?.addEventListener('click', (event) => {
+  const dot = event.target.closest('circle[data-date]');
+  if (!dot) return;
+  painGraphPrevDays = painGraphDays;
+  painGraphDate = dot.dataset.date ?? null;
+  painGraphModal?.querySelectorAll('.range-tab').forEach((t) => t.classList.remove('is-active'));
+  loadPainGraph();
+});
+
+document.querySelector('[data-pain-graph-day-back]')?.addEventListener('click', () => {
+  painGraphDate = null;
+  painGraphDays = painGraphPrevDays;
+  painGraphModal?.querySelectorAll('.range-tab').forEach((t) => {
+    t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === painGraphDays);
+  });
+  loadPainGraph();
 });
 
 document.querySelectorAll('[data-open-pain-graph]').forEach((btn) => {
@@ -1547,7 +1586,9 @@ document.querySelector('[data-pain-graph-print]')?.addEventListener('click', () 
   const svg = painGraphBody?.querySelector('svg');
   if (!svg) return;
   const title = painGraphTitle?.textContent ?? 'Pain Level Trend';
-  const rangeLabel = painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`;
+  const rangeLabel = painGraphDate !== null
+    ? formatGraphDay(painGraphDate)
+    : (painGraphDays === 0 ? 'Today' : `Last ${painGraphDays} days`);
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
   if (!win) return;
@@ -1586,9 +1627,6 @@ let moodGraphDays = 7;
 let moodGraphDate = null;     // set when a multi-day point is clicked (single-day view)
 let moodGraphPrevDays = 7;    // range to restore when leaving the single-day view
 
-const formatMoodDay = (d) =>
-  new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-
 const openMoodGraphModal = (medicationId, medicationName, medicationDose = '') => {
   if (!moodGraphModal) return;
   moodGraphMedId = medicationId;
@@ -1622,7 +1660,7 @@ const loadMoodGraph = async () => {
   if (moodGraphDayBanner) {
     moodGraphDayBanner.hidden = moodGraphDate === null;
     if (moodGraphDate !== null && moodGraphDayLabel) {
-      moodGraphDayLabel.textContent = `Showing ${formatMoodDay(moodGraphDate)}`;
+      moodGraphDayLabel.textContent = `Showing ${formatGraphDay(moodGraphDate)}`;
     }
   }
 
@@ -1696,7 +1734,7 @@ document.querySelector('[data-mood-graph-print]')?.addEventListener('click', () 
   if (!svg) return;
   const title = moodGraphTitle?.textContent ?? 'Mood Trend';
   const rangeLabel = moodGraphDate !== null
-    ? formatMoodDay(moodGraphDate)
+    ? formatGraphDay(moodGraphDate)
     : (moodGraphDays === 0 ? 'Today' : `Last ${moodGraphDays} days`);
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const win = window.open('', '_blank', 'width=1200,height=800');
@@ -1730,20 +1768,34 @@ const painPageMedName = document.querySelector('[data-pain-page-med-name]');
 if (painPageBody) {
   let painPageMedId = 0;
   let painPageDays = 0;
+  let painPageDate = null;
+  let painPagePrevDays = 0;
+  const painPageDayBanner = document.querySelector('[data-pain-page-day-banner]');
+  const painPageDayLabel = document.querySelector('[data-pain-page-day-label]');
 
   const loadPainPageGraph = async () => {
     if (!painPageMedId) return;
     painPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     painPageEmpty.hidden = true;
+
+    const singleDay = painPageDate !== null || painPageDays === 0;
+    if (painPageDayBanner) {
+      painPageDayBanner.hidden = painPageDate === null;
+      if (painPageDate !== null && painPageDayLabel) {
+        painPageDayLabel.textContent = `Showing ${formatGraphDay(painPageDate)}`;
+      }
+    }
+
     try {
-      const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painPageMedId)}&days=${painPageDays}`);
+      const dateParam = painPageDate !== null ? `&date=${encodeURIComponent(painPageDate)}` : '';
+      const resp = await window.fetch(`index.php?action=pain_trend&medication_id=${encodeURIComponent(painPageMedId)}&days=${singleDay ? 0 : painPageDays}${dateParam}`);
       const payload = await resp.json();
       if (!payload.ok || payload.data.length === 0) {
         painPageBody.innerHTML = '';
         painPageEmpty.hidden = false;
         return;
       }
-      if (painPageDays === 0) {
+      if (singleDay) {
         renderPainChartToday(painPageBody, payload.data);
       } else {
         renderPainChart(painPageBody, payload.data);
@@ -1754,6 +1806,24 @@ if (painPageBody) {
     }
   };
 
+  painPageBody.addEventListener('click', (event) => {
+    const dot = event.target.closest('circle[data-date]');
+    if (!dot) return;
+    painPagePrevDays = painPageDays;
+    painPageDate = dot.dataset.date ?? null;
+    document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
+    loadPainPageGraph();
+  });
+
+  document.querySelector('[data-pain-page-day-back]')?.addEventListener('click', () => {
+    painPageDate = null;
+    painPageDays = painPagePrevDays;
+    document.querySelectorAll('.pain-page-range-tab').forEach((t) => {
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '-1', 10) === painPageDays);
+    });
+    loadPainPageGraph();
+  });
+
   document.querySelectorAll('[data-select-medication]').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
@@ -1761,6 +1831,7 @@ if (painPageBody) {
       painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
       if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
       painPageDays = 0;
+      painPageDate = null;
       document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -1773,6 +1844,7 @@ if (painPageBody) {
       document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       painPageDays = parseInt(tab.dataset.range ?? '0', 10);
+      painPageDate = null;
       loadPainPageGraph();
     });
   });
@@ -1802,7 +1874,7 @@ if (moodPageBody) {
     if (moodPageDayBanner) {
       moodPageDayBanner.hidden = moodPageDate === null;
       if (moodPageDate !== null && moodPageDayLabel) {
-        moodPageDayLabel.textContent = `Showing ${formatMoodDay(moodPageDate)}`;
+        moodPageDayLabel.textContent = `Showing ${formatGraphDay(moodPageDate)}`;
       }
     }
 

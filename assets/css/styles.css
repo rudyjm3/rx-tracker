@@ -2131,6 +2131,10 @@ button.danger:hover {
   margin: 0.5rem 0 0;
 }
 
+.mood-graph-day-banner[hidden] {
+  display: none;
+}
+
 .mood-graph-day-banner {
   align-items: center;
   background: var(--rx-bg);

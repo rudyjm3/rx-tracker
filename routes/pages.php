@@ -517,8 +517,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <i class="fa-solid fa-print" aria-hidden="true"></i>
           </button>
         </div>
+        <p class="mood-graph-day-banner" data-pain-graph-day-banner hidden>
+          <span data-pain-graph-day-label></span>
+          <button type="button" class="mood-graph-day-back" data-pain-graph-day-back>&larr; Back to trend</button>
+        </p>
         <div class="pain-graph-body" data-pain-graph-body></div>
         <p class="pain-graph-empty" data-pain-graph-empty hidden>No pain level data recorded for this period.</p>
+        <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
       </div>
     </div>
   </div>
@@ -725,8 +730,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <button class="pain-page-range-tab" data-range="30">30 days</button>
         <button class="pain-page-range-tab" data-range="90">90 days</button>
       </div>
+      <p class="mood-graph-day-banner" data-pain-page-day-banner hidden>
+        <span data-pain-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-pain-page-day-back>&larr; Back to trend</button>
+      </p>
       <div class="pain-graph-body" data-pain-page-body></div>
       <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
     </div>
 
     <?php endif; ?>
