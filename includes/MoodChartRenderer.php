@@ -20,11 +20,13 @@ final class MoodChartRenderer
     private const FILL_COLOR = '#028AA9';
 
     // Mood scale: low mood = red/bad, high mood = green/good (inverted vs pain).
+    // Mirrors moodLevelColor() in app.js so report dots match the in-app chart.
     private function colorForLevel(float $level): string
     {
+        $level = round($level); // app.js colors by Math.round(average)
         if ($level <= 3) return '#c9213c';
-        if ($level <= 6) return '#e05b30';
-        if ($level <= 8) return '#d97706';
+        if ($level <= 6) return '#d97706';
+        if ($level <= 8) return '#8bb04a';
         return '#2a9d49';
     }
 

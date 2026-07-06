@@ -17,6 +17,7 @@ final class PainChartRenderer
     // Mirror painLevelColor() from app.js
     private function colorForLevel(float $level): string
     {
+        $level = round($level); // app.js colors by Math.round(average)
         if ($level <= 3) return '#2a9d49';
         if ($level <= 6) return '#d97706';
         if ($level <= 8) return '#e05b30';
