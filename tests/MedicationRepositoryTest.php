@@ -70,7 +70,7 @@ $repo->updateMedication($fixedId, 'Fixed Med Updated', '', 'fixed_times', ['09:0
 $edited = $repo->findMedication($fixedId);
 assertSameValue('Fixed Med Updated', $edited['name'], 'Edit should update name');
 assertSameValue('12h', $edited['time_format'], 'time_format should always be 12h');
-assertSameValue(9.0, (float) $edited['current_quantity'], 'Update should reset current_quantity');
+assertSameValue(9.0, (float) $edited['current_quantity'], 'Update with a changed starting quantity should re-baseline current_quantity');
 
 // Medication type validation
 $threw = false;
@@ -167,5 +167,88 @@ $repo->finalizeMissedDoses(new DateTimeImmutable('today 23:59:00'), 30);
 $todayRows = $repo->todaySchedule($today);
 $missedRow = array_values(array_filter($todayRows, static fn(array $row): bool => (int) $row['medication_id'] === $missedMedId))[0] ?? null;
 assertSameValue('missed', $missedRow['status'] ?? null, 'Overdue dose should auto-mark missed.');
+
+// ── Inventory adjustment, un-take restore, and edit-save preservation ─────────
+
+$repo->createMedication('Adjust Med', '', 'fixed_times', ['08:00:00'], null, null, false, 4, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$allAdjust = $repo->activeMedications();
+$adjustId = (int) array_values(array_filter($allAdjust, static fn(array $r): bool => $r['name'] === 'Adjust Med'))[0]['id'];
+
+$repo->recordDoseStatus($adjustId, $today, '08:00:00', 'taken', '');
+$afterTake = $repo->findMedication($adjustId);
+assertSameValue(29.0, (float) $afterTake['current_quantity'], 'Taken dose should deduct one.');
+
+// Manual adjustment corrects the count without touching starting_quantity.
+$repo->adjustQuantity($adjustId, 27.0, 'physical recount');
+$afterAdjust = $repo->findMedication($adjustId);
+assertSameValue(27.0, (float) $afterAdjust['current_quantity'], 'Adjustment should set current_quantity to the corrected count.');
+assertSameValue(30.0, (float) $afterAdjust['starting_quantity'], 'Adjustment must not change starting_quantity.');
+
+$adjustRows = $db->query("SELECT amount, pills_on_hand, entry_type FROM medication_refills WHERE medication_id = {$adjustId}")->fetchAll();
+assertSameValue(1, count($adjustRows), 'Adjustment should log one history row.');
+assertSameValue('adjustment', (string) $adjustRows[0]['entry_type'], 'Adjustment row should be flagged as adjustment.');
+assertSameValue(-2.0, (float) $adjustRows[0]['amount'], 'Adjustment row should store the signed delta.');
+assertSameValue(27.0, (float) $adjustRows[0]['pills_on_hand'], 'Adjustment row should store the resulting count.');
+
+// Adjusting to the current count is a no-op (no history row).
+$repo->adjustQuantity($adjustId, 27.0, 'no change');
+$adjustCount = (int) $db->query("SELECT COUNT(*) FROM medication_refills WHERE medication_id = {$adjustId}")->fetchColumn();
+assertSameValue(1, $adjustCount, 'No-op adjustment should not log a history row.');
+
+// Refill-only stats and "last refill" ignore adjustments.
+$statsYear = (int) (new DateTimeImmutable())->format('Y');
+$adjustStats = $repo->refillSummaryStats($adjustId, $statsYear);
+assertSameValue(0, $adjustStats['count'], 'Refill stats should not count adjustments.');
+assertSameValue(null, $repo->lastRefillForMedication($adjustId), 'Last refill should ignore adjustments.');
+
+// Refill history list includes the adjustment (with no days-since-prev).
+$monthStart = (new DateTimeImmutable('first day of this month'))->format('Y-m-d');
+$monthEnd = (new DateTimeImmutable('last day of this month'))->format('Y-m-d');
+$historyRows = $repo->refillsForMonth($adjustId, $monthStart, $monthEnd);
+assertSameValue(1, count($historyRows), 'History should include the adjustment.');
+assertSameValue('adjustment', (string) $historyRows[0]['entry_type'], 'History row should carry entry_type.');
+assertSameValue(null, $historyRows[0]['days_since_prev'], 'Adjustments should not report days since previous refill.');
+
+// A plain edit-save (starting quantity unchanged) must not reset the count.
+$repo->updateMedication($adjustId, 'Adjust Med', '', 'fixed_times', ['08:00:00'], null, null, false, 4, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$afterPlainSave = $repo->findMedication($adjustId);
+assertSameValue(27.0, (float) $afterPlainSave['current_quantity'], 'Plain save should preserve current_quantity.');
+assertSameValue(30.0, (float) $afterPlainSave['starting_quantity'], 'Plain save should preserve starting_quantity.');
+
+// Reverting a taken dose restores the deducted amount; re-taking deducts again.
+$repo->recordDoseStatus($adjustId, $today, '08:00:00', 'skipped', 'logged by mistake');
+$afterUntake = $repo->findMedication($adjustId);
+assertSameValue(28.0, (float) $afterUntake['current_quantity'], 'Taken -> skipped should restore the deducted dose.');
+$repo->recordDoseStatus($adjustId, $today, '08:00:00', 'taken', '');
+$afterRetake = $repo->findMedication($adjustId);
+assertSameValue(27.0, (float) $afterRetake['current_quantity'], 'Skipped -> taken should deduct again.');
+
+// Deliberately changing the starting quantity still re-baselines the count.
+$repo->updateMedication($adjustId, 'Adjust Med', '', 'fixed_times', ['08:00:00'], null, null, false, 4, false, '', 'prescription', null, null, null, 'pills', 50.0, 1.0);
+$afterRebase = $repo->findMedication($adjustId);
+assertSameValue(50.0, (float) $afterRebase['current_quantity'], 'Changed starting quantity should re-baseline current_quantity.');
+assertSameValue(50.0, (float) $afterRebase['starting_quantity'], 'Changed starting quantity should be stored.');
+
+// Refills are flagged as refill entries and still add to the count.
+$repo->logRefill($adjustId, $today, 10.0, 'pharmacy');
+$afterRefill = $repo->findMedication($adjustId);
+assertSameValue(60.0, (float) $afterRefill['current_quantity'], 'Refill should add to current_quantity.');
+assertSameValue(10.0, (float) $afterRefill['starting_quantity'], 'Refill should set starting_quantity to the refill amount.');
+$refillStats = $repo->refillSummaryStats($adjustId, $statsYear);
+assertSameValue(1, $refillStats['count'], 'Refill stats should count real refills.');
+$lastRefill = $repo->lastRefillForMedication($adjustId);
+assertSameValue(10.0, (float) $lastRefill['amount'], 'Last refill should surface the refill amount.');
+
+// Once a refill exists, edit-save owns neither starting nor current quantity.
+$repo->updateMedication($adjustId, 'Adjust Med', '', 'fixed_times', ['08:00:00'], null, null, false, 4, false, '', 'prescription', null, null, null, 'pills', 99.0, 1.0);
+$afterLockedSave = $repo->findMedication($adjustId);
+assertSameValue(10.0, (float) $afterLockedSave['starting_quantity'], 'Save after a refill should not change starting_quantity.');
+assertSameValue(60.0, (float) $afterLockedSave['current_quantity'], 'Save after a refill should not reset current_quantity.');
+
+// Adjustments still work after a refill exists.
+$repo->adjustQuantity($adjustId, 58.0, 'two pills lost');
+$afterPostRefillAdjust = $repo->findMedication($adjustId);
+assertSameValue(58.0, (float) $afterPostRefillAdjust['current_quantity'], 'Adjustment after refill should set the corrected count.');
+assertSameValue(10.0, (float) $afterPostRefillAdjust['starting_quantity'], 'Adjustment after refill must not change starting_quantity.');
 
 echo "MedicationRepository tests passed.\n";
