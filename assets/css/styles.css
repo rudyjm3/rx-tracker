@@ -589,9 +589,12 @@ h1 {
   color: #fff;
   font-size: 1.5rem;
   font-weight: 900;
+  hyphens: auto;
   letter-spacing: -0.03em;
   line-height: 1.15;
   margin: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .hero-dose-badge {

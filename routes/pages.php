@@ -949,6 +949,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
     <p class="disclaimer">RxTracker is a tracking aid only and does not provide medical advice or clinical decision support.</p>
   </main>
+  <?php include __DIR__ . '/../includes/bottom-nav.php'; ?>
   </body>
   </html>
   <?php
