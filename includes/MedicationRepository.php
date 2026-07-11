@@ -17,6 +17,7 @@ final class MedicationRepository
         $this->ensureAppSettingsPerUser();
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
+        $this->ensureDeductedQuantityColumn();
         $this->ensureFeedbackTypeColumn();
         $this->ensureMoodLevelColumn();
         $this->ensureInstructionsWidened();
@@ -503,7 +504,7 @@ final class MedicationRepository
                  SELECT id, medication_id, refill_date, amount, pills_on_hand, note,
                         ROW_NUMBER() OVER (PARTITION BY medication_id ORDER BY refill_date DESC, id DESC) AS rn
                  FROM medication_refills
-                 WHERE medication_id IN ({$placeholders})
+                 WHERE medication_id IN ({$placeholders}) AND entry_type = 'refill'
              ) ranked
              WHERE rn = 1"
         );
@@ -629,6 +630,31 @@ final class MedicationRepository
 
         $this->db->beginTransaction();
         try {
+            // Once a refill has been logged, the refill flow owns starting_quantity,
+            // so the edit form must not overwrite it. Independently, only re-baseline
+            // current_quantity when the user actually changed the Starting quantity
+            // field — a plain save must not reset the dose-deducted count.
+            $qtyStmt = $this->db->prepare('SELECT starting_quantity FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+            $qtyStmt->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
+            $storedStartRaw = $qtyStmt->fetchColumn();
+            $storedStart = ($storedStartRaw !== false && $storedStartRaw !== null) ? (float) $storedStartRaw : null;
+
+            $refillStmt = $this->db->prepare("SELECT 1 FROM medication_refills WHERE medication_id = :id AND entry_type = 'refill' LIMIT 1");
+            $refillStmt->execute(['id' => $id]);
+            $canRebase = $refillStmt->fetchColumn() === false;
+            $startChanged = $storedStart === null || abs($storedStart - $startingQuantity) > 0.0005;
+
+            $inventorySql = '';
+            $inventoryParams = [];
+            if ($canRebase) {
+                $inventorySql .= ' starting_pill_count = 0, starting_quantity = :starting_quantity,';
+                $inventoryParams['starting_quantity'] = $startingQuantity;
+                if ($startChanged) {
+                    $inventorySql .= ' current_quantity = :current_quantity,';
+                    $inventoryParams['current_quantity'] = $startingQuantity;
+                }
+            }
+
             $statement = $this->db->prepare(
                 'UPDATE medications
                  SET name = :name,
@@ -638,10 +664,7 @@ final class MedicationRepository
                      time_format = :time_format,
                      interval_hours = :interval_hours,
                      first_dose_time = :first_dose_time,
-                     as_needed = :as_needed,
-                     starting_pill_count = CASE WHEN NOT EXISTS (
-                         SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id
-                     ) THEN :starting_pill_count ELSE starting_pill_count END,
+                     as_needed = :as_needed,' . $inventorySql . '
                      low_supply_threshold = :low_supply_threshold,
                      track_dose_feedback = :track_dose_feedback,
                      feedback_type = :feedback_type,
@@ -652,19 +675,12 @@ final class MedicationRepository
                      dose_form = :dose_form,
                      inventory_type = :inventory_type,
                      inventory_unit = :inventory_unit,
-                     starting_quantity = CASE WHEN NOT EXISTS (
-                         SELECT 1 FROM medication_refills WHERE medication_id = :refill_check_id2
-                     ) THEN :starting_quantity ELSE starting_quantity END,
-                     current_quantity = :current_quantity,
                      quantity_per_dose = :quantity_per_dose
                  WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             );
             $statement->execute(array_merge([
                 'id' => $id,
                 'user_id' => $this->userId,
-                'refill_check_id' => $id,
-                'refill_check_id2' => $id,
-                'starting_pill_count' => 0,
                 'name' => $name,
                 'start_date' => $startDate,
                 'instructions' => $instructions,
@@ -683,10 +699,8 @@ final class MedicationRepository
                 'dose_form' => $doseForm,
                 'inventory_type' => $inventoryType,
                 'inventory_unit' => $inventoryUnit,
-                'starting_quantity' => $startingQuantity,
-                'current_quantity' => $startingQuantity,
                 'quantity_per_dose' => $quantityPerDose,
-            ], $this->profileParam()));
+            ], $inventoryParams, $this->profileParam()));
 
             $this->replaceScheduleTimes($id, $doseTimes, $doseQtys);
             $this->db->commit();
@@ -732,32 +746,29 @@ final class MedicationRepository
             throw new RuntimeException('Medication not found.');
         }
 
-        $doseQtyOverride = null;
-        if ($status === 'taken') {
-            if ($groupId !== null) {
-                $stmt = $this->db->prepare(
-                    'SELECT quantity_per_dose FROM medication_group_members
-                     WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
-                );
-                $stmt->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
-                $val = $stmt->fetchColumn();
-                $doseQtyOverride = ($val !== false && $val !== null) ? (float) $val : null;
-            } else {
-                $stmt = $this->db->prepare(
-                    'SELECT quantity_per_dose FROM medication_schedule_times
-                     WHERE medication_id = :medication_id AND reminder_time = :reminder_time LIMIT 1'
-                );
-                $stmt->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
-                $val = $stmt->fetchColumn();
-                $doseQtyOverride = ($val !== false && $val !== null) ? (float) $val : null;
-            }
+        // Needed both to deduct on a transition into 'taken' and to restore the
+        // same amount when a taken dose is reverted to skipped/missed.
+        if ($groupId !== null) {
+            $stmt = $this->db->prepare(
+                'SELECT quantity_per_dose FROM medication_group_members
+                 WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
+            );
+            $stmt->execute(['group_id' => $groupId, 'medication_id' => $medicationId]);
+        } else {
+            $stmt = $this->db->prepare(
+                'SELECT quantity_per_dose FROM medication_schedule_times
+                 WHERE medication_id = :medication_id AND reminder_time = :reminder_time LIMIT 1'
+            );
+            $stmt->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
         }
+        $val = $stmt->fetchColumn();
+        $doseQtyOverride = ($val !== false && $val !== null) ? (float) $val : null;
 
         $this->db->beginTransaction();
         try {
             // Fetch existing record first so we can skip the interval check for missed→taken updates.
             $existing = $this->db->prepare(
-                'SELECT id, status
+                'SELECT id, status, deducted_quantity
                  FROM dose_logs
                  WHERE medication_id = :medication_id
                    AND scheduled_for_date = :scheduled_for_date
@@ -793,18 +804,29 @@ final class MedicationRepository
             $takenAt = $customTakenAt ?? (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
             if (is_array($row)) {
-                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at WHERE id = :id');
-                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
+                // Track what this specific log actually removed from inventory so a
+                // later revert restores that exact amount, even if quantity_per_dose
+                // or a group/slot override has been edited in the meantime.
+                $newDeducted = $row['deducted_quantity'];
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
-                    $this->deductInventory($medicationId, $doseQtyOverride);
+                    $newDeducted = $this->deductInventory($medicationId, $doseQtyOverride);
+                } elseif ((string) $row['status'] === 'taken' && $status !== 'taken') {
+                    $storedDeducted = $row['deducted_quantity'];
+                    // Logs from before deducted_quantity existed fall back to the
+                    // currently configured amount.
+                    $this->restoreInventory($medicationId, $storedDeducted !== null ? (float) $storedDeducted : $doseQtyOverride);
+                    $newDeducted = null;
                 }
+                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at, deducted_quantity = :deducted_quantity WHERE id = :id');
+                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'deducted_quantity' => $newDeducted, 'id' => (int) $row['id']]);
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
             } else {
+                $deducted = $status === 'taken' ? $this->deductInventory($medicationId, $doseQtyOverride) : null;
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, mood_level, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :mood_level, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, mood_level, taken_at, deducted_quantity)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :mood_level, :taken_at, :deducted_quantity)'
                 );
                 $insert->execute([
                     'medication_id' => $medicationId,
@@ -815,10 +837,8 @@ final class MedicationRepository
                     'pain_level' => $painLevel,
                     'mood_level' => $moodLevel,
                     'taken_at' => $takenAt,
+                    'deducted_quantity' => $deducted,
                 ]);
-                if ($status === 'taken') {
-                    $this->deductInventory($medicationId, $doseQtyOverride);
-                }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
@@ -886,20 +906,23 @@ final class MedicationRepository
                 $this->assertIntervalAllowed($medicationId, $now);
             }
 
+            $deducted = $this->deductInventory($medicationId);
+
             if ($row !== false) {
                 $update = $this->db->prepare(
-                    'UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at WHERE id = :id'
+                    'UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at, deducted_quantity = :deducted_quantity WHERE id = :id'
                 );
                 $update->execute([
                     'status'   => 'taken',
                     'note'     => $note !== '' ? $note : 'Logged now',
                     'taken_at' => $takenAt->format('Y-m-d H:i:s'),
+                    'deducted_quantity' => $deducted,
                     'id'       => (int) $row['id'],
                 ]);
             } else {
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at, deducted_quantity)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at, :deducted_quantity)'
                 );
                 $insert->execute([
                     'medication_id'      => $medicationId,
@@ -908,10 +931,10 @@ final class MedicationRepository
                     'status'             => 'taken',
                     'note'               => $note !== '' ? $note : 'Logged now',
                     'taken_at'           => $takenAt->format('Y-m-d H:i:s'),
+                    'deducted_quantity'  => $deducted,
                 ]);
             }
 
-            $this->deductInventory($medicationId);
             $this->clearPostponeForDose($medicationId, $date, $time);
             $this->db->commit();
         } catch (PDOException $exception) {
@@ -1597,8 +1620,8 @@ final class MedicationRepository
             ], $this->profileParam()));
 
             $insert = $this->db->prepare(
-                'INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note)
-                 VALUES (:medication_id, :refill_date, :amount, :pills_on_hand, :note)'
+                "INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note, entry_type)
+                 VALUES (:medication_id, :refill_date, :amount, :pills_on_hand, :note, 'refill')"
             );
             $insert->execute([
                 'medication_id' => $medicationId,
@@ -1617,14 +1640,73 @@ final class MedicationRepository
         }
     }
 
+    /**
+     * Manually correct the on-hand count (e.g. after a physical recount) without
+     * touching starting_quantity, so the supply bar's denominator is preserved.
+     * The correction is logged in medication_refills as an 'adjustment' entry.
+     */
+    public function adjustQuantity(int $medicationId, float $newCount, string $note = ''): void
+    {
+        if ($newCount < 0) {
+            throw new RuntimeException('Corrected count cannot be negative.');
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare('SELECT current_quantity, low_supply_threshold FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1');
+            $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+            $row = $stmt->fetch();
+            if (!is_array($row)) {
+                throw new RuntimeException('Medication not found.');
+            }
+            $current = (float) ($row['current_quantity'] ?? 0);
+            $delta = $newCount - $current;
+
+            if (abs($delta) < 0.0005) {
+                $this->db->commit();
+                return;
+            }
+
+            $update = $this->db->prepare(
+                'UPDATE medications SET current_quantity = :current_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            );
+            $update->execute(array_merge([
+                'current_quantity' => $newCount,
+                'id' => $medicationId,
+                'user_id' => $this->userId,
+            ], $this->profileParam()));
+
+            $insert = $this->db->prepare(
+                "INSERT INTO medication_refills (medication_id, refill_date, amount, pills_on_hand, note, entry_type)
+                 VALUES (:medication_id, :refill_date, :amount, :pills_on_hand, :note, 'adjustment')"
+            );
+            $insert->execute([
+                'medication_id' => $medicationId,
+                'refill_date' => date('Y-m-d'),
+                'amount' => $delta,
+                'pills_on_hand' => $newCount,
+                'note' => $note,
+            ]);
+
+            if ($newCount > (float) ($row['low_supply_threshold'] ?? 0)) {
+                $this->clearStockNotificationsForMedication($medicationId);
+            }
+
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            $this->db->rollBack();
+            throw $exception;
+        }
+    }
+
     public function lastRefillForMedication(int $medicationId): ?array
     {
         $statement = $this->db->prepare(
-            'SELECT id, refill_date, amount, pills_on_hand, note
+            "SELECT id, refill_date, amount, pills_on_hand, note
              FROM medication_refills
-             WHERE medication_id = :medication_id
+             WHERE medication_id = :medication_id AND entry_type = 'refill'
              ORDER BY refill_date DESC, id DESC
-             LIMIT 1'
+             LIMIT 1"
         );
         $statement->execute(['medication_id' => $medicationId]);
         $row = $statement->fetch();
@@ -1635,14 +1717,15 @@ final class MedicationRepository
     public function refillsForMonth(int $medicationId, string $monthStart, string $monthEnd): array
     {
         $statement = $this->db->prepare(
-            'SELECT r1.id, r1.refill_date, r1.amount, r1.pills_on_hand, r1.note,
+            "SELECT r1.id, r1.refill_date, r1.amount, r1.pills_on_hand, r1.note, r1.entry_type,
                     (SELECT r2.refill_date FROM medication_refills r2
                      WHERE r2.medication_id = r1.medication_id AND r2.refill_date < r1.refill_date
+                       AND r2.entry_type = 'refill'
                      ORDER BY r2.refill_date DESC LIMIT 1) AS prev_refill_date
              FROM medication_refills r1
              WHERE r1.medication_id = :medication_id
                AND r1.refill_date BETWEEN :month_start AND :month_end
-             ORDER BY r1.refill_date DESC, r1.id DESC'
+             ORDER BY r1.refill_date DESC, r1.id DESC"
         );
         $statement->execute([
             'medication_id' => $medicationId,
@@ -1652,7 +1735,8 @@ final class MedicationRepository
         $rows = $statement->fetchAll();
 
         foreach ($rows as &$row) {
-            if ($row['prev_refill_date'] !== null) {
+            // "Days since prev" is only meaningful between pharmacy refills.
+            if ($row['prev_refill_date'] !== null && (string) $row['entry_type'] === 'refill') {
                 $prev = new DateTimeImmutable((string) $row['prev_refill_date']);
                 $curr = new DateTimeImmutable((string) $row['refill_date']);
                 $row['days_since_prev'] = (int) $prev->diff($curr)->days;
@@ -1671,11 +1755,11 @@ final class MedicationRepository
         $yearEnd = sprintf('%04d-12-31', $year);
 
         $stmt = $this->db->prepare(
-            'SELECT refill_date
+            "SELECT refill_date
              FROM medication_refills
-             WHERE medication_id = :medication_id
+             WHERE medication_id = :medication_id AND entry_type = 'refill'
                AND refill_date BETWEEN :year_start AND :year_end
-             ORDER BY refill_date ASC'
+             ORDER BY refill_date ASC"
         );
         $stmt->execute([
             'medication_id' => $medicationId,
@@ -1888,26 +1972,53 @@ final class MedicationRepository
         return sprintf('%02d:%02d', $hour, $minute);
     }
 
-    private function deductInventory(int $medicationId, ?float $quantityOverride = null): void
+    /**
+     * Deducts one dose from inventory (clamped at 0) and returns the amount
+     * actually removed, so callers can record it on the dose log and later
+     * restore exactly that amount even if quantity_per_dose changes.
+     */
+    private function deductInventory(int $medicationId, ?float $quantityOverride = null): float
+    {
+        $stmt = $this->db->prepare(
+            'SELECT current_quantity, quantity_per_dose FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        );
+        $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            return 0.0;
+        }
+
+        $current = max(0.0, (float) ($row['current_quantity'] ?? 0));
+        $dose = max(0.0, $quantityOverride ?? (float) ($row['quantity_per_dose'] ?? 1));
+        $deducted = min($current, $dose);
+
+        $this->db->prepare(
+            'UPDATE medications SET current_quantity = :current_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        )->execute(array_merge([
+            'current_quantity' => $current - $deducted,
+            'id' => $medicationId,
+            'user_id' => $this->userId,
+        ], $this->profileParam()));
+
+        return $deducted;
+    }
+
+    /**
+     * Inverse of deductInventory: add the dose amount back when a taken dose
+     * is reverted (taken -> skipped/missed), so the count doesn't drift.
+     */
+    private function restoreInventory(int $medicationId, ?float $quantityOverride = null): void
     {
         if ($quantityOverride !== null) {
             $this->db->prepare(
                 'UPDATE medications
-                 SET current_quantity = CASE
-                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
-                     WHEN current_quantity >= :qty THEN current_quantity - :qty2
-                     ELSE 0
-                 END
+                 SET current_quantity = COALESCE(current_quantity, 0) + :qty
                  WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
-            )->execute(array_merge(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+            )->execute(array_merge(['qty' => $quantityOverride, 'id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         } else {
             $this->db->prepare(
                 'UPDATE medications
-                 SET current_quantity = CASE
-                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
-                     WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
-                     ELSE 0
-                 END
+                 SET current_quantity = COALESCE(current_quantity, 0) + quantity_per_dose
                  WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
             )->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         }
@@ -2688,6 +2799,38 @@ final class MedicationRepository
         }
     }
 
+    private function ensureDeductedQuantityColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE 'deducted_quantity'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN deducted_quantity DECIMAL(10,3) NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(dose_logs)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'deducted_quantity') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN deducted_quantity REAL NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
     private function ensureFeedbackTypeColumn(): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
@@ -2813,9 +2956,10 @@ final class MedicationRepository
                         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                         medication_id INT UNSIGNED NOT NULL,
                         refill_date DATE NOT NULL,
-                        amount INT UNSIGNED NOT NULL,
-                        pills_on_hand INT UNSIGNED NOT NULL,
+                        amount DECIMAL(10,3) NOT NULL,
+                        pills_on_hand DECIMAL(10,3) NOT NULL,
                         note VARCHAR(255) NOT NULL DEFAULT '',
+                        entry_type VARCHAR(20) NOT NULL DEFAULT 'refill',
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         INDEX idx_refills_med_date (medication_id, refill_date),
                         CONSTRAINT fk_refills_medication
@@ -2823,6 +2967,18 @@ final class MedicationRepository
                             ON DELETE CASCADE
                     ) ENGINE=InnoDB"
                 );
+                $check = $this->db->query("SHOW COLUMNS FROM medication_refills LIKE 'entry_type'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medication_refills ADD COLUMN entry_type VARCHAR(20) NOT NULL DEFAULT 'refill'");
+                }
+                // Manual adjustments store a signed delta, so amount must not stay
+                // INT UNSIGNED (the original definition on already-deployed tables).
+                $check = $this->db->query("SHOW COLUMNS FROM medication_refills LIKE 'amount'");
+                $column = $check !== false ? $check->fetch() : false;
+                if (is_array($column) && stripos((string) ($column['Type'] ?? ''), 'int') !== false) {
+                    $this->db->exec('ALTER TABLE medication_refills MODIFY COLUMN amount DECIMAL(10,3) NOT NULL');
+                    $this->db->exec('ALTER TABLE medication_refills MODIFY COLUMN pills_on_hand DECIMAL(10,3) NOT NULL');
+                }
                 return;
             }
             if ($driver === 'sqlite') {
@@ -2831,12 +2987,17 @@ final class MedicationRepository
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         medication_id INTEGER NOT NULL,
                         refill_date TEXT NOT NULL,
-                        amount INTEGER NOT NULL,
-                        pills_on_hand INTEGER NOT NULL,
+                        amount NUMERIC NOT NULL,
+                        pills_on_hand NUMERIC NOT NULL,
                         note TEXT NOT NULL DEFAULT '',
+                        entry_type TEXT NOT NULL DEFAULT 'refill',
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )"
                 );
+                $check = $this->db->query('PRAGMA table_info(medication_refills)');
+                if ($check !== false && !in_array('entry_type', array_column($check->fetchAll(), 'name'), true)) {
+                    $this->db->exec("ALTER TABLE medication_refills ADD COLUMN entry_type TEXT NOT NULL DEFAULT 'refill'");
+                }
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.

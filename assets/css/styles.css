@@ -5047,6 +5047,23 @@ details.med-detail-section[open] .med-detail-section-title::after {
   font-style: italic;
 }
 
+.refill-entry-badge {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.12rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.refill-history-entry--adjustment .refill-entry-amount {
+  background: rgba(10, 138, 200, 0.1);
+  color: var(--rx-blue);
+}
+
 @media (max-width: 600px) {
   .refill-month-nav {
     gap: 0.3rem;

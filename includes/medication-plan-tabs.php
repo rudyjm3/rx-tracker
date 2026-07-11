@@ -125,6 +125,19 @@
                   </button>
                   <button
                     type="button"
+                    class="med-actions-item"
+                    data-open-adjust-qty-modal
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                    data-medication-dose="<?= e(formattedDose($medication)) ?>"
+                    data-current-quantity="<?= e((string) (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0)) ?>"
+                    data-inventory-unit="<?= e((string) ($medication['inventory_unit'] ?? 'tablets')) ?>"
+                  >
+                    <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                    Adjust quantity
+                  </button>
+                  <button
+                    type="button"
                     class="med-actions-item med-actions-item--danger"
                     data-open-discontinue-modal
                     data-medication-id="<?= e((string) $medication['id']) ?>"

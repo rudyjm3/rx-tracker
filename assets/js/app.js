@@ -1125,6 +1125,8 @@ document.addEventListener('keydown', (event) => {
     closeRefillHistoryModal();
   } else if (refillModal?.classList.contains('is-open')) {
     closeRefillModal();
+  } else if (adjustQtyModal?.classList.contains('is-open')) {
+    closeAdjustQtyModal();
   } else if (discontinueModal?.classList.contains('is-open')) {
     closeDiscontinueModal();
   } else if (medDetailModal?.classList.contains('is-open')) {
@@ -2331,7 +2333,7 @@ const hideAlarmOverlay = () => {
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal,
-   discontinueModal]
+   discontinueModal, adjustQtyModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
@@ -4090,6 +4092,88 @@ refillModal?.addEventListener('click', (event) => {
   if (event.target === refillModal) closeRefillModal();
 });
 
+// ── Adjust quantity modal ─────────────────────────────────────────────────────
+
+const adjustQtyModal = document.querySelector('[data-adjust-qty-modal]');
+const adjustQtyMedNameEl = document.querySelector('[data-adjust-qty-med-name]');
+const adjustQtyMedDoseEl = document.querySelector('[data-adjust-qty-med-dose]');
+const adjustQtyMedicationIdEl = document.querySelector('[data-adjust-qty-medication-id]');
+const adjustQtyCurrentEl = document.querySelector('[data-adjust-qty-current]');
+const adjustQtyUnitEl = document.querySelector('[data-adjust-qty-unit]');
+const adjustQtyInput = document.querySelector('[data-adjust-qty-input]');
+const adjustQtyForm = document.querySelector('[data-adjust-qty-form]');
+
+const formatQty = (value) => {
+  const num = parseFloat(value);
+  return Number.isNaN(num) ? '0' : String(num);
+};
+
+const openAdjustQtyModal = (medicationId, medicationName, medicationDose, currentQuantity, inventoryUnit) => {
+  if (!adjustQtyModal) return;
+  if (adjustQtyForm) adjustQtyForm.reset();
+  if (adjustQtyMedNameEl) adjustQtyMedNameEl.textContent = medicationName;
+  if (adjustQtyMedDoseEl) adjustQtyMedDoseEl.textContent = medicationDose;
+  if (adjustQtyMedicationIdEl) adjustQtyMedicationIdEl.value = medicationId;
+  if (adjustQtyCurrentEl) adjustQtyCurrentEl.textContent = `${formatQty(currentQuantity)} ${inventoryUnit}`;
+  if (adjustQtyUnitEl) adjustQtyUnitEl.textContent = inventoryUnit;
+  if (adjustQtyInput) adjustQtyInput.value = formatQty(currentQuantity);
+  closeMedPlanModal();
+  adjustQtyModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeAdjustQtyModal = () => {
+  if (!adjustQtyModal) return;
+  if (!adjustQtyModal.classList.contains('is-open')) return;
+  adjustQtyModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-open-adjust-qty-modal]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { medicationId = '', medicationName = '', medicationDose = '', currentQuantity = '0', inventoryUnit = 'tablets' } = btn.dataset;
+    if (!medicationId) return;
+    openAdjustQtyModal(medicationId, medicationName, medicationDose, currentQuantity, inventoryUnit);
+  });
+});
+
+document.querySelectorAll('[data-close-adjust-qty-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeAdjustQtyModal);
+});
+
+adjustQtyModal?.addEventListener('click', (event) => {
+  if (event.target === adjustQtyModal) closeAdjustQtyModal();
+});
+
+adjustQtyForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitBtn = adjustQtyForm.querySelector('[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'adjust_quantity',
+      medication_id: adjustQtyMedicationIdEl?.value ?? '',
+      new_count: adjustQtyInput?.value ?? '',
+      note: adjustQtyForm.querySelector('[name="note"]')?.value ?? '',
+    });
+    const resp = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to adjust quantity.');
+    closeAdjustQtyModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message || 'Failed to adjust quantity. Please try again.');
+    if (submitBtn) submitBtn.disabled = false;
+  }
+});
+
 // ── Discontinue Use modal ─────────────────────────────────────────────────────
 
 const discontinueModal = document.querySelector('[data-discontinue-modal]');
@@ -4388,11 +4472,18 @@ const loadRefillHistory = async () => {
         const noteHtml = r.note
           ? `<span class="refill-note">${escHtml(r.note)}</span>`
           : '';
-        listHtml += `<li class="refill-history-entry">
+        const isAdjustment = r.entry_type === 'adjustment';
+        const amountNum = parseFloat(r.amount);
+        const amountStr = `${amountNum >= 0 ? '+' : '−'}${formatQty(Math.abs(amountNum))}`;
+        const badgeHtml = isAdjustment
+          ? '<span class="refill-entry-badge">Adjustment</span>'
+          : '';
+        listHtml += `<li class="refill-history-entry${isAdjustment ? ' refill-history-entry--adjustment' : ''}">
           <span class="refill-entry-date">${escHtml(dateStr)}</span>
           <div class="refill-entry-meta">
-            <span class="refill-entry-amount">+${escHtml(String(r.amount))} pills</span>
-            <span class="refill-entry-hand">${escHtml(String(r.pills_on_hand))} on hand after</span>
+            ${badgeHtml}
+            <span class="refill-entry-amount">${escHtml(amountStr)} pills</span>
+            <span class="refill-entry-hand">${escHtml(formatQty(r.pills_on_hand))} on hand after</span>
             ${daysBetweenHtml}
             ${noteHtml}
           </div>

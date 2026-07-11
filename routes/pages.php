@@ -449,7 +449,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <legend>Inventory</legend>
           <label data-inv-qty-label>Starting quantity
             <span class="input-with-unit">
-              <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string)(float)($editing['current_quantity'] ?? $editing['pill_count'] ?? 0)) ?>">
+              <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string)(float)($editing['starting_quantity'] ?? $editing['starting_pill_count'] ?? 0)) ?>">
               <span data-inv-unit-label><?= e((string) ($editing['inventory_unit'] ?? 'tablets')) ?></span>
             </span>
           </label>
@@ -457,7 +457,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <label data-inv-liquid-label style="display:none">Bottle amount
             <span class="input-with-unit">
               <?php
-              $storedMl = (float) ($editing['current_quantity'] ?? 0);
+              $storedMl = (float) ($editing['starting_quantity'] ?? 0);
               $bottleDisplayVal = $storedMl > 0 ? (string)(float)round($storedMl, 3) : '';
               ?>
               <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e($bottleDisplayVal) ?>">
@@ -1671,6 +1671,37 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <div class="refill-form-actions">
         <button type="submit">Log refill</button>
         <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
+      </div>
+    </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-adjust-qty-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="adjust-qty-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="adjust-qty-modal-title">Adjust Quantity</h2>
+        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-adjust-qty-med-name></span> <span class="refill-med-dose" data-adjust-qty-med-dose></span></p>
+      </div>
+      <button type="button" class="icon-button" data-close-adjust-qty-modal aria-label="Close adjust quantity modal">&#10005;</button>
+    </div>
+    <div class="modal-scroll">
+    <form class="stacked-form" data-adjust-qty-form>
+      <input type="hidden" name="medication_id" data-adjust-qty-medication-id value="">
+      <p class="pill-meta">Corrects the on-hand count without resetting the supply bar. Current count: <strong data-adjust-qty-current></strong></p>
+      <label>Corrected count
+        <span class="input-with-unit">
+          <input type="number" step="0.001" min="0" name="new_count" data-adjust-qty-input required>
+          <span data-adjust-qty-unit>tablets</span>
+        </span>
+      </label>
+      <label>Reason <span class="field-optional">(optional)</span>
+        <input name="note" placeholder="e.g. recount, dropped a pill" maxlength="255">
+      </label>
+      <div class="refill-form-actions">
+        <button type="submit">Save adjustment</button>
+        <button type="button" class="secondary" data-close-adjust-qty-modal>Cancel</button>
       </div>
     </form>
     </div>

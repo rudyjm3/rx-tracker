@@ -405,6 +405,29 @@ try {
         redirect_home();
     }
 
+    if ($action === 'adjust_quantity') {
+        $medicationId = (int) post_string('medication_id');
+        $newCountRaw = post_string('new_count');
+        $note = substr(trim(post_string('note')), 0, 255);
+        if ($medicationId <= 0) {
+            throw new RuntimeException('Invalid medication.');
+        }
+        if ($newCountRaw === '' || !is_numeric($newCountRaw)) {
+            throw new RuntimeException('Corrected count is required.');
+        }
+        $newCount = (float) $newCountRaw;
+        if ($newCount < 0) {
+            throw new RuntimeException('Corrected count cannot be negative.');
+        }
+        $repository->adjustQuantity($medicationId, $newCount, $note);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
     if ($action === 'mark_all_notifications_read') {
         $repository->markAllNotificationsRead();
         if ($jsonResponse) {
