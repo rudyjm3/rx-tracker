@@ -251,4 +251,35 @@ $afterPostRefillAdjust = $repo->findMedication($adjustId);
 assertSameValue(58.0, (float) $afterPostRefillAdjust['current_quantity'], 'Adjustment after refill should set the corrected count.');
 assertSameValue(10.0, (float) $afterPostRefillAdjust['starting_quantity'], 'Adjustment after refill must not change starting_quantity.');
 
+// ── Reverting restores what was actually deducted, not the current config ─────
+
+$repo->createMedication('Drift Med', '', 'fixed_times', ['06:00:00'], null, null, false, 0, false, '', 'prescription', null, null, null, 'pills', 20.0, 1.0);
+$allDrift = $repo->activeMedications();
+$driftId = (int) array_values(array_filter($allDrift, static fn(array $r): bool => $r['name'] === 'Drift Med'))[0]['id'];
+
+$repo->recordDoseStatus($driftId, $today, '06:00:00', 'taken', '');
+assertSameValue(19.0, (float) $repo->findMedication($driftId)['current_quantity'], 'Dose taken at qpd=1 should deduct 1.');
+$storedDeducted = $db->query("SELECT deducted_quantity FROM dose_logs WHERE medication_id = {$driftId}")->fetchColumn();
+assertSameValue(1.0, (float) $storedDeducted, 'Log should record the amount actually deducted.');
+
+// Double quantity_per_dose AFTER the dose was taken, then revert the old log.
+$repo->updateMedication($driftId, 'Drift Med', '', 'fixed_times', ['06:00:00'], null, null, false, 0, false, '', 'prescription', null, null, null, 'pills', 20.0, 2.0);
+$repo->recordDoseStatus($driftId, $today, '06:00:00', 'skipped', 'wrong entry');
+assertSameValue(20.0, (float) $repo->findMedication($driftId)['current_quantity'], 'Revert should restore the original 1, not the new qpd of 2.');
+$clearedDeducted = $db->query("SELECT deducted_quantity FROM dose_logs WHERE medication_id = {$driftId}")->fetchColumn();
+assertSameValue(null, $clearedDeducted, 'Revert should clear the stored deducted amount.');
+
+// Re-taking uses (and records) the new configuration.
+$repo->recordDoseStatus($driftId, $today, '06:00:00', 'taken', '');
+assertSameValue(18.0, (float) $repo->findMedication($driftId)['current_quantity'], 'Re-take should deduct the new qpd of 2.');
+
+// Out-of-stock: deducting from 0 stores 0, so a revert does not inflate the count.
+$repo->createMedication('Empty Med', '', 'fixed_times', ['06:30:00'], null, null, false, 0, false, '', 'prescription', null, null, null, 'pills', 0.0, 1.0);
+$allEmpty = $repo->activeMedications();
+$emptyId = (int) array_values(array_filter($allEmpty, static fn(array $r): bool => $r['name'] === 'Empty Med'))[0]['id'];
+$repo->recordDoseStatus($emptyId, $today, '06:30:00', 'taken', '');
+assertSameValue(0.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Deducting from 0 stays 0.');
+$repo->recordDoseStatus($emptyId, $today, '06:30:00', 'skipped', '');
+assertSameValue(0.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Reverting a dose that deducted nothing restores nothing.');
+
 echo "MedicationRepository tests passed.\n";

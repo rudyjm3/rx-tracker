@@ -17,6 +17,7 @@ final class MedicationRepository
         $this->ensureAppSettingsPerUser();
         $this->ensureTrackDoseFeedbackColumn();
         $this->ensurePainLevelColumn();
+        $this->ensureDeductedQuantityColumn();
         $this->ensureFeedbackTypeColumn();
         $this->ensureMoodLevelColumn();
         $this->ensureInstructionsWidened();
@@ -767,7 +768,7 @@ final class MedicationRepository
         try {
             // Fetch existing record first so we can skip the interval check for missed→taken updates.
             $existing = $this->db->prepare(
-                'SELECT id, status
+                'SELECT id, status, deducted_quantity
                  FROM dose_logs
                  WHERE medication_id = :medication_id
                    AND scheduled_for_date = :scheduled_for_date
@@ -803,20 +804,29 @@ final class MedicationRepository
             $takenAt = $customTakenAt ?? (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
             if (is_array($row)) {
-                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at WHERE id = :id');
-                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'id' => (int) $row['id']]);
+                // Track what this specific log actually removed from inventory so a
+                // later revert restores that exact amount, even if quantity_per_dose
+                // or a group/slot override has been edited in the meantime.
+                $newDeducted = $row['deducted_quantity'];
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
-                    $this->deductInventory($medicationId, $doseQtyOverride);
+                    $newDeducted = $this->deductInventory($medicationId, $doseQtyOverride);
                 } elseif ((string) $row['status'] === 'taken' && $status !== 'taken') {
-                    $this->restoreInventory($medicationId, $doseQtyOverride);
+                    $storedDeducted = $row['deducted_quantity'];
+                    // Logs from before deducted_quantity existed fall back to the
+                    // currently configured amount.
+                    $this->restoreInventory($medicationId, $storedDeducted !== null ? (float) $storedDeducted : $doseQtyOverride);
+                    $newDeducted = null;
                 }
+                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at, deducted_quantity = :deducted_quantity WHERE id = :id');
+                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'deducted_quantity' => $newDeducted, 'id' => (int) $row['id']]);
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
             } else {
+                $deducted = $status === 'taken' ? $this->deductInventory($medicationId, $doseQtyOverride) : null;
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, mood_level, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :mood_level, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, pain_level, mood_level, taken_at, deducted_quantity)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :pain_level, :mood_level, :taken_at, :deducted_quantity)'
                 );
                 $insert->execute([
                     'medication_id' => $medicationId,
@@ -827,10 +837,8 @@ final class MedicationRepository
                     'pain_level' => $painLevel,
                     'mood_level' => $moodLevel,
                     'taken_at' => $takenAt,
+                    'deducted_quantity' => $deducted,
                 ]);
-                if ($status === 'taken') {
-                    $this->deductInventory($medicationId, $doseQtyOverride);
-                }
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
@@ -898,20 +906,23 @@ final class MedicationRepository
                 $this->assertIntervalAllowed($medicationId, $now);
             }
 
+            $deducted = $this->deductInventory($medicationId);
+
             if ($row !== false) {
                 $update = $this->db->prepare(
-                    'UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at WHERE id = :id'
+                    'UPDATE dose_logs SET status = :status, note = :note, taken_at = :taken_at, deducted_quantity = :deducted_quantity WHERE id = :id'
                 );
                 $update->execute([
                     'status'   => 'taken',
                     'note'     => $note !== '' ? $note : 'Logged now',
                     'taken_at' => $takenAt->format('Y-m-d H:i:s'),
+                    'deducted_quantity' => $deducted,
                     'id'       => (int) $row['id'],
                 ]);
             } else {
                 $insert = $this->db->prepare(
-                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at)
-                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at)'
+                    'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at, deducted_quantity)
+                     VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :status, :note, :taken_at, :deducted_quantity)'
                 );
                 $insert->execute([
                     'medication_id'      => $medicationId,
@@ -920,10 +931,10 @@ final class MedicationRepository
                     'status'             => 'taken',
                     'note'               => $note !== '' ? $note : 'Logged now',
                     'taken_at'           => $takenAt->format('Y-m-d H:i:s'),
+                    'deducted_quantity'  => $deducted,
                 ]);
             }
 
-            $this->deductInventory($medicationId);
             $this->clearPostponeForDose($medicationId, $date, $time);
             $this->db->commit();
         } catch (PDOException $exception) {
@@ -1961,29 +1972,35 @@ final class MedicationRepository
         return sprintf('%02d:%02d', $hour, $minute);
     }
 
-    private function deductInventory(int $medicationId, ?float $quantityOverride = null): void
+    /**
+     * Deducts one dose from inventory (clamped at 0) and returns the amount
+     * actually removed, so callers can record it on the dose log and later
+     * restore exactly that amount even if quantity_per_dose changes.
+     */
+    private function deductInventory(int $medicationId, ?float $quantityOverride = null): float
     {
-        if ($quantityOverride !== null) {
-            $this->db->prepare(
-                'UPDATE medications
-                 SET current_quantity = CASE
-                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
-                     WHEN current_quantity >= :qty THEN current_quantity - :qty2
-                     ELSE 0
-                 END
-                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
-            )->execute(array_merge(['qty' => $quantityOverride, 'qty2' => $quantityOverride, 'id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
-        } else {
-            $this->db->prepare(
-                'UPDATE medications
-                 SET current_quantity = CASE
-                     WHEN current_quantity IS NULL OR current_quantity <= 0 THEN 0
-                     WHEN current_quantity >= quantity_per_dose THEN current_quantity - quantity_per_dose
-                     ELSE 0
-                 END
-                 WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
-            )->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        $stmt = $this->db->prepare(
+            'SELECT current_quantity, quantity_per_dose FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        );
+        $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            return 0.0;
         }
+
+        $current = max(0.0, (float) ($row['current_quantity'] ?? 0));
+        $dose = max(0.0, $quantityOverride ?? (float) ($row['quantity_per_dose'] ?? 1));
+        $deducted = min($current, $dose);
+
+        $this->db->prepare(
+            'UPDATE medications SET current_quantity = :current_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        )->execute(array_merge([
+            'current_quantity' => $current - $deducted,
+            'id' => $medicationId,
+            'user_id' => $this->userId,
+        ], $this->profileParam()));
+
+        return $deducted;
     }
 
     /**
@@ -2775,6 +2792,38 @@ final class MedicationRepository
                 }
                 if (!$hasColumn) {
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN pain_level INTEGER NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; normal query errors will surface if unresolved.
+        }
+    }
+
+    private function ensureDeductedQuantityColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE 'deducted_quantity'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN deducted_quantity DECIMAL(10,3) NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(dose_logs)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'deducted_quantity') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN deducted_quantity REAL NULL');
                 }
             }
         } catch (Throwable) {

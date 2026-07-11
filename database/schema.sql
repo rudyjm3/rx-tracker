@@ -94,6 +94,11 @@ ALTER TABLE medications
 ALTER TABLE dose_logs
     ADD COLUMN IF NOT EXISTS pain_level TINYINT UNSIGNED NULL;
 
+-- Amount actually removed from inventory when this log was marked taken,
+-- so reverting the log restores exactly what was deducted.
+ALTER TABLE dose_logs
+    ADD COLUMN IF NOT EXISTS deducted_quantity DECIMAL(10,3) NULL;
+
 CREATE TABLE IF NOT EXISTS medication_groups (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(120) NOT NULL,
