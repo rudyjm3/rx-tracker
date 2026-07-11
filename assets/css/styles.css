@@ -4150,6 +4150,46 @@ button.danger:hover {
   color: #7f1d1d;
 }
 
+.history-mood-label {
+  color: var(--rx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  margin-left: 0.3rem;
+}
+
+.history-mood-badge {
+  border: 1px solid;
+  border-radius: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  white-space: nowrap;
+}
+
+.history-mood-badge--poor {
+  background: rgba(229, 72, 77, 0.12);
+  border-color: #c9213c;
+  color: #7f1d1d;
+}
+
+.history-mood-badge--fair {
+  background: rgba(245, 165, 36, 0.12);
+  border-color: #d97706;
+  color: #8a5c00;
+}
+
+.history-mood-badge--good {
+  background: rgba(24, 191, 166, 0.12);
+  border-color: #2a9d49;
+  color: #0e7a68;
+}
+
+.history-mood-badge--great {
+  background: rgba(16, 163, 74, 0.14);
+  border-color: #15803d;
+  color: #14532d;
+}
+
 .history-note .history-note-label {
   color: var(--rx-text-muted);
   font-style: normal;
@@ -6054,22 +6094,51 @@ a.nav-user-btn.is-active {
   transition: border-color 0.15s, transform 0.1s;
 }
 
-.avatar-color-swatch input[type="radio"]:checked + .avatar-color-dot {
+.avatar-color-swatch input[type="radio"]:checked + .avatar-color-dot,
+.avatar-color-swatch input[type="radio"]:checked + .avatar-color-custom-input {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1e293b;
   transform: scale(1.1);
+}
+
+.avatar-color-swatch--custom {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.avatar-color-custom-label {
+  font-size: 0.75rem;
+  color: var(--rx-text-muted, #94a3b8);
+  white-space: nowrap;
 }
 
 .avatar-color-custom-input {
   -webkit-appearance: none;
   appearance: none;
   border: 2px solid var(--rx-border, #e2e8f0);
-  border-radius: 50%;
-  box-sizing: content-box;
+  border-radius: 4px;
+  box-sizing: border-box;
   cursor: pointer;
-  height: 1.75rem;
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  width: 2.5rem;
   overflow: hidden;
   padding: 0;
-  width: 1.75rem;
+}
+
+.avatar-color-custom-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.avatar-color-custom-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.avatar-color-custom-input::-moz-color-swatch {
+  border: none;
+  border-radius: 2px;
 }
 
 @media (max-width: 600px) {

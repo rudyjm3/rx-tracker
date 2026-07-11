@@ -88,9 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // GET: render Manage Family page.
-$profiles   = $familyRepo->profilesForUser($userId);
-$editId     = (int) ($_GET['edit'] ?? 0);
-$editProfile = $editId > 0 ? $familyRepo->findProfile($editId, $userId) : null;
+$profiles = $familyRepo->profilesForUser($userId);
 
 $navRepo          = new MedicationRepository(db(), $userId);
 $navNotifications = $navRepo->getNotificationsForUser();
@@ -243,8 +241,7 @@ require __DIR__ . '/../includes/nav-bell.php';
                             Switch to
                         </button>
                     </form>
-                    <a href="index.php?page=family&edit=<?= (int) $fp['id'] ?>"
-                       class="btn btn--sm btn--ghost">Edit</a>
+                    <button type="button" class="btn btn--sm btn--ghost" data-open-family-edit-modal="<?= (int) $fp['id'] ?>">Edit</button>
                     <form method="post" action="index.php?page=family" style="display:inline"
                           data-confirm="Remove <?= e((string) $fp['display_name']) ?> from your family members? Their medication records will be kept but unlinked from this profile.">
                         <?= csrf_field() ?>
@@ -254,76 +251,82 @@ require __DIR__ . '/../includes/nav-bell.php';
                     </form>
                 </div>
             </div>
+
+            <div class="modal-overlay" data-family-edit-modal="<?= (int) $fp['id'] ?>">
+                <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="family-edit-title-<?= (int) $fp['id'] ?>">
+                    <div class="modal-header">
+                        <h2 id="family-edit-title-<?= (int) $fp['id'] ?>">Edit <?= e((string) $fp['display_name']) ?></h2>
+                        <button type="button" class="icon-button" data-close-family-edit-modal aria-label="Close">&#10005;</button>
+                    </div>
+                    <div class="modal-scroll">
+                        <form method="post" action="index.php?page=family" class="profile-form">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="update_family_profile">
+                            <input type="hidden" name="profile_id" value="<?= (int) $fp['id'] ?>">
+
+                            <div class="form-group">
+                                <label for="edit_display_name_<?= (int) $fp['id'] ?>" class="form-label">Name <span class="required">*</span></label>
+                                <input type="text" id="edit_display_name_<?= (int) $fp['id'] ?>" name="display_name" class="form-control" required
+                                       maxlength="100" value="<?= e((string) $fp['display_name']) ?>">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit_relationship_<?= (int) $fp['id'] ?>" class="form-label">Relationship</label>
+                                <select id="edit_relationship_<?= (int) $fp['id'] ?>" name="relationship" class="form-control">
+                                    <option value="">— Optional —</option>
+                                    <?php foreach ($relationships as $rel): ?>
+                                    <option value="<?= e($rel) ?>"<?= $fp['relationship'] === $rel ? ' selected' : '' ?>><?= e($rel) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="edit_birth_year_<?= (int) $fp['id'] ?>" class="form-label">Birth Year</label>
+                                <input type="number" id="edit_birth_year_<?= (int) $fp['id'] ?>" name="birth_year" class="form-control"
+                                       min="1900" max="<?= (int) date('Y') ?>"
+                                       value="<?= $fp['birth_year'] !== null ? (int) $fp['birth_year'] : '' ?>">
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Avatar Color</label>
+                                <div class="avatar-color-picker">
+                                    <?php
+                                    $palette = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444'];
+                                    $currentColor = (string) ($fp['avatar_color'] ?? '#6366f1');
+                                    foreach ($palette as $color): ?>
+                                    <label class="avatar-color-swatch">
+                                        <input type="radio" name="avatar_color_edit_<?= (int) $fp['id'] ?>" value="<?= e($color) ?>"
+                                               <?= $currentColor === $color ? 'checked' : '' ?>>
+                                        <span class="avatar-color-dot" style="background:<?= e($color) ?>"></span>
+                                    </label>
+                                    <?php endforeach; ?>
+                                    <label class="avatar-color-swatch avatar-color-swatch--custom">
+                                        <input type="radio" name="avatar_color_edit_<?= (int) $fp['id'] ?>" value="custom" id="edit_color_custom_radio_<?= (int) $fp['id'] ?>"
+                                               <?= !in_array($currentColor, $palette, true) ? 'checked' : '' ?>>
+                                        <input type="color" id="edit_color_custom_<?= (int) $fp['id'] ?>" value="<?= e($currentColor) ?>"
+                                               class="avatar-color-custom-input">
+                                        <span class="avatar-color-custom-label">Custom color picker</span>
+                                    </label>
+                                </div>
+                                <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final_<?= (int) $fp['id'] ?>"
+                                       value="<?= e($currentColor) ?>">
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn--primary">Save Changes</button>
+                                <button type="button" class="btn btn--ghost" data-close-family-edit-modal>Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
             <?php endforeach; ?>
         </div>
     </section>
     <?php endif; ?>
 
-    <?php if ($editProfile !== null): ?>
     <section class="profile-panel">
-        <h2 class="panel-title">Edit <?= e((string) $editProfile['display_name']) ?></h2>
-        <form method="post" action="index.php?page=family" class="profile-form">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action" value="update_family_profile">
-            <input type="hidden" name="profile_id" value="<?= (int) $editProfile['id'] ?>">
-
-            <div class="form-group">
-                <label for="edit_display_name" class="form-label">Name <span class="required">*</span></label>
-                <input type="text" id="edit_display_name" name="display_name" class="form-control" required
-                       maxlength="100" value="<?= e((string) $editProfile['display_name']) ?>">
-            </div>
-
-            <div class="form-group">
-                <label for="edit_relationship" class="form-label">Relationship</label>
-                <select id="edit_relationship" name="relationship" class="form-control">
-                    <option value="">— Optional —</option>
-                    <?php foreach ($relationships as $rel): ?>
-                    <option value="<?= e($rel) ?>"<?= $editProfile['relationship'] === $rel ? ' selected' : '' ?>><?= e($rel) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="edit_birth_year" class="form-label">Birth Year</label>
-                <input type="number" id="edit_birth_year" name="birth_year" class="form-control"
-                       min="1900" max="<?= (int) date('Y') ?>"
-                       value="<?= $editProfile['birth_year'] !== null ? (int) $editProfile['birth_year'] : '' ?>">
-            </div>
-
-            <div class="form-group">
-                <label for="edit_avatar_color" class="form-label">Avatar Color</label>
-                <div class="avatar-color-picker">
-                    <?php
-                    $palette = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444'];
-                    $currentColor = (string) ($editProfile['avatar_color'] ?? '#6366f1');
-                    foreach ($palette as $color): ?>
-                    <label class="avatar-color-swatch">
-                        <input type="radio" name="avatar_color" value="<?= e($color) ?>"
-                               <?= $currentColor === $color ? 'checked' : '' ?>>
-                        <span class="avatar-color-dot" style="background:<?= e($color) ?>"></span>
-                    </label>
-                    <?php endforeach; ?>
-                    <label class="avatar-color-swatch avatar-color-swatch--custom">
-                        <input type="radio" name="avatar_color" value="custom" id="edit_color_custom_radio"
-                               <?= !in_array($currentColor, $palette, true) ? 'checked' : '' ?>>
-                        <input type="color" id="edit_color_custom" value="<?= e($currentColor) ?>"
-                               class="avatar-color-custom-input">
-                    </label>
-                </div>
-                <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final"
-                       value="<?= e($currentColor) ?>">
-            </div>
-
-            <div class="form-actions">
-                <button type="submit" class="btn btn--primary">Save Changes</button>
-                <a href="index.php?page=family" class="btn btn--ghost">Cancel</a>
-            </div>
-        </form>
-    </section>
-    <?php endif; ?>
-
-    <section class="profile-panel">
-        <h2 class="panel-title"><?= $editProfile !== null ? 'Add Another Member' : 'Add a Family Member' ?></h2>
+        <h2 class="panel-title">Add a Family Member</h2>
         <form method="post" action="index.php?page=family" class="profile-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="create_family_profile">
@@ -366,6 +369,7 @@ require __DIR__ . '/../includes/nav-bell.php';
                         <input type="radio" name="avatar_color" value="custom" id="color_custom_radio">
                         <input type="color" id="color_custom" value="#6366f1"
                                class="avatar-color-custom-input">
+                        <span class="avatar-color-custom-label">Custom color picker</span>
                     </label>
                 </div>
                 <input type="hidden" name="avatar_color_final" id="avatar_color_final" value="#6366f1">
@@ -443,7 +447,27 @@ require __DIR__ . '/../includes/nav-bell.php';
     }
 
     setupColorPicker('avatar_color', 'color_custom', 'avatar_color_final');
-    setupColorPicker('avatar_color', 'edit_color_custom', 'edit_avatar_color_final');
+    <?php foreach ($profiles as $fp): ?>
+    setupColorPicker('avatar_color_edit_<?= (int) $fp['id'] ?>', 'edit_color_custom_<?= (int) $fp['id'] ?>', 'edit_avatar_color_final_<?= (int) $fp['id'] ?>');
+    <?php endforeach; ?>
+
+    // Family member edit modal — open/close wiring
+    document.querySelectorAll('[data-open-family-edit-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var modal = document.querySelector('[data-family-edit-modal="' + btn.getAttribute('data-open-family-edit-modal') + '"]');
+            if (modal) modal.classList.add('is-open');
+        });
+    });
+    document.querySelectorAll('[data-close-family-edit-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            btn.closest('.modal-overlay').classList.remove('is-open');
+        });
+    });
+    document.querySelectorAll('[data-family-edit-modal]').forEach(function (overlay) {
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) overlay.classList.remove('is-open');
+        });
+    });
 })();
 </script>
 </body>

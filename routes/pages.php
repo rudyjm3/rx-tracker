@@ -1626,6 +1626,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <?php $pl = (int) $log['pain_level']; $painMod = $pl <= 3 ? 'low' : ($pl <= 6 ? 'mid' : ($pl <= 8 ? 'high' : 'severe')); ?>
                 <span class="history-pain-label">Pain Score</span> <span class="history-pain-badge history-pain-badge--<?= $painMod ?>"><?= e((string) $log['pain_level']) ?>/10</span>
               <?php endif; ?>
+              <?php if (isset($log['mood_level']) && $log['mood_level'] !== null): ?>
+                <?php $ml = (int) $log['mood_level']; $moodMod = $ml <= 3 ? 'poor' : ($ml <= 6 ? 'fair' : ($ml <= 8 ? 'good' : 'great')); ?>
+                <span class="history-mood-label">Mood Score</span> <span class="history-mood-badge history-mood-badge--<?= $moodMod ?>"><?= e((string) $log['mood_level']) ?>/10</span>
+              <?php endif; ?>
             </p>
             <?php if ((string) $log['note'] !== '' && (string) $log['note'] !== 'Skipped dose' && (string) $log['note'] !== 'Logged now'): ?>
               <small class="history-note"><span class="history-note-label">Comments:</span> <?= e((string) $log['note']) ?></small>
