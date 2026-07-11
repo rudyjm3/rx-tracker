@@ -1322,11 +1322,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <a href="#help-doses">Marking Doses</a> &bull;
       <a href="#help-inventory">Inventory &amp; Refills</a> &bull;
       <a href="#help-groups">Groups</a> &bull;
-      <a href="#help-feedback">Pain Tracking</a> &bull;
+      <a href="#help-feedback">Pain &amp; Mood Tracking</a> &bull;
+      <a href="#help-sideeffects">Side Effects</a> &bull;
       <a href="#help-history">History &amp; Calendar</a> &bull;
       <a href="#help-export">Export &amp; Reports</a> &bull;
       <a href="#help-family">Family Profiles</a> &bull;
       <a href="#help-profile">My Profile</a> &bull;
+      <a href="#help-signin">Signing In &amp; Google</a> &bull;
       <a href="#help-settings">Settings</a> &bull;
       <a href="#help-push">Notifications</a> &bull;
       <a href="#help-pwa">Install App</a> &bull;
@@ -1345,9 +1347,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li><strong>Dose form</strong> (optional) &mdash; Tablet, Capsule, Liquid, Inhaler, etc. Affects the icon shown on the dashboard.</li>
       <li><strong>Schedule</strong> &mdash; Fixed times (e.g. <code>8:00 AM, 2:00 PM, 9:00 PM</code>) or Every X hours with a first-dose time. Mark <em>As needed (PRN)</em> to exclude from required dose counts.</li>
       <li><strong>Inventory</strong> (optional) &mdash; starting quantity, quantity per dose, and a low-supply alert threshold. The supply bar turns yellow below 50% and red below 25%.</li>
-      <li><strong>Track dose feedback</strong> (optional) &mdash; prompts for a 1&ndash;10 pain/symptom rating and optional note after each dose.</li>
+      <li><strong>Track dose feedback</strong> (optional) &mdash; choose <em>Pain level</em>, <em>Mood level</em>, or <em>Both</em> to prompt for a 1&ndash;10 rating and optional note after each dose.</li>
     </ul>
-    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>discontinue</strong>: click Discontinue Use on the card, choose a reason, and the medication moves to the <em>Inactive</em> tab; reactivate it from there.</p>
+    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>discontinue</strong>: click <em>Discontinue Use</em> on the card and choose a reason &mdash; <em>End of regimen</em>, <em>Side effects (moderate to severe)</em>, <em>Doctor&rsquo;s orders</em>, or <em>Other</em> (with a required comment) &mdash; plus an optional comment. The medication moves to the <em>Inactive</em> tab; reactivate it from there.</p>
+    <p>To review past changes to a medication&rsquo;s dose or schedule, open its detail view and expand the <strong>Dose Change History</strong> section.</p>
 
     <h3 id="help-doses">Marking Doses</h3>
     <p>Each scheduled dose on the Dashboard has three action buttons:</p>
@@ -1357,10 +1360,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li><strong>Snooze</strong> &mdash; delays the reminder by your chosen snooze duration (configured in Settings).</li>
     </ul>
     <p>Possible statuses: <em>Taken</em>, <em>Taken late</em> (logged after the grace period), <em>Skipped</em>, <em>Missed</em> (grace period expired with no action), <em>Snoozed until [time]</em>.</p>
+    <p>Forgot to log a dose from an earlier day? Use <strong>Log past dose</strong> from the medication&rsquo;s actions menu to pick the date, the scheduled time slot, and optionally the actual time taken, pain level, and notes.</p>
 
     <h3 id="help-inventory">Inventory &amp; Refills</h3>
     <p>RxTracker deducts from your supply each time a dose is logged as taken. A days-remaining estimate appears on the medication card, and a refill alert is shown when supply falls below your set threshold.</p>
     <p>To <strong>log a refill</strong>: Medications &rarr; click <em>Log refill</em> on the card &rarr; enter the date, quantity added, and an optional note. View past refills with the <em>Refill history</em> button on the card.</p>
+    <p>If your on-hand count drifts from reality (e.g. after a recount or a dropped pill), use <strong>Adjust quantity</strong> on the card to enter a corrected count and an optional reason. This directly corrects the supply count without adding to inventory or creating a refill-history entry &mdash; use Log refill instead when you&rsquo;ve actually received more medication.</p>
 
     <h3 id="help-groups">Medication Groups</h3>
     <p>Groups bundle two or more medications taken at the same time into a single scheduled alarm. Go to <strong>Medications &rarr; Groups tab</strong> to create a group (name + scheduled time) and add medications to it. Notes:</p>
@@ -1370,18 +1375,28 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li>Each medication in a group retains its own inventory tracking and feedback settings.</li>
     </ul>
 
-    <h3 id="help-feedback">Pain &amp; Feedback Tracking</h3>
-    <p>Enable <em>Track dose feedback</em> in the medication form. After marking a dose taken, you&rsquo;ll be prompted to rate your pain or symptom level 1&ndash;10 and add an optional note. To review trends, click the <strong>Pain trend</strong> button on the medication card and select a window: Today, 7, 30, or 90 days. Pain charts are also included in the Doctor Visit Report PDF.</p>
+    <h3 id="help-feedback">Pain &amp; Mood Tracking</h3>
+    <p>Enable <em>Track dose feedback</em> in the medication form and choose <em>Pain level</em>, <em>Mood level</em>, or <em>Both</em>. After marking a dose taken, you&rsquo;ll be prompted to rate the relevant level(s) 1&ndash;10 and add an optional note.</p>
+    <ul>
+      <li><strong>Pain trend</strong> &mdash; click the <em>Pain trend</em> button on the medication card and select a window (Today / 7 / 30 / 90 days) to see a trend chart.</li>
+      <li><strong>Mood &amp; Wellbeing page</strong> &mdash; a dedicated page (linked from the Dashboard quick actions) shows per-medication mood trend charts with the same time-range tabs; hover or click a point on multi-day views to drill into that day.</li>
+      <li>In <strong>Settings</strong>, toggle <strong>Teal mood chart</strong> to switch the mood trend line from the default red-to-green gradient to a teal gradient (matches the PDF report).</li>
+    </ul>
+
+    <h3 id="help-sideeffects">Side Effects</h3>
+    <p>Click <strong>Log side effect</strong> on a medication card to record a side effect: date (defaults to today), a description, severity (<em>Mild</em>, <em>Moderate</em>, or <em>Severe</em>), and optional notes. Logged side effects are included in both the Pain and Mood Doctor Visit Report PDFs.</p>
 
     <h3 id="help-history">History &amp; Calendar</h3>
     <p>The <strong>Calendar</strong> page shows a month view with color-coded adherence markers for each day. Click any day to see that day&rsquo;s dose log. Navigate months with the left/right arrows. The <strong>Export</strong> page provides a filterable full dose history table.</p>
 
-    <h3 id="help-export">Export &amp; Doctor Visit Report</h3>
-    <p>The <strong>Export</strong> page has two main features:</p>
+    <h3 id="help-export">Export &amp; Doctor Visit Reports</h3>
+    <p>The <strong>Export</strong> page has three main features:</p>
     <ul>
       <li><strong>Dose history table</strong> &mdash; filter by date range and medication, then use your browser&rsquo;s print dialog (<em>Print / Save as PDF</em>) to save or print it.</li>
-      <li><strong>Doctor Visit Report PDF</strong> &mdash; a polished, multi-page PDF designed to share with your healthcare provider. Select a date range, optionally toggle per-medication pain charts, then click <em>Download Doctor Visit Report</em>. The PDF includes: adherence summary with rings, current medications list (with type badges), full dose history, pain level charts, side effects log, and a footer disclaimer. The filename reflects the date range selected (e.g. <code>doctor-visit-report-5-29-2026-thru-6-29-2026.pdf</code>).</li>
+      <li><strong>Pain Level Tracking report</strong> &mdash; select a date range, optionally toggle per-medication pain charts, then click <em>Generate &amp; Download PDF</em>. Includes an adherence summary with rings, current medications list (with type badges), full dose history, pain level charts, side effects log, and a footer disclaimer.</li>
+      <li><strong>Mood and Wellbeing report</strong> &mdash; a separate PDF with the same layout, generated the same way, but with per-medication mood charts instead of pain charts.</li>
     </ul>
+    <p>Filenames reflect the date range selected (e.g. <code>doctor-visit-report-5-29-2026-thru-6-29-2026.pdf</code>).</p>
 
     <h3 id="help-family">Family Members &amp; Profiles</h3>
     <p>RxTracker supports multiple profiles so you can track medications for family members from one account.</p>
@@ -1401,6 +1416,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li>Export or delete your <strong>account data</strong>.</li>
       <li>View and revoke active <strong>remember-me sessions</strong>.</li>
     </ul>
+
+    <h3 id="help-signin">Signing In &amp; Google Account</h3>
+    <p>You can sign in with your email/password or with <strong>Continue with Google</strong> on the login or register page. From <strong>My Profile</strong>, connect or disconnect a Google account at any time; if you disconnect while no password is set, set one first so you don&rsquo;t lose access to your account.</p>
+    <p>Terms of Service and Privacy Policy pages are linked from the login/register page footers and the bottom navigation.</p>
 
     <h3 id="help-settings">Settings</h3>
     <ul>
@@ -1429,7 +1448,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <ul>
       <li><strong>No push notifications</strong> &mdash; Check browser notification permission is set to <em>Allow</em>. On iPhone, the PWA must be installed to the home screen. Verify the server-side cron job is active.</li>
       <li><strong>Dose shows Missed despite taking it</strong> &mdash; The grace period expired before you logged it. Increase the grace period in Settings.</li>
-      <li><strong>Supply count is wrong</strong> &mdash; Check that <em>Quantity per dose</em> is set correctly in the medication edit form, and that any group dose overrides are set as intended.</li>
+      <li><strong>Supply count is wrong</strong> &mdash; Check that <em>Quantity per dose</em> is set correctly in the medication edit form, and that any group dose overrides are set as intended. If the count has simply drifted from reality, use <em>Adjust quantity</em> on the card to correct it directly.</li>
       <li><strong>Autocomplete not working</strong> &mdash; Requires internet access to DailyMed. Type the medication name manually if offline.</li>
       <li><strong>App feels outdated after an update</strong> &mdash; Force-refresh: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac). If that doesn&rsquo;t help, clear the site data in browser settings.</li>
       <li><strong>Profile switcher not showing family members</strong> &mdash; Add family members first via My Profile &rarr; Family Members.</li>
