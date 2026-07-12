@@ -1989,11 +1989,13 @@ if (painPageBody) {
 
     li.innerHTML = `<form class="history-entry-edit-form">
   <div class="stacked-label"><label>Pain level</label><div class="pain-level-btn-row">${levelBtns}</div></div>
-  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2">${curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')}</textarea></div>
+  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2"></textarea></div>
   <p class="history-entry-edit-error" hidden></p>
   <button type="submit">Save</button>
   <button type="button" class="history-entry-edit-cancel">Cancel</button>
 </form>`;
+    const painEditTA = li.querySelector('textarea[name="note"]');
+    if (painEditTA) painEditTA.value = curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
 
     let editLevel = curLevel;
     li.querySelectorAll('.pain-log-level-btn').forEach((b) => {
@@ -2337,11 +2339,13 @@ if (moodPageBody) {
 
     li.innerHTML = `<form class="history-entry-edit-form">
   <div class="stacked-label"><label>Mood level</label><div class="mood-level-btn-row">${levelBtns}</div></div>
-  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2">${curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')}</textarea></div>
+  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2"></textarea></div>
   <p class="history-entry-edit-error" hidden></p>
   <button type="submit">Save</button>
   <button type="button" class="history-entry-edit-cancel">Cancel</button>
 </form>`;
+    const moodEditTA = li.querySelector('textarea[name="note"]');
+    if (moodEditTA) moodEditTA.value = curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
 
     let editLevel = curLevel;
     li.querySelectorAll('.mood-log-level-btn').forEach((b) => {

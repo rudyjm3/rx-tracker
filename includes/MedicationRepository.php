@@ -561,8 +561,8 @@ final class MedicationRepository
         $stmt = $this->db->prepare(
             'UPDATE dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
-             SET dl.pain_level = :pain_level,
-                 dl.mood_level = :mood_level,
+             SET dl.pain_level = COALESCE(:pain_level, dl.pain_level),
+                 dl.mood_level = COALESCE(:mood_level, dl.mood_level),
                  dl.note = :note,
                  dl.feedback_edited_at = NOW()
              WHERE dl.id = :id
@@ -585,8 +585,8 @@ final class MedicationRepository
     {
         $stmt = $this->db->prepare(
             'UPDATE standalone_pain_mood_logs
-             SET pain_level = :pain_level,
-                 mood_level = :mood_level,
+             SET pain_level = COALESCE(:pain_level, pain_level),
+                 mood_level = COALESCE(:mood_level, mood_level),
                  note = :note,
                  updated_at = NOW()
              WHERE id = :id
