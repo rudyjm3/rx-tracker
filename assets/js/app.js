@@ -1851,13 +1851,20 @@ if (painPageBody) {
   const painLogError      = document.querySelector('[data-pain-log-error]');
 
   // History elements
-  const painHistoryPanel   = document.querySelector('[data-pain-history-panel]');
-  const painHistoryList    = document.querySelector('[data-pain-history-list]');
-  const painHistoryToggle  = document.querySelector('[data-pain-history-toggle]');
-  const painHistoryLoading = document.querySelector('[data-pain-history-loading]');
-  const painHistoryEmpty   = document.querySelector('[data-pain-history-empty]');
+  const painHistoryPanel        = document.querySelector('[data-pain-history-panel]');
+  const painHistoryList         = document.querySelector('[data-pain-history-list]');
+  const painHistoryViewMoreBtns = document.querySelectorAll('[data-pain-history-view-more]');
+  const painHistoryLoading      = document.querySelector('[data-pain-history-loading]');
+  const painHistoryEmpty        = document.querySelector('[data-pain-history-empty]');
 
   let painPageHistoryLoaded = false;
+  let painHistoryExpanded   = false;
+  let painPageMedDose       = '';
+
+  const setPainHistoryViewMoreLabel = () => {
+    const label = painHistoryExpanded ? 'View less' : 'View more';
+    painHistoryViewMoreBtns.forEach((btn) => { btn.textContent = label; });
+  };
 
   const resetPainLogForm = () => {
     if (painLogLevelInput) painLogLevelInput.value = '';
@@ -1908,34 +1915,43 @@ if (painPageBody) {
     if (painLogToggle)   painLogToggle.hidden   = false;
     resetPainLogForm();
     loadPainPageGraph();
-    if (painHistoryPanel && !painHistoryPanel.hidden) {
-      painPageHistoryLoaded = false;
-      loadPainHistory();
-    }
+    painPageHistoryLoaded = false;
+    loadPainHistory();
   });
+
+  const painScoreMod = (level) => (level <= 3 ? 'low' : level <= 6 ? 'mid' : level <= 8 ? 'high' : 'severe');
 
   const buildPainHistoryEntryHtml = (entry) => {
     const entryId   = entry.entry_id ?? '';
     const source    = entry.source ?? 'dose';
     const level     = parseInt(entry.pain_level, 10);
-    const color     = painLevelColor(level);
+    const mod       = painScoreMod(level);
+    const dateStr   = entry.date ? formatGraphDay(entry.date) : '';
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
     const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const medHtml = source === 'dose' && painPageMedName?.textContent
+      ? `<strong>${painPageMedName.textContent}</strong>${painPageMedDose ? ` <span class="dose-inline">${painPageMedDose}</span>` : ''}`
+      : '';
     const editedHtml = entry.edited_at
       ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
       : '';
     const noteHtml = noteEsc
-      ? `<span class="history-entry-note">${noteEsc}</span>`
+      ? `<small class="history-note"><span class="history-note-label">Comments:</span> ${noteEsc}</small>`
       : '';
     return `<li id="pain-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="pain-history-entry">
-  <span class="history-entry-time">${timeStr}</span>
-  <span class="history-entry-badge" style="background:${color};color:#fff;border-radius:0.5rem;padding:0.1rem 0.4rem;font-size:0.8rem;font-weight:600;">${level}/10</span>
-  <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
-  ${noteHtml}
-  ${editedHtml}
-  <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-pain-level="${level}" data-note="${noteEsc}">Edit</button>
+  <span><span class="history-date">${dateStr}</span><span class="history-time">${timeStr}</span></span>
+  <div>
+    ${medHtml}
+    <p class="history-entry-badges">
+      <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
+      <span class="history-pain-label">Pain Score</span> <span class="history-pain-badge history-pain-badge--${mod}">${level}/10</span>
+      <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-pain-level="${level}" data-note="${noteEsc}">Edit</button>
+    </p>
+    ${noteHtml}
+    ${editedHtml}
+  </div>
 </li>`;
   };
 
@@ -1957,7 +1973,8 @@ if (painPageBody) {
     if (painHistoryEmpty)   painHistoryEmpty.hidden   = true;
     painHistoryList.innerHTML = '';
     try {
-      const resp = await window.fetch(`index.php?action=pain_log&medication_id=${encodeURIComponent(painPageMedId)}&days=365`);
+      const dateParam = painHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const resp = await window.fetch(`index.php?action=pain_log&medication_id=${encodeURIComponent(painPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (painHistoryLoading) painHistoryLoading.hidden = true;
       if (payload.ok) {
@@ -1988,11 +2005,16 @@ if (painPageBody) {
     }).join('');
 
     li.innerHTML = `<form class="history-entry-edit-form">
-  <div class="stacked-label"><label>Pain level</label><div class="pain-level-btn-row">${levelBtns}</div></div>
-  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2"></textarea></div>
+  <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+  <div class="pain-level-selector" role="group" aria-label="Select pain level">${levelBtns}</div>
+  <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+    <textarea name="note" rows="2" maxlength="255"></textarea>
+  </label>
   <p class="history-entry-edit-error" hidden></p>
-  <button type="submit">Save</button>
-  <button type="button" class="history-entry-edit-cancel">Cancel</button>
+  <div class="feedback-actions">
+    <button type="submit" class="button primary small">Save</button>
+    <button type="button" class="button secondary small history-entry-edit-cancel">Cancel</button>
+  </div>
 </form>`;
     const painEditTA = li.querySelector('textarea[name="note"]');
     if (painEditTA) painEditTA.value = curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
@@ -2046,9 +2068,11 @@ if (painPageBody) {
 
   const expandPainHistoryAndScrollToEntry = async (entryId) => {
     if (!painHistoryPanel || !painHistoryList) return;
-    if (painHistoryPanel.hidden) {
-      painHistoryPanel.hidden = false;
-      if (painHistoryToggle) painHistoryToggle.textContent = 'Hide pain level log';
+    if (!painHistoryExpanded) {
+      painHistoryExpanded = true;
+      painHistoryPanel.classList.add('is-expanded');
+      setPainHistoryViewMoreLabel();
+      painPageHistoryLoaded = false;
     }
     await loadPainHistory();
     const target = document.getElementById(`pain-entry-${entryId}`);
@@ -2060,9 +2084,11 @@ if (painPageBody) {
 
   const expandPainHistoryAndScrollToDate = async (date) => {
     if (!painHistoryPanel || !painHistoryList) return;
-    if (painHistoryPanel.hidden) {
-      painHistoryPanel.hidden = false;
-      if (painHistoryToggle) painHistoryToggle.textContent = 'Hide pain level log';
+    if (!painHistoryExpanded) {
+      painHistoryExpanded = true;
+      painHistoryPanel.classList.add('is-expanded');
+      setPainHistoryViewMoreLabel();
+      painPageHistoryLoaded = false;
     }
     await loadPainHistory();
     const target = painHistoryList.querySelector(`[data-entry-date="${CSS.escape(date)}"]`);
@@ -2072,12 +2098,14 @@ if (painPageBody) {
     setTimeout(() => target.classList.remove('is-highlighted'), 2000);
   };
 
-  painHistoryToggle?.addEventListener('click', () => {
-    if (!painHistoryPanel) return;
-    const nowHidden = !painHistoryPanel.hidden;
-    painHistoryPanel.hidden = nowHidden;
-    painHistoryToggle.textContent = nowHidden ? 'View pain level log' : 'Hide pain level log';
-    if (!nowHidden) loadPainHistory();
+  painHistoryViewMoreBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      painHistoryExpanded = !painHistoryExpanded;
+      painHistoryPanel?.classList.toggle('is-expanded', painHistoryExpanded);
+      setPainHistoryViewMoreLabel();
+      painPageHistoryLoaded = false;
+      loadPainHistory();
+    });
   });
 
   // Replace click with pointerup + drag guard for mobile touch support
@@ -2114,12 +2142,14 @@ if (painPageBody) {
       document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
       btn.classList.add('is-active');
       painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+      painPageMedDose = btn.dataset.medicationDose ?? '';
       if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
       painPageDays = 0;
       painPageDate = null;
       painPageHistoryLoaded = false;
-      if (painHistoryPanel) painHistoryPanel.hidden = true;
-      if (painHistoryToggle) painHistoryToggle.textContent = 'View pain level log';
+      painHistoryExpanded = false;
+      painHistoryPanel?.classList.remove('is-expanded');
+      setPainHistoryViewMoreLabel();
       if (painLogFormWrap) painLogFormWrap.hidden = true;
       if (painLogToggle)   painLogToggle.hidden   = false;
       resetPainLogForm();
@@ -2127,6 +2157,7 @@ if (painPageBody) {
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
       loadPainPageGraph();
+      loadPainHistory();
     });
   });
 
@@ -2201,13 +2232,20 @@ if (moodPageBody) {
   const moodLogError      = document.querySelector('[data-mood-log-error]');
 
   // History elements
-  const moodHistoryPanel   = document.querySelector('[data-mood-history-panel]');
-  const moodHistoryList    = document.querySelector('[data-mood-history-list]');
-  const moodHistoryToggle  = document.querySelector('[data-mood-history-toggle]');
-  const moodHistoryLoading = document.querySelector('[data-mood-history-loading]');
-  const moodHistoryEmpty   = document.querySelector('[data-mood-history-empty]');
+  const moodHistoryPanel        = document.querySelector('[data-mood-history-panel]');
+  const moodHistoryList         = document.querySelector('[data-mood-history-list]');
+  const moodHistoryViewMoreBtns = document.querySelectorAll('[data-mood-history-view-more]');
+  const moodHistoryLoading      = document.querySelector('[data-mood-history-loading]');
+  const moodHistoryEmpty        = document.querySelector('[data-mood-history-empty]');
 
   let moodPageHistoryLoaded = false;
+  let moodHistoryExpanded   = false;
+  let moodPageMedDose       = '';
+
+  const setMoodHistoryViewMoreLabel = () => {
+    const label = moodHistoryExpanded ? 'View less' : 'View more';
+    moodHistoryViewMoreBtns.forEach((btn) => { btn.textContent = label; });
+  };
 
   const resetMoodLogForm = () => {
     if (moodLogLevelInput) moodLogLevelInput.value = '';
@@ -2258,34 +2296,43 @@ if (moodPageBody) {
     if (moodLogToggle)   moodLogToggle.hidden   = false;
     resetMoodLogForm();
     loadMoodPageGraph();
-    if (moodHistoryPanel && !moodHistoryPanel.hidden) {
-      moodPageHistoryLoaded = false;
-      loadMoodHistory();
-    }
+    moodPageHistoryLoaded = false;
+    loadMoodHistory();
   });
+
+  const moodScoreMod = (level) => (level <= 3 ? 'poor' : level <= 6 ? 'fair' : level <= 8 ? 'good' : 'great');
 
   const buildMoodHistoryEntryHtml = (entry) => {
     const entryId   = entry.entry_id ?? '';
     const source    = entry.source ?? 'dose';
     const level     = parseInt(entry.mood_level, 10);
-    const color     = moodLevelColor(level);
+    const mod       = moodScoreMod(level);
+    const dateStr   = entry.date ? formatGraphDay(entry.date) : '';
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
     const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const medHtml = source === 'dose' && moodPageMedName?.textContent
+      ? `<strong>${moodPageMedName.textContent}</strong>${moodPageMedDose ? ` <span class="dose-inline">${moodPageMedDose}</span>` : ''}`
+      : '';
     const editedHtml = entry.edited_at
       ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
       : '';
     const noteHtml = noteEsc
-      ? `<span class="history-entry-note">${noteEsc}</span>`
+      ? `<small class="history-note"><span class="history-note-label">Comments:</span> ${noteEsc}</small>`
       : '';
     return `<li id="mood-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="mood-history-entry">
-  <span class="history-entry-time">${timeStr}</span>
-  <span class="history-entry-badge" style="background:${color};color:#fff;border-radius:0.5rem;padding:0.1rem 0.4rem;font-size:0.8rem;font-weight:600;">${level}/10</span>
-  <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
-  ${noteHtml}
-  ${editedHtml}
-  <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-mood-level="${level}" data-note="${noteEsc}">Edit</button>
+  <span><span class="history-date">${dateStr}</span><span class="history-time">${timeStr}</span></span>
+  <div>
+    ${medHtml}
+    <p class="history-entry-badges">
+      <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
+      <span class="history-mood-label">Mood Score</span> <span class="history-mood-badge history-mood-badge--${mod}">${level}/10</span>
+      <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-mood-level="${level}" data-note="${noteEsc}">Edit</button>
+    </p>
+    ${noteHtml}
+    ${editedHtml}
+  </div>
 </li>`;
   };
 
@@ -2307,7 +2354,8 @@ if (moodPageBody) {
     if (moodHistoryEmpty)   moodHistoryEmpty.hidden   = true;
     moodHistoryList.innerHTML = '';
     try {
-      const resp = await window.fetch(`index.php?action=mood_log&medication_id=${encodeURIComponent(moodPageMedId)}&days=365`);
+      const dateParam = moodHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const resp = await window.fetch(`index.php?action=mood_log&medication_id=${encodeURIComponent(moodPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (moodHistoryLoading) moodHistoryLoading.hidden = true;
       if (payload.ok) {
@@ -2338,11 +2386,16 @@ if (moodPageBody) {
     }).join('');
 
     li.innerHTML = `<form class="history-entry-edit-form">
-  <div class="stacked-label"><label>Mood level</label><div class="mood-level-btn-row">${levelBtns}</div></div>
-  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2"></textarea></div>
+  <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
+  <div class="pain-level-selector" role="group" aria-label="Select mood level">${levelBtns}</div>
+  <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+    <textarea name="note" rows="2" maxlength="255"></textarea>
+  </label>
   <p class="history-entry-edit-error" hidden></p>
-  <button type="submit">Save</button>
-  <button type="button" class="history-entry-edit-cancel">Cancel</button>
+  <div class="feedback-actions">
+    <button type="submit" class="button primary small">Save</button>
+    <button type="button" class="button secondary small history-entry-edit-cancel">Cancel</button>
+  </div>
 </form>`;
     const moodEditTA = li.querySelector('textarea[name="note"]');
     if (moodEditTA) moodEditTA.value = curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
@@ -2395,9 +2448,11 @@ if (moodPageBody) {
 
   const expandMoodHistoryAndScrollToEntry = async (entryId) => {
     if (!moodHistoryPanel || !moodHistoryList) return;
-    if (moodHistoryPanel.hidden) {
-      moodHistoryPanel.hidden = false;
-      if (moodHistoryToggle) moodHistoryToggle.textContent = 'Hide mood level log';
+    if (!moodHistoryExpanded) {
+      moodHistoryExpanded = true;
+      moodHistoryPanel.classList.add('is-expanded');
+      setMoodHistoryViewMoreLabel();
+      moodPageHistoryLoaded = false;
     }
     await loadMoodHistory();
     const target = document.getElementById(`mood-entry-${entryId}`);
@@ -2409,9 +2464,11 @@ if (moodPageBody) {
 
   const expandMoodHistoryAndScrollToDate = async (date) => {
     if (!moodHistoryPanel || !moodHistoryList) return;
-    if (moodHistoryPanel.hidden) {
-      moodHistoryPanel.hidden = false;
-      if (moodHistoryToggle) moodHistoryToggle.textContent = 'Hide mood level log';
+    if (!moodHistoryExpanded) {
+      moodHistoryExpanded = true;
+      moodHistoryPanel.classList.add('is-expanded');
+      setMoodHistoryViewMoreLabel();
+      moodPageHistoryLoaded = false;
     }
     await loadMoodHistory();
     const target = moodHistoryList.querySelector(`[data-entry-date="${CSS.escape(date)}"]`);
@@ -2421,12 +2478,14 @@ if (moodPageBody) {
     setTimeout(() => target.classList.remove('is-highlighted'), 2000);
   };
 
-  moodHistoryToggle?.addEventListener('click', () => {
-    if (!moodHistoryPanel) return;
-    const nowHidden = !moodHistoryPanel.hidden;
-    moodHistoryPanel.hidden = nowHidden;
-    moodHistoryToggle.textContent = nowHidden ? 'View mood level log' : 'Hide mood level log';
-    if (!nowHidden) loadMoodHistory();
+  moodHistoryViewMoreBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      moodHistoryExpanded = !moodHistoryExpanded;
+      moodHistoryPanel?.classList.toggle('is-expanded', moodHistoryExpanded);
+      setMoodHistoryViewMoreLabel();
+      moodPageHistoryLoaded = false;
+      loadMoodHistory();
+    });
   });
 
   // Replace click with pointerup + drag guard for mobile touch support
@@ -2463,12 +2522,14 @@ if (moodPageBody) {
       document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
       btn.classList.add('is-active');
       moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+      moodPageMedDose = btn.dataset.medicationDose ?? '';
       if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
       moodPageDays = 0;
       moodPageDate = null;
       moodPageHistoryLoaded = false;
-      if (moodHistoryPanel) moodHistoryPanel.hidden = true;
-      if (moodHistoryToggle) moodHistoryToggle.textContent = 'View mood level log';
+      moodHistoryExpanded = false;
+      moodHistoryPanel?.classList.remove('is-expanded');
+      setMoodHistoryViewMoreLabel();
       if (moodLogFormWrap) moodLogFormWrap.hidden = true;
       if (moodLogToggle)   moodLogToggle.hidden   = false;
       resetMoodLogForm();
@@ -2476,6 +2537,7 @@ if (moodPageBody) {
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
       loadMoodPageGraph();
+      loadMoodHistory();
     });
   });
 
