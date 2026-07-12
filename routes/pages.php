@@ -746,7 +746,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           data-select-medication
           data-medication-id="<?= e((string) $trackedMed['id']) ?>"
           data-medication-name="<?= e((string) $trackedMed['name']) ?>"
-          data-medication-dose="<?= e((string) $trackedMed['dose']) ?>"
+          data-medication-dose="<?= e(formattedDose($trackedMed)) ?>"
         ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
         <?php endforeach; ?>
       </div>
@@ -842,7 +842,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           data-select-mood-medication
           data-medication-id="<?= e((string) $trackedMed['id']) ?>"
           data-medication-name="<?= e((string) $trackedMed['name']) ?>"
-          data-medication-dose="<?= e((string) $trackedMed['dose']) ?>"
+          data-medication-dose="<?= e(formattedDose($trackedMed)) ?>"
         ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
         <?php endforeach; ?>
       </div>

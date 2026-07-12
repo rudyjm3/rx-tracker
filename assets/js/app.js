@@ -1932,7 +1932,7 @@ if (painPageBody) {
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
     const medHtml = source === 'dose' && painPageMedName?.textContent
-      ? `<strong>${painPageMedName.textContent}</strong>${painPageMedDose ? ` <span class="dose-inline">${painPageMedDose}</span>` : ''}`
+      ? `<strong>${escSvg(painPageMedName.textContent)}</strong>${painPageMedDose ? ` <span class="dose-inline">${escSvg(painPageMedDose)}</span>` : ''}`
       : '';
     const editedHtml = entry.edited_at
       ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
@@ -2313,7 +2313,7 @@ if (moodPageBody) {
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
     const medHtml = source === 'dose' && moodPageMedName?.textContent
-      ? `<strong>${moodPageMedName.textContent}</strong>${moodPageMedDose ? ` <span class="dose-inline">${moodPageMedDose}</span>` : ''}`
+      ? `<strong>${escSvg(moodPageMedName.textContent)}</strong>${moodPageMedDose ? ` <span class="dose-inline">${escSvg(moodPageMedDose)}</span>` : ''}`
       : '';
     const editedHtml = entry.edited_at
       ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
