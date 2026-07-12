@@ -62,6 +62,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_trend') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_log') {
+    header('Content-Type: application/json; charset=utf-8');
+    $medicationId = (int) ($_GET['medication_id'] ?? 0);
+    if ($medicationId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid medication.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    $days = max(1, min(365, (int) ($_GET['days'] ?? 365)));
+    $entries = $repository->painLogHistory($medicationId, $days);
+    echo json_encode(['ok' => true, 'entries' => $entries], JSON_THROW_ON_ERROR);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_log') {
+    header('Content-Type: application/json; charset=utf-8');
+    $medicationId = (int) ($_GET['medication_id'] ?? 0);
+    if ($medicationId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid medication.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    $days = max(1, min(365, (int) ($_GET['days'] ?? 365)));
+    $entries = $repository->moodLogHistory($medicationId, $days);
+    echo json_encode(['ok' => true, 'entries' => $entries], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);

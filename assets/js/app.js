@@ -1278,8 +1278,13 @@ const renderPainChart = (container, data) => {
     const x = xScale(i).toFixed(1);
     const y = yScale(level).toFixed(1);
     const color = painLevelColor(Math.round(level));
-    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
-    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5" data-date="${escSvg(date)}" style="cursor:pointer"><title>${escSvg(date)}&#10;${tipLines}&#10;Click to view this day</title></circle>`;
+    const allStandalone = pts.every((p) => p.source === 'standalone');
+    const fill   = allStandalone ? '#fff'   : color;
+    const stroke = allStandalone ? color    : '#fff';
+    const sw     = allStandalone ? '2.5'    : '1.5';
+    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
+    circles += `<circle cx="${x}" cy="${y}" r="20" fill="transparent" data-date="${escSvg(date)}" style="cursor:pointer"/>`;
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" data-date="${escSvg(date)}" style="cursor:pointer"><title>${escSvg(date)}&#10;${tipLines}&#10;Click to view this day</title></circle>`;
   });
 
   const yAxisCY = (mt + chartH / 2).toFixed(1);
@@ -1328,8 +1333,15 @@ const renderPainChartToday = (container, data) => {
     const x = xScale(i).toFixed(1);
     const y = yScale(parseInt(d.pain_level, 10)).toFixed(1);
     const color = painLevelColor(parseInt(d.pain_level, 10));
-    const tip = `${escSvg(d.time.slice(0, 5))}: Pain ${escSvg(d.pain_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}`;
-    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${color}" stroke="#fff" stroke-width="1.5"><title>${tip}</title></circle>`;
+    const isStandalone = d.source === 'standalone';
+    const fill   = isStandalone ? '#fff'  : color;
+    const stroke = isStandalone ? color   : '#fff';
+    const sw     = isStandalone ? '2.5'   : '1.5';
+    const tip = `${escSvg(d.time.slice(0, 5))}: Pain ${escSvg(d.pain_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
+    const entryId = d.source && d.id ? `${d.source}-${d.id}` : null;
+    const entryAttr = entryId ? ` data-entry-id="${escSvg(entryId)}"` : '';
+    circles += `<circle cx="${x}" cy="${y}" r="20" fill="transparent"${entryAttr} style="cursor:pointer"/>`;
+    circles += `<circle cx="${x}" cy="${y}" r="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${entryAttr}><title>${tip}</title></circle>`;
   });
 
   const yAxisCYToday = (mt + chartH / 2).toFixed(1);
@@ -1387,8 +1399,15 @@ const renderMoodChartCommon = (container, points, gridLines, xLabels, W, H, ml, 
 
   let circles = '';
   points.forEach((p) => {
-    const clickable = p.date ? ` data-date="${escSvg(p.date)}" style="cursor:pointer"` : '';
-    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${p.color}" stroke="#fff" stroke-width="1.5"${clickable}><title>${p.tip}</title></circle>`;
+    const isStandalone = !!p.isStandalone;
+    const fill   = isStandalone ? '#fff'   : p.color;
+    const stroke = isStandalone ? p.color  : '#fff';
+    const sw     = isStandalone ? '2.5'    : '1.5';
+    const dateAttr  = p.date    ? ` data-date="${escSvg(p.date)}"` : '';
+    const entryAttr = p.entryId ? ` data-entry-id="${escSvg(p.entryId)}"` : '';
+    const cursor = (p.date || p.entryId) ? ' style="cursor:pointer"' : '';
+    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="20" fill="transparent"${dateAttr}${entryAttr}${cursor}/>`;
+    circles += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"${dateAttr}${entryAttr}><title>${p.tip}</title></circle>`;
   });
 
   // Two selectable schemes: classic red-to-green, or teal matching the PDF
@@ -1457,13 +1476,16 @@ const renderMoodChart = (container, data) => {
   });
 
   const points = byDate.map(({ date, level, pts }, i) => {
-    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Mood ${escSvg(p.mood_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}`).join('&#10;');
+    const allStandalone = pts.every((p) => p.source === 'standalone');
+    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Mood ${escSvg(p.mood_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
     return {
       x: xScale(i),
       y: yScale(level),
       color: moodLevelColor(Math.round(level)),
       tip: `${escSvg(date)}&#10;${tipLines}&#10;Click to view this day`,
       date,
+      isStandalone: allStandalone,
+      entryId: null,
     };
   });
 
@@ -1499,8 +1521,10 @@ const renderMoodChartToday = (container, data) => {
 
   const points = data.map((d, i) => {
     const level = parseInt(d.mood_level, 10);
-    const tip = `${escSvg(d.time.slice(0, 5))}: Mood ${escSvg(d.mood_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}`;
-    return { x: xScale(i), y: yScale(level), color: moodLevelColor(level), tip };
+    const isStandalone = d.source === 'standalone';
+    const tip = `${escSvg(d.time.slice(0, 5))}: Mood ${escSvg(d.mood_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
+    const entryId = d.source && d.id ? `${d.source}-${d.id}` : null;
+    return { x: xScale(i), y: yScale(level), color: moodLevelColor(level), tip, isStandalone, entryId };
   });
 
   renderMoodChartCommon(container, points, gridLines, xLabels, W, H, ml, mr, mt, mb);
@@ -1762,6 +1786,13 @@ document.querySelector('[data-mood-graph-print]')?.addEventListener('click', () 
   win.document.close();
 });
 
+const formatEntryDatetime = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return isoString;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
 // Pain tracking dedicated page
 const painPageBody = document.querySelector('[data-pain-page-body]');
 const painPageEmpty = document.querySelector('[data-pain-page-empty]');
@@ -1808,13 +1839,263 @@ if (painPageBody) {
     }
   };
 
-  painPageBody.addEventListener('click', (event) => {
+  // Log form elements
+  const painLogPanel      = document.querySelector('[data-pain-log-panel]');
+  const painLogFormWrap   = document.querySelector('[data-pain-log-form-wrap]');
+  const painLogForm       = document.querySelector('[data-pain-log-form]');
+  const painLogToggle     = document.querySelector('[data-pain-log-toggle]');
+  const painLogCancel     = document.querySelector('[data-pain-log-cancel]');
+  const painLogMedIdInput = document.querySelector('[data-pain-log-medication-id]');
+  const painLogLevelInput = document.querySelector('[data-pain-log-level]');
+  const painLogNoteInput  = document.querySelector('[data-pain-log-note]');
+  const painLogError      = document.querySelector('[data-pain-log-error]');
+
+  // History elements
+  const painHistoryPanel   = document.querySelector('[data-pain-history-panel]');
+  const painHistoryList    = document.querySelector('[data-pain-history-list]');
+  const painHistoryToggle  = document.querySelector('[data-pain-history-toggle]');
+  const painHistoryLoading = document.querySelector('[data-pain-history-loading]');
+  const painHistoryEmpty   = document.querySelector('[data-pain-history-empty]');
+
+  let painPageHistoryLoaded = false;
+
+  const resetPainLogForm = () => {
+    if (painLogLevelInput) painLogLevelInput.value = '';
+    if (painLogNoteInput)  painLogNoteInput.value  = '';
+    if (painLogError)     { painLogError.hidden = true; painLogError.textContent = ''; }
+    document.querySelectorAll('.pain-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+  };
+
+  document.querySelectorAll('.pain-log-level-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.pain-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+      btn.classList.add('is-selected');
+      if (painLogLevelInput) painLogLevelInput.value = btn.dataset.painLevel ?? '';
+    });
+  });
+
+  painLogToggle?.addEventListener('click', () => {
+    if (!painLogFormWrap) return;
+    painLogFormWrap.hidden = false;
+    painLogToggle.hidden   = true;
+    if (painLogMedIdInput) painLogMedIdInput.value = String(painPageMedId);
+    resetPainLogForm();
+  });
+
+  painLogCancel?.addEventListener('click', () => {
+    if (painLogFormWrap) painLogFormWrap.hidden = true;
+    if (painLogToggle)   painLogToggle.hidden   = false;
+    resetPainLogForm();
+  });
+
+  painLogForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const level = parseInt(painLogLevelInput?.value ?? '', 10);
+    if (!level || level < 1 || level > 10) {
+      if (painLogError) { painLogError.textContent = 'Please select a pain level.'; painLogError.hidden = false; }
+      return;
+    }
+    const note = (painLogNoteInput?.value ?? '').trim();
+    const submitBtn = painLogForm.querySelector('[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note });
+    if (submitBtn) submitBtn.disabled = false;
+    if (!result.ok) {
+      if (painLogError) { painLogError.textContent = result.error ?? 'Could not save log. Please try again.'; painLogError.hidden = false; }
+      return;
+    }
+    if (painLogFormWrap) painLogFormWrap.hidden = true;
+    if (painLogToggle)   painLogToggle.hidden   = false;
+    resetPainLogForm();
+    loadPainPageGraph();
+    if (painHistoryPanel && !painHistoryPanel.hidden) {
+      painPageHistoryLoaded = false;
+      loadPainHistory();
+    }
+  });
+
+  const buildPainHistoryEntryHtml = (entry) => {
+    const entryId   = entry.entry_id ?? '';
+    const source    = entry.source ?? 'dose';
+    const level     = parseInt(entry.pain_level, 10);
+    const color     = painLevelColor(level);
+    const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
+    const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
+    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const editedHtml = entry.edited_at
+      ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
+      : '';
+    const noteHtml = noteEsc
+      ? `<span class="history-entry-note">${noteEsc}</span>`
+      : '';
+    return `<li id="pain-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="pain-history-entry">
+  <span class="history-entry-time">${timeStr}</span>
+  <span class="history-entry-badge" style="background:${color};color:#fff;border-radius:0.5rem;padding:0.1rem 0.4rem;font-size:0.8rem;font-weight:600;">${level}/10</span>
+  <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
+  ${noteHtml}
+  ${editedHtml}
+  <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-pain-level="${level}" data-note="${noteEsc}">Edit</button>
+</li>`;
+  };
+
+  const renderPainHistoryEntries = (entries) => {
+    if (!painHistoryList) return;
+    if (!entries || entries.length === 0) {
+      painHistoryList.innerHTML = '';
+      if (painHistoryEmpty) painHistoryEmpty.hidden = false;
+      return;
+    }
+    if (painHistoryEmpty) painHistoryEmpty.hidden = true;
+    painHistoryList.innerHTML = entries.map(buildPainHistoryEntryHtml).join('');
+  };
+
+  const loadPainHistory = async () => {
+    if (!painHistoryList || !painPageMedId) return;
+    if (painPageHistoryLoaded) return;
+    if (painHistoryLoading) painHistoryLoading.hidden = false;
+    if (painHistoryEmpty)   painHistoryEmpty.hidden   = true;
+    painHistoryList.innerHTML = '';
+    try {
+      const resp = await window.fetch(`index.php?action=pain_log&medication_id=${encodeURIComponent(painPageMedId)}&days=365`);
+      const payload = await resp.json();
+      if (painHistoryLoading) painHistoryLoading.hidden = true;
+      if (payload.ok) {
+        renderPainHistoryEntries(payload.entries);
+        painPageHistoryLoaded = true;
+      }
+    } catch {
+      if (painHistoryLoading) painHistoryLoading.hidden = true;
+    }
+  };
+
+  painHistoryList?.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.history-entry-edit-btn');
+    if (!editBtn) return;
+    const li = editBtn.closest('li.pain-history-entry');
+    if (!li) return;
+    const entryId  = editBtn.dataset.entryId  ?? '';
+    const source   = editBtn.dataset.source   ?? 'dose';
+    const idPart   = entryId.split('-').pop();
+    const curLevel = parseInt(editBtn.dataset.painLevel ?? '0', 10);
+    const curNote  = editBtn.dataset.note ?? '';
+    const originalHtml = li.innerHTML;
+
+    const levelBtns = Array.from({ length: 10 }, (_, k) => {
+      const v = k + 1;
+      const sel = v === curLevel ? ' is-selected' : '';
+      return `<button type="button" class="pain-log-level-btn${sel}" data-pain-level="${v}">${v}</button>`;
+    }).join('');
+
+    li.innerHTML = `<form class="history-entry-edit-form">
+  <div class="stacked-label"><label>Pain level</label><div class="pain-level-btn-row">${levelBtns}</div></div>
+  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2">${curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')}</textarea></div>
+  <p class="history-entry-edit-error" hidden></p>
+  <button type="submit">Save</button>
+  <button type="button" class="history-entry-edit-cancel">Cancel</button>
+</form>`;
+
+    let editLevel = curLevel;
+    li.querySelectorAll('.pain-log-level-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        li.querySelectorAll('.pain-log-level-btn').forEach((x) => x.classList.remove('is-selected'));
+        b.classList.add('is-selected');
+        editLevel = parseInt(b.dataset.painLevel ?? '0', 10);
+      });
+    });
+
+    li.querySelector('.history-entry-edit-cancel')?.addEventListener('click', () => {
+      li.innerHTML = originalHtml;
+    });
+
+    li.querySelector('form.history-entry-edit-form')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!editLevel) {
+        const errEl = li.querySelector('.history-entry-edit-error');
+        if (errEl) { errEl.textContent = 'Select a level.'; errEl.hidden = false; }
+        return;
+      }
+      const noteVal = (li.querySelector('textarea[name="note"]')?.value ?? '').trim();
+      const saveBtn = li.querySelector('[type="submit"]');
+      if (saveBtn) saveBtn.disabled = true;
+      const result = await editPainMoodLog({ source, id: idPart, painLevel: editLevel, moodLevel: null, note: noteVal });
+      if (saveBtn) saveBtn.disabled = false;
+      if (!result.ok) {
+        const errEl = li.querySelector('.history-entry-edit-error');
+        if (errEl) { errEl.textContent = result.error ?? 'Could not save. Please try again.'; errEl.hidden = false; }
+        return;
+      }
+      // Re-render entry with updated data
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const updatedEntry = {
+        entry_id: entryId,
+        source,
+        pain_level: String(editLevel),
+        date: li.dataset.entryDate ?? '',
+        time: li.dataset.entryTime ?? '',
+        note: noteVal,
+        edited_at: now,
+      };
+      li.outerHTML = buildPainHistoryEntryHtml(updatedEntry);
+      painPageHistoryLoaded = false;
+      loadPainPageGraph();
+    });
+  });
+
+  const expandPainHistoryAndScrollToEntry = async (entryId) => {
+    if (!painHistoryPanel || !painHistoryList) return;
+    if (painHistoryPanel.hidden) {
+      painHistoryPanel.hidden = false;
+      if (painHistoryToggle) painHistoryToggle.textContent = 'Hide pain level log';
+    }
+    await loadPainHistory();
+    const target = document.getElementById(`pain-entry-${entryId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('is-highlighted');
+    setTimeout(() => target.classList.remove('is-highlighted'), 2000);
+  };
+
+  const expandPainHistoryAndScrollToDate = async (date) => {
+    if (!painHistoryPanel || !painHistoryList) return;
+    if (painHistoryPanel.hidden) {
+      painHistoryPanel.hidden = false;
+      if (painHistoryToggle) painHistoryToggle.textContent = 'Hide pain level log';
+    }
+    await loadPainHistory();
+    const target = painHistoryList.querySelector(`[data-entry-date="${CSS.escape(date)}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('is-highlighted');
+    setTimeout(() => target.classList.remove('is-highlighted'), 2000);
+  };
+
+  painHistoryToggle?.addEventListener('click', () => {
+    if (!painHistoryPanel) return;
+    const nowHidden = !painHistoryPanel.hidden;
+    painHistoryPanel.hidden = nowHidden;
+    painHistoryToggle.textContent = nowHidden ? 'View pain level log' : 'Hide pain level log';
+    if (!nowHidden) loadPainHistory();
+  });
+
+  // Replace click with pointerup + drag guard for mobile touch support
+  let painPagePointerMoved = false;
+  painPageBody.addEventListener('pointerdown', () => { painPagePointerMoved = false; });
+  painPageBody.addEventListener('pointermove', () => { painPagePointerMoved = true; });
+  painPageBody.addEventListener('pointerup', async (event) => {
+    if (painPagePointerMoved) return;
+    const entryDot = event.target.closest('circle[data-entry-id]');
+    if (entryDot?.dataset.entryId) {
+      expandPainHistoryAndScrollToEntry(entryDot.dataset.entryId);
+      return;
+    }
     const dot = event.target.closest('circle[data-date]');
     if (!dot) return;
     painPagePrevDays = painPageDays;
     painPageDate = dot.dataset.date ?? null;
     document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
-    loadPainPageGraph();
+    await loadPainPageGraph();
+    if (painPageDate) expandPainHistoryAndScrollToDate(painPageDate);
   });
 
   document.querySelector('[data-pain-page-day-back]')?.addEventListener('click', () => {
@@ -1834,6 +2115,12 @@ if (painPageBody) {
       if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
       painPageDays = 0;
       painPageDate = null;
+      painPageHistoryLoaded = false;
+      if (painHistoryPanel) painHistoryPanel.hidden = true;
+      if (painHistoryToggle) painHistoryToggle.textContent = 'View pain level log';
+      if (painLogFormWrap) painLogFormWrap.hidden = true;
+      if (painLogToggle)   painLogToggle.hidden   = false;
+      resetPainLogForm();
       document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -1900,13 +2187,262 @@ if (moodPageBody) {
     }
   };
 
-  moodPageBody.addEventListener('click', (event) => {
+  // Log form elements
+  const moodLogPanel      = document.querySelector('[data-mood-log-panel]');
+  const moodLogFormWrap   = document.querySelector('[data-mood-log-form-wrap]');
+  const moodLogForm       = document.querySelector('[data-mood-log-form]');
+  const moodLogToggle     = document.querySelector('[data-mood-log-toggle]');
+  const moodLogCancel     = document.querySelector('[data-mood-log-cancel]');
+  const moodLogMedIdInput = document.querySelector('[data-mood-log-medication-id]');
+  const moodLogLevelInput = document.querySelector('[data-mood-log-level]');
+  const moodLogNoteInput  = document.querySelector('[data-mood-log-note]');
+  const moodLogError      = document.querySelector('[data-mood-log-error]');
+
+  // History elements
+  const moodHistoryPanel   = document.querySelector('[data-mood-history-panel]');
+  const moodHistoryList    = document.querySelector('[data-mood-history-list]');
+  const moodHistoryToggle  = document.querySelector('[data-mood-history-toggle]');
+  const moodHistoryLoading = document.querySelector('[data-mood-history-loading]');
+  const moodHistoryEmpty   = document.querySelector('[data-mood-history-empty]');
+
+  let moodPageHistoryLoaded = false;
+
+  const resetMoodLogForm = () => {
+    if (moodLogLevelInput) moodLogLevelInput.value = '';
+    if (moodLogNoteInput)  moodLogNoteInput.value  = '';
+    if (moodLogError)     { moodLogError.hidden = true; moodLogError.textContent = ''; }
+    document.querySelectorAll('.mood-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+  };
+
+  document.querySelectorAll('.mood-log-level-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mood-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+      btn.classList.add('is-selected');
+      if (moodLogLevelInput) moodLogLevelInput.value = btn.dataset.moodLevel ?? '';
+    });
+  });
+
+  moodLogToggle?.addEventListener('click', () => {
+    if (!moodLogFormWrap) return;
+    moodLogFormWrap.hidden = false;
+    moodLogToggle.hidden   = true;
+    if (moodLogMedIdInput) moodLogMedIdInput.value = String(moodPageMedId);
+    resetMoodLogForm();
+  });
+
+  moodLogCancel?.addEventListener('click', () => {
+    if (moodLogFormWrap) moodLogFormWrap.hidden = true;
+    if (moodLogToggle)   moodLogToggle.hidden   = false;
+    resetMoodLogForm();
+  });
+
+  moodLogForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const level = parseInt(moodLogLevelInput?.value ?? '', 10);
+    if (!level || level < 1 || level > 10) {
+      if (moodLogError) { moodLogError.textContent = 'Please select a mood level.'; moodLogError.hidden = false; }
+      return;
+    }
+    const note = (moodLogNoteInput?.value ?? '').trim();
+    const submitBtn = moodLogForm.querySelector('[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note });
+    if (submitBtn) submitBtn.disabled = false;
+    if (!result.ok) {
+      if (moodLogError) { moodLogError.textContent = result.error ?? 'Could not save log. Please try again.'; moodLogError.hidden = false; }
+      return;
+    }
+    if (moodLogFormWrap) moodLogFormWrap.hidden = true;
+    if (moodLogToggle)   moodLogToggle.hidden   = false;
+    resetMoodLogForm();
+    loadMoodPageGraph();
+    if (moodHistoryPanel && !moodHistoryPanel.hidden) {
+      moodPageHistoryLoaded = false;
+      loadMoodHistory();
+    }
+  });
+
+  const buildMoodHistoryEntryHtml = (entry) => {
+    const entryId   = entry.entry_id ?? '';
+    const source    = entry.source ?? 'dose';
+    const level     = parseInt(entry.mood_level, 10);
+    const color     = moodLevelColor(level);
+    const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
+    const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
+    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const editedHtml = entry.edited_at
+      ? `<small class="history-entry-edited">Last edited ${formatEntryDatetime(entry.edited_at)}</small>`
+      : '';
+    const noteHtml = noteEsc
+      ? `<span class="history-entry-note">${noteEsc}</span>`
+      : '';
+    return `<li id="mood-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="mood-history-entry">
+  <span class="history-entry-time">${timeStr}</span>
+  <span class="history-entry-badge" style="background:${color};color:#fff;border-radius:0.5rem;padding:0.1rem 0.4rem;font-size:0.8rem;font-weight:600;">${level}/10</span>
+  <span class="history-entry-source ${sourceCls}">${sourceLbl}</span>
+  ${noteHtml}
+  ${editedHtml}
+  <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-mood-level="${level}" data-note="${noteEsc}">Edit</button>
+</li>`;
+  };
+
+  const renderMoodHistoryEntries = (entries) => {
+    if (!moodHistoryList) return;
+    if (!entries || entries.length === 0) {
+      moodHistoryList.innerHTML = '';
+      if (moodHistoryEmpty) moodHistoryEmpty.hidden = false;
+      return;
+    }
+    if (moodHistoryEmpty) moodHistoryEmpty.hidden = true;
+    moodHistoryList.innerHTML = entries.map(buildMoodHistoryEntryHtml).join('');
+  };
+
+  const loadMoodHistory = async () => {
+    if (!moodHistoryList || !moodPageMedId) return;
+    if (moodPageHistoryLoaded) return;
+    if (moodHistoryLoading) moodHistoryLoading.hidden = false;
+    if (moodHistoryEmpty)   moodHistoryEmpty.hidden   = true;
+    moodHistoryList.innerHTML = '';
+    try {
+      const resp = await window.fetch(`index.php?action=mood_log&medication_id=${encodeURIComponent(moodPageMedId)}&days=365`);
+      const payload = await resp.json();
+      if (moodHistoryLoading) moodHistoryLoading.hidden = true;
+      if (payload.ok) {
+        renderMoodHistoryEntries(payload.entries);
+        moodPageHistoryLoaded = true;
+      }
+    } catch {
+      if (moodHistoryLoading) moodHistoryLoading.hidden = true;
+    }
+  };
+
+  moodHistoryList?.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.history-entry-edit-btn');
+    if (!editBtn) return;
+    const li = editBtn.closest('li.mood-history-entry');
+    if (!li) return;
+    const entryId  = editBtn.dataset.entryId  ?? '';
+    const source   = editBtn.dataset.source   ?? 'dose';
+    const idPart   = entryId.split('-').pop();
+    const curLevel = parseInt(editBtn.dataset.moodLevel ?? '0', 10);
+    const curNote  = editBtn.dataset.note ?? '';
+    const originalHtml = li.innerHTML;
+
+    const levelBtns = Array.from({ length: 10 }, (_, k) => {
+      const v = k + 1;
+      const sel = v === curLevel ? ' is-selected' : '';
+      return `<button type="button" class="mood-log-level-btn${sel}" data-mood-level="${v}">${v}</button>`;
+    }).join('');
+
+    li.innerHTML = `<form class="history-entry-edit-form">
+  <div class="stacked-label"><label>Mood level</label><div class="mood-level-btn-row">${levelBtns}</div></div>
+  <div class="stacked-label"><label>Note</label><textarea name="note" rows="2">${curNote.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')}</textarea></div>
+  <p class="history-entry-edit-error" hidden></p>
+  <button type="submit">Save</button>
+  <button type="button" class="history-entry-edit-cancel">Cancel</button>
+</form>`;
+
+    let editLevel = curLevel;
+    li.querySelectorAll('.mood-log-level-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        li.querySelectorAll('.mood-log-level-btn').forEach((x) => x.classList.remove('is-selected'));
+        b.classList.add('is-selected');
+        editLevel = parseInt(b.dataset.moodLevel ?? '0', 10);
+      });
+    });
+
+    li.querySelector('.history-entry-edit-cancel')?.addEventListener('click', () => {
+      li.innerHTML = originalHtml;
+    });
+
+    li.querySelector('form.history-entry-edit-form')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!editLevel) {
+        const errEl = li.querySelector('.history-entry-edit-error');
+        if (errEl) { errEl.textContent = 'Select a level.'; errEl.hidden = false; }
+        return;
+      }
+      const noteVal = (li.querySelector('textarea[name="note"]')?.value ?? '').trim();
+      const saveBtn = li.querySelector('[type="submit"]');
+      if (saveBtn) saveBtn.disabled = true;
+      const result = await editPainMoodLog({ source, id: idPart, painLevel: null, moodLevel: editLevel, note: noteVal });
+      if (saveBtn) saveBtn.disabled = false;
+      if (!result.ok) {
+        const errEl = li.querySelector('.history-entry-edit-error');
+        if (errEl) { errEl.textContent = result.error ?? 'Could not save. Please try again.'; errEl.hidden = false; }
+        return;
+      }
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const updatedEntry = {
+        entry_id: entryId,
+        source,
+        mood_level: String(editLevel),
+        date: li.dataset.entryDate ?? '',
+        time: li.dataset.entryTime ?? '',
+        note: noteVal,
+        edited_at: now,
+      };
+      li.outerHTML = buildMoodHistoryEntryHtml(updatedEntry);
+      moodPageHistoryLoaded = false;
+      loadMoodPageGraph();
+    });
+  });
+
+  const expandMoodHistoryAndScrollToEntry = async (entryId) => {
+    if (!moodHistoryPanel || !moodHistoryList) return;
+    if (moodHistoryPanel.hidden) {
+      moodHistoryPanel.hidden = false;
+      if (moodHistoryToggle) moodHistoryToggle.textContent = 'Hide mood level log';
+    }
+    await loadMoodHistory();
+    const target = document.getElementById(`mood-entry-${entryId}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('is-highlighted');
+    setTimeout(() => target.classList.remove('is-highlighted'), 2000);
+  };
+
+  const expandMoodHistoryAndScrollToDate = async (date) => {
+    if (!moodHistoryPanel || !moodHistoryList) return;
+    if (moodHistoryPanel.hidden) {
+      moodHistoryPanel.hidden = false;
+      if (moodHistoryToggle) moodHistoryToggle.textContent = 'Hide mood level log';
+    }
+    await loadMoodHistory();
+    const target = moodHistoryList.querySelector(`[data-entry-date="${CSS.escape(date)}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('is-highlighted');
+    setTimeout(() => target.classList.remove('is-highlighted'), 2000);
+  };
+
+  moodHistoryToggle?.addEventListener('click', () => {
+    if (!moodHistoryPanel) return;
+    const nowHidden = !moodHistoryPanel.hidden;
+    moodHistoryPanel.hidden = nowHidden;
+    moodHistoryToggle.textContent = nowHidden ? 'View mood level log' : 'Hide mood level log';
+    if (!nowHidden) loadMoodHistory();
+  });
+
+  // Replace click with pointerup + drag guard for mobile touch support
+  let moodPagePointerMoved = false;
+  moodPageBody.addEventListener('pointerdown', () => { moodPagePointerMoved = false; });
+  moodPageBody.addEventListener('pointermove', () => { moodPagePointerMoved = true; });
+  moodPageBody.addEventListener('pointerup', async (event) => {
+    if (moodPagePointerMoved) return;
+    const entryDot = event.target.closest('circle[data-entry-id]');
+    if (entryDot?.dataset.entryId) {
+      expandMoodHistoryAndScrollToEntry(entryDot.dataset.entryId);
+      return;
+    }
     const dot = event.target.closest('circle[data-date]');
     if (!dot) return;
     moodPagePrevDays = moodPageDays;
     moodPageDate = dot.dataset.date ?? null;
     document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
-    loadMoodPageGraph();
+    await loadMoodPageGraph();
+    if (moodPageDate) expandMoodHistoryAndScrollToDate(moodPageDate);
   });
 
   document.querySelector('[data-mood-page-day-back]')?.addEventListener('click', () => {
@@ -1926,6 +2462,12 @@ if (moodPageBody) {
       if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
       moodPageDays = 0;
       moodPageDate = null;
+      moodPageHistoryLoaded = false;
+      if (moodHistoryPanel) moodHistoryPanel.hidden = true;
+      if (moodHistoryToggle) moodHistoryToggle.textContent = 'View mood level log';
+      if (moodLogFormWrap) moodLogFormWrap.hidden = true;
+      if (moodLogToggle)   moodLogToggle.hidden   = false;
+      resetMoodLogForm();
       document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
       );
@@ -2394,6 +2936,56 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
     mood_level: moodLevel,
   });
   if (groupId) params.set('group_id', String(groupId));
+  try {
+    const res = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await res.json();
+    return { ok: !!data.ok, error: data.error ?? null };
+  } catch {
+    return { ok: false, error: null };
+  }
+};
+
+const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moodLevel, note }) => {
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action: 'log_pain_mood',
+    medication_id: String(medicationId),
+    log_type: logType,
+    note: note ?? '',
+  });
+  if (painLevel != null) params.set('pain_level', String(painLevel));
+  if (moodLevel != null) params.set('mood_level', String(moodLevel));
+  try {
+    const res = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await res.json();
+    return { ok: !!data.ok, id: data.id ?? null, error: data.error ?? null };
+  } catch {
+    return { ok: false, id: null, error: null };
+  }
+};
+
+const editPainMoodLog = async ({ source, id, painLevel, moodLevel, note }) => {
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action: 'edit_pain_mood_log',
+    source,
+    id: String(id),
+    note: note ?? '',
+  });
+  if (painLevel != null) params.set('pain_level', String(painLevel));
+  if (moodLevel != null) params.set('mood_level', String(moodLevel));
   try {
     const res = await window.fetch('index.php', {
       method: 'POST',

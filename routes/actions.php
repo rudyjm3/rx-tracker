@@ -644,6 +644,69 @@ try {
             // fall through so pages.php renders the export page with the error
         }
     }
+    if ($action === 'log_pain_mood') {
+        $medicationId = (int) post_string('medication_id');
+        $logType      = post_string('log_type');
+        if (!in_array($logType, ['pain', 'mood', 'both'], true)) {
+            throw new RuntimeException('Invalid log type.');
+        }
+        if ($medicationId <= 0) {
+            throw new RuntimeException('Invalid medication.');
+        }
+        $med = $repository->findMedication($medicationId);
+        if ($med === null) {
+            throw new RuntimeException('Medication not found.');
+        }
+        $painLevel = null;
+        $moodLevel = null;
+        if (in_array($logType, ['pain', 'both'], true)) {
+            $rawPain = post_string('pain_level');
+            if ($rawPain === '') {
+                throw new RuntimeException('Pain level is required.');
+            }
+            $painLevel = max(1, min(10, (int) $rawPain));
+        }
+        if (in_array($logType, ['mood', 'both'], true)) {
+            $rawMood = post_string('mood_level');
+            if ($rawMood === '') {
+                throw new RuntimeException('Mood level is required.');
+            }
+            $moodLevel = max(1, min(10, (int) $rawMood));
+        }
+        $note  = substr(trim(post_string('note')), 0, 255);
+        $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true, 'id' => $newId], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'edit_pain_mood_log') {
+        $source = post_string('source');
+        $logId  = (int) post_string('id');
+        if ($logId <= 0 || !in_array($source, ['dose', 'standalone'], true)) {
+            throw new RuntimeException('Invalid log entry.');
+        }
+        $rawPain = post_string('pain_level');
+        $rawMood = post_string('mood_level');
+        $painLevel = $rawPain !== '' ? max(1, min(10, (int) $rawPain)) : null;
+        $moodLevel = $rawMood !== '' ? max(1, min(10, (int) $rawMood)) : null;
+        $note = substr(trim(post_string('note')), 0, 255);
+        if ($source === 'dose') {
+            $repository->updateDoseLogFeedback($logId, $painLevel, $moodLevel, $note);
+        } else {
+            $repository->updateStandaloneLog($logId, $painLevel, $moodLevel, $note);
+        }
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
 } catch (Throwable $exception) {
     $isPushAction = in_array(post_string('action'), ['save_push_subscription', 'remove_push_subscription', 'send_test_push'], true);
     if ($jsonResponse || $isPushAction) {

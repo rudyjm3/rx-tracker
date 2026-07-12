@@ -6292,3 +6292,243 @@ a.nav-user-btn.is-active {
     color: #fff;
   }
 }
+
+/* ── Standalone pain/mood log form panel ─────────────────────────────────── */
+
+.pain-log-panel,
+.mood-log-panel {
+  margin-top: 1.25rem;
+}
+
+.pain-log-form-wrap,
+.mood-log-form-wrap {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md, 0.75rem);
+  margin-top: 0.75rem;
+  padding: 1.1rem 1.35rem;
+}
+
+.pain-log-form .pain-level-selector,
+.mood-log-form .pain-level-selector {
+  margin-bottom: 0.75rem;
+}
+
+.pain-log-error,
+.mood-log-error {
+  color: var(--rx-danger, #c9213c);
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+/* pain-log-level-btn / mood-log-level-btn: same appearance as pain-level-btn /
+   mood-level-btn but a separate class so the dose-feedback modal's global
+   querySelectorAll('.pain-level-btn') handler doesn't interfere. */
+.pain-log-level-btn,
+.mood-log-level-btn {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 2px solid var(--rx-border);
+  border-radius: 50%;
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 2.6rem;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  width: 2.6rem;
+}
+
+.pain-log-level-btn:hover,
+.mood-log-level-btn:hover {
+  border-color: var(--rx-text-muted);
+  color: #fff;
+}
+
+/* Pain log level button colors (mirror pain-level-btn selectors) */
+.pain-log-level-btn[data-pain-level="1"],
+.pain-log-level-btn[data-pain-level="2"],
+.pain-log-level-btn[data-pain-level="3"] { border-color: #2a9d49; }
+
+.pain-log-level-btn[data-pain-level="4"],
+.pain-log-level-btn[data-pain-level="5"],
+.pain-log-level-btn[data-pain-level="6"] { border-color: #d97706; }
+
+.pain-log-level-btn[data-pain-level="7"],
+.pain-log-level-btn[data-pain-level="8"] { border-color: #e05b30; }
+
+.pain-log-level-btn[data-pain-level="9"],
+.pain-log-level-btn[data-pain-level="10"] { border-color: #c9213c; }
+
+.pain-log-level-btn.is-selected { color: #fff; }
+
+.pain-log-level-btn.is-selected[data-pain-level="1"],
+.pain-log-level-btn.is-selected[data-pain-level="2"],
+.pain-log-level-btn.is-selected[data-pain-level="3"] { background: #2a9d49; border-color: #2a9d49; }
+
+.pain-log-level-btn.is-selected[data-pain-level="4"],
+.pain-log-level-btn.is-selected[data-pain-level="5"],
+.pain-log-level-btn.is-selected[data-pain-level="6"] { background: #d97706; border-color: #d97706; }
+
+.pain-log-level-btn.is-selected[data-pain-level="7"],
+.pain-log-level-btn.is-selected[data-pain-level="8"] { background: #e05b30; border-color: #e05b30; }
+
+.pain-log-level-btn.is-selected[data-pain-level="9"],
+.pain-log-level-btn.is-selected[data-pain-level="10"] { background: #c9213c; border-color: #c9213c; }
+
+/* Mood log level button colors (mirror mood-level-btn selectors, inverted scale) */
+.mood-log-level-btn[data-mood-level="1"],
+.mood-log-level-btn[data-mood-level="2"],
+.mood-log-level-btn[data-mood-level="3"] { border-color: #c9213c; }
+
+.mood-log-level-btn[data-mood-level="4"],
+.mood-log-level-btn[data-mood-level="5"],
+.mood-log-level-btn[data-mood-level="6"] { border-color: #d97706; }
+
+.mood-log-level-btn[data-mood-level="7"],
+.mood-log-level-btn[data-mood-level="8"] { border-color: #8bb04a; }
+
+.mood-log-level-btn[data-mood-level="9"],
+.mood-log-level-btn[data-mood-level="10"] { border-color: #2a9d49; }
+
+.mood-log-level-btn.is-selected { color: #fff; }
+
+.mood-log-level-btn.is-selected[data-mood-level="1"],
+.mood-log-level-btn.is-selected[data-mood-level="2"],
+.mood-log-level-btn.is-selected[data-mood-level="3"] { background: #c9213c; border-color: #c9213c; }
+
+.mood-log-level-btn.is-selected[data-mood-level="4"],
+.mood-log-level-btn.is-selected[data-mood-level="5"],
+.mood-log-level-btn.is-selected[data-mood-level="6"] { background: #d97706; border-color: #d97706; }
+
+.mood-log-level-btn.is-selected[data-mood-level="7"],
+.mood-log-level-btn.is-selected[data-mood-level="8"] { background: #8bb04a; border-color: #8bb04a; }
+
+.mood-log-level-btn.is-selected[data-mood-level="9"],
+.mood-log-level-btn.is-selected[data-mood-level="10"] { background: #2a9d49; border-color: #2a9d49; }
+
+/* ── Pain/Mood log history section ──────────────────────────────────────── */
+
+.pain-history-section,
+.mood-history-section {
+  margin-top: 1rem;
+}
+
+.pain-history-list,
+.mood-history-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pain-history-entry,
+.mood-history-entry {
+  align-items: flex-start;
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm, 0.5rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  scroll-margin-top: 5rem;
+  transition: background 0.4s;
+}
+
+.pain-history-entry.is-highlighted,
+.mood-history-entry.is-highlighted {
+  background: rgba(245, 165, 36, 0.18);
+}
+
+.history-entry-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.history-entry-source {
+  border-radius: 0.75rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.history-entry-source--standalone {
+  background: #e0eeff;
+  color: #2563eb;
+}
+
+.history-entry-source--dose {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  color: var(--rx-text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  .history-entry-source--standalone {
+    background: rgba(37, 99, 235, 0.2);
+    color: #93c5fd;
+  }
+}
+
+.history-entry-note {
+  color: var(--rx-text-muted);
+  font-size: 0.83rem;
+  margin: 0.2rem 0 0;
+  width: 100%;
+}
+
+.history-entry-edited {
+  color: var(--rx-text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+  margin: 0.1rem 0 0;
+  width: 100%;
+}
+
+.history-entry-edit-btn {
+  background: none;
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm, 0.4rem);
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-left: auto;
+  padding: 0.15rem 0.55rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.history-entry-edit-btn:hover {
+  border-color: var(--rx-blue, #2563eb);
+  color: var(--rx-blue, #2563eb);
+}
+
+/* Inline edit form within a history entry */
+.history-entry-edit-form {
+  width: 100%;
+}
+
+.history-entry-edit-form .pain-level-selector {
+  margin-bottom: 0.5rem;
+}
+
+.history-entry-edit-error {
+  color: var(--rx-danger, #c9213c);
+  font-size: 0.83rem;
+  margin: 0.2rem 0 0;
+}
+
+.stacked-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.88rem;
+  gap: 0.3rem;
+  width: 100%;
+}

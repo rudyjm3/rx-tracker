@@ -176,6 +176,10 @@ tbody tr:nth-child(even) { background: #f8fbff; }
 /* Empty states */
 .empty-state { color: #60708A; font-style: italic; font-size: 9pt; padding: 6pt 0; }
 
+/* Standalone log / edited annotations in patient notes */
+.note-standalone { color: #2563eb; font-size: 8pt; }
+.note-edited     { color: #60708A; font-size: 7.5pt; font-style: italic; }
+
 /* Footer */
 .report-footer {
     border-top: 1pt solid #D7E6F8;
@@ -384,7 +388,7 @@ HTML;
         }
 
         $html = '<div class="section-title page-break">Pain Level Tracking</div>';
-        $html .= '<div class="section-caption">Recorded after each dose for medications with pain tracking enabled. Chart shows daily pain level (1–10) over the reporting period. Detailed single-day levels can be viewed in the app.</div>';
+        $html .= '<div class="section-caption">Recorded after doses and as standalone logs for medications with pain tracking enabled. Chart shows daily pain level (1–10) over the reporting period. Hollow circles indicate standalone log entries.</div>';
 
         foreach ($trackedMeds as $med) {
             $medId     = (int) $med['id'];
@@ -426,7 +430,7 @@ HTML;
                     $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
                         . '" width="500" height="200" style="display:block;">';
 
-                    // Patient notes from dose_logs.note in this range
+                    // Patient notes from dose_logs and standalone logs in this range
                     $noteRows = array_filter(
                         $rawData,
                         static fn(array $r): bool => !empty($r['note'])
@@ -434,11 +438,19 @@ HTML;
                     if ($noteRows !== []) {
                         $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
                         foreach ($noteRows as $r) {
-                            $date = date('M j', (int) strtotime((string) $r['date']));
+                            $date      = date('M j', (int) strtotime((string) $r['date']));
+                            $sourceTag = ($r['source'] ?? 'dose') === 'standalone'
+                                ? ' <span class="note-standalone">(standalone)</span>'
+                                : '';
+                            $editedTag = !empty($r['edited_at'])
+                                ? ' <span class="note-edited">[edited ' . date('M j, Y', (int) strtotime((string) $r['edited_at'])) . ']</span>'
+                                : '';
                             $html .= sprintf(
-                                '<div class="chart-note-item">%s: %s</div>',
+                                '<div class="chart-note-item">%s%s: %s%s</div>',
                                 $this->h($date),
-                                $this->h((string) $r['note'])
+                                $sourceTag,
+                                $this->h((string) $r['note']),
+                                $editedTag
                             );
                         }
                         $html .= '</div>';
@@ -472,7 +484,7 @@ HTML;
         }
 
         $html = '<div class="section-title page-break">Mood & Wellbeing Tracking</div>';
-        $html .= '<div class="section-caption">Recorded after each dose for medications with mood tracking enabled. Chart shows daily mood level (1–10) over the reporting period. Detailed single-day levels can be viewed in the app.</div>';
+        $html .= '<div class="section-caption">Recorded after doses and as standalone logs for medications with mood tracking enabled. Chart shows daily mood level (1–10) over the reporting period. Hollow circles indicate standalone log entries.</div>';
 
         foreach ($trackedMeds as $med) {
             $medId     = (int) $med['id'];
@@ -514,7 +526,7 @@ HTML;
                     $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
                         . '" width="500" height="200" style="display:block;">';
 
-                    // Patient notes from dose_logs.note in this range
+                    // Patient notes from dose_logs and standalone logs in this range
                     $noteRows = array_filter(
                         $rawData,
                         static fn(array $r): bool => !empty($r['note'])
@@ -522,11 +534,19 @@ HTML;
                     if ($noteRows !== []) {
                         $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
                         foreach ($noteRows as $r) {
-                            $date = date('M j', (int) strtotime((string) $r['date']));
+                            $date      = date('M j', (int) strtotime((string) $r['date']));
+                            $sourceTag = ($r['source'] ?? 'dose') === 'standalone'
+                                ? ' <span class="note-standalone">(standalone)</span>'
+                                : '';
+                            $editedTag = !empty($r['edited_at'])
+                                ? ' <span class="note-edited">[edited ' . date('M j, Y', (int) strtotime((string) $r['edited_at'])) . ']</span>'
+                                : '';
                             $html .= sprintf(
-                                '<div class="chart-note-item">%s: %s</div>',
+                                '<div class="chart-note-item">%s%s: %s%s</div>',
                                 $this->h($date),
-                                $this->h((string) $r['note'])
+                                $sourceTag,
+                                $this->h((string) $r['note']),
+                                $editedTag
                             );
                         }
                         $html .= '</div>';
