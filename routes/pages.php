@@ -739,6 +739,43 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
     </div>
 
+    <div class="pain-log-panel" data-pain-log-panel>
+      <button type="button" class="history-view-link" data-pain-log-toggle>Log pain level now</button>
+      <div class="pain-log-form-wrap" data-pain-log-form-wrap hidden>
+        <form class="pain-log-form" data-pain-log-form novalidate>
+          <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+          <input type="hidden" name="json_response" value="1">
+          <input type="hidden" name="action" value="log_pain_mood">
+          <input type="hidden" name="log_type" value="pain">
+          <input type="hidden" name="medication_id" data-pain-log-medication-id value="">
+          <input type="hidden" name="pain_level" data-pain-log-level value="">
+          <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select pain level">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+            <button type="button" class="pain-log-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+            <textarea name="note" data-pain-log-note rows="2" maxlength="255" placeholder="Any notes about this pain level&hellip;"></textarea>
+          </label>
+          <p class="pain-log-error" data-pain-log-error role="alert" hidden></p>
+          <div class="feedback-actions">
+            <button type="submit" class="button primary small">Save log</button>
+            <button type="button" class="button secondary small" data-pain-log-cancel>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="pain-history-section" data-pain-history-section>
+      <button type="button" class="history-view-link" data-pain-history-toggle>View pain level log</button>
+      <div data-pain-history-panel hidden>
+        <p class="pain-graph-loading" data-pain-history-loading hidden>Loading&hellip;</p>
+        <ol class="pain-history-list" data-pain-history-list></ol>
+        <p class="pain-graph-empty" data-pain-history-empty hidden>No pain levels recorded for this medication yet.</p>
+      </div>
+    </div>
+
     <?php endif; ?>
   </section>
   <?php endif; ?>
@@ -792,6 +829,43 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <div class="pain-graph-body" data-mood-page-body></div>
       <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
       <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
+    </div>
+
+    <div class="mood-log-panel" data-mood-log-panel>
+      <button type="button" class="history-view-link" data-mood-log-toggle>Log mood level now</button>
+      <div class="mood-log-form-wrap" data-mood-log-form-wrap hidden>
+        <form class="mood-log-form" data-mood-log-form novalidate>
+          <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+          <input type="hidden" name="json_response" value="1">
+          <input type="hidden" name="action" value="log_pain_mood">
+          <input type="hidden" name="log_type" value="mood">
+          <input type="hidden" name="medication_id" data-mood-log-medication-id value="">
+          <input type="hidden" name="mood_level" data-mood-log-level value="">
+          <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
+          <div class="pain-level-selector" role="group" aria-label="Select mood level">
+            <?php for ($i = 1; $i <= 10; $i++): ?>
+            <button type="button" class="mood-log-level-btn" data-mood-level="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
+            <?php endfor; ?>
+          </div>
+          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+            <textarea name="note" data-mood-log-note rows="2" maxlength="255" placeholder="How are you feeling&hellip;"></textarea>
+          </label>
+          <p class="mood-log-error" data-mood-log-error role="alert" hidden></p>
+          <div class="feedback-actions">
+            <button type="submit" class="button primary small">Save log</button>
+            <button type="button" class="button secondary small" data-mood-log-cancel>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="mood-history-section" data-mood-history-section>
+      <button type="button" class="history-view-link" data-mood-history-toggle>View mood level log</button>
+      <div data-mood-history-panel hidden>
+        <p class="pain-graph-loading" data-mood-history-loading hidden>Loading&hellip;</p>
+        <ol class="mood-history-list" data-mood-history-list></ol>
+        <p class="pain-graph-empty" data-mood-history-empty hidden>No mood levels recorded for this medication yet.</p>
+      </div>
     </div>
 
     <?php endif; ?>

@@ -35,22 +35,29 @@ final class PainChartRenderer
      */
     public function renderSvg(array $painData, string $startDate, string $endDate): string
     {
-        // Group by date and average pain levels
+        // Group by date: average pain levels, track whether any entry is dose-linked
         $byDate = [];
         foreach ($painData as $row) {
             $date = (string) $row['date'];
             $level = (float) $row['pain_level'];
+            $isDose = ($row['source'] ?? 'dose') === 'dose';
             if (!isset($byDate[$date])) {
-                $byDate[$date] = ['sum' => 0.0, 'count' => 0];
+                $byDate[$date] = ['sum' => 0.0, 'count' => 0, 'hasDose' => false];
             }
             $byDate[$date]['sum']   += $level;
             $byDate[$date]['count'] += 1;
+            if ($isDose) {
+                $byDate[$date]['hasDose'] = true;
+            }
         }
         $dailyAvg = [];
+        $dailyHasDose = [];
         foreach ($byDate as $date => $acc) {
-            $dailyAvg[$date] = $acc['sum'] / $acc['count'];
+            $dailyAvg[$date]    = $acc['sum'] / $acc['count'];
+            $dailyHasDose[$date] = $acc['hasDose'];
         }
         ksort($dailyAvg);
+        ksort($dailyHasDose);
 
         $chartW = self::WIDTH  - self::PAD_LEFT - self::PAD_RIGHT;
         $chartH = self::HEIGHT - self::PAD_TOP  - self::PAD_BOTTOM;
@@ -139,14 +146,18 @@ final class PainChartRenderer
                 implode(' ', $points)
             );
 
-            // Data point circles
+            // Data point circles — hollow when day contains only standalone logs
             foreach ($dailyAvg as $date => $avg) {
-                $cx    = $xFor($date);
-                $cy    = $yFor($avg);
-                $color = $this->colorForLevel($avg);
+                $cx      = $xFor($date);
+                $cy      = $yFor($avg);
+                $color   = $this->colorForLevel($avg);
+                $hasDose = $dailyHasDose[$date] ?? true;
+                $fill    = $hasDose ? $color   : '#f8fafc';
+                $stroke  = $hasDose ? '#ffffff' : $color;
+                $sw      = $hasDose ? '1.5'     : '2.5';
                 $svg .= sprintf(
-                    '<circle cx="%s" cy="%s" r="5" fill="%s" stroke="white" stroke-width="1.5"/>',
-                    $cx, $cy, $color
+                    '<circle cx="%s" cy="%s" r="5" fill="%s" stroke="%s" stroke-width="%s"/>',
+                    $cx, $cy, $fill, $stroke, $sw
                 );
             }
         }

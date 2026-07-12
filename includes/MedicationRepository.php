@@ -36,6 +36,8 @@ final class MedicationRepository
         $this->ensureUserNotificationsTable();
         $this->ensureFamilyProfilesTable();
         $this->ensureStartDateColumn();
+        $this->ensureStandalonePainMoodLogsTable();
+        $this->ensureFeedbackEditedAtColumn();
     }
 
     private function profileSql(string $alias = 'm'): string
@@ -210,28 +212,38 @@ final class MedicationRepository
 
     /**
      * Pain trend data for an explicit date range (used by the report PDF generator).
+     * Returns merged dose-log + standalone rows, sorted by date/time ascending.
+     * Each row includes: id, source ('dose'|'standalone'), entry_id, date, time,
+     * pain_level, note, status, edited_at.
      */
     public function painLevelTrendForRange(int $medicationId, string $startDate, string $endDate): array
     {
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.pain_level, dl.note, dl.status
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.pain_level IS NOT NULL
-               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date'
         );
-        $statement->execute([
-            'medication_id' => $medicationId,
-            'user_id'       => $this->userId,
-            'start_date'    => $startDate,
-            'end_date'      => $endDate,
-        ]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.pain_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.pain_level IS NOT NULL
+               AND DATE(s.logged_at) BETWEEN :start_date AND :end_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortPainRows($doseRows, $standaloneRows, 'asc');
     }
 
     /**
@@ -290,101 +302,360 @@ final class MedicationRepository
     public function painLevelTrend(int $medicationId, int $days): array
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.pain_level, dl.note, dl.status
+
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.pain_level IS NOT NULL
-               AND dl.scheduled_for_date >= :start_date
-             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+               AND dl.scheduled_for_date >= :start_date'
         );
-        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.pain_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.pain_level IS NOT NULL
+               AND DATE(s.logged_at) >= :start_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortPainRows($doseRows, $standaloneRows, 'asc');
     }
 
     public function painLevelTrendForDate(int $medicationId, string $date): array
     {
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.pain_level, dl.note, dl.status
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.pain_level IS NOT NULL
-               AND dl.scheduled_for_date = :date
-             ORDER BY dl.scheduled_time ASC'
+               AND dl.scheduled_for_date = :date'
         );
-        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.pain_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.pain_level IS NOT NULL
+               AND DATE(s.logged_at) = :date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortPainRows($doseRows, $standaloneRows, 'asc');
     }
 
     /**
      * Mood trend data for an explicit date range (used by the report PDF generator).
+     * Returns merged dose-log + standalone rows, sorted by date/time ascending.
      */
     public function moodLevelTrendForRange(int $medicationId, string $startDate, string $endDate): array
     {
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.mood_level, dl.note, dl.status
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.mood_level IS NOT NULL
-               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+               AND dl.scheduled_for_date BETWEEN :start_date AND :end_date'
         );
-        $statement->execute([
-            'medication_id' => $medicationId,
-            'user_id'       => $this->userId,
-            'start_date'    => $startDate,
-            'end_date'      => $endDate,
-        ]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.mood_level IS NOT NULL
+               AND DATE(s.logged_at) BETWEEN :start_date AND :end_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortMoodRows($doseRows, $standaloneRows, 'asc');
     }
 
     public function moodLevelTrend(int $medicationId, int $days): array
     {
         $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.mood_level, dl.note, dl.status
+
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.mood_level IS NOT NULL
-               AND dl.scheduled_for_date >= :start_date
-             ORDER BY dl.scheduled_for_date ASC, dl.scheduled_time ASC'
+               AND dl.scheduled_for_date >= :start_date'
         );
-        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.mood_level IS NOT NULL
+               AND DATE(s.logged_at) >= :start_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortMoodRows($doseRows, $standaloneRows, 'asc');
     }
 
     public function moodLevelTrendForDate(int $medicationId, string $date): array
     {
-        $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.mood_level, dl.note, dl.status
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.mood_level IS NOT NULL
-               AND dl.scheduled_for_date = :date
-             ORDER BY dl.scheduled_time ASC'
+               AND dl.scheduled_for_date = :date'
         );
-        $statement->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $doseRows = $stmt1->fetchAll();
 
-        return $statement->fetchAll();
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.mood_level IS NOT NULL
+               AND DATE(s.logged_at) = :date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'date' => $date]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortMoodRows($doseRows, $standaloneRows, 'asc');
+    }
+
+    /**
+     * Merged pain log history for the collapsible log section UI (most recent first).
+     */
+    public function painLogHistory(int $medicationId, int $days = 365): array
+    {
+        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.pain_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.pain_level IS NOT NULL
+               AND dl.scheduled_for_date >= :start_date'
+        );
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $doseRows = $stmt1->fetchAll();
+
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.pain_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.pain_level IS NOT NULL
+               AND DATE(s.logged_at) >= :start_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortPainRows($doseRows, $standaloneRows, 'desc');
+    }
+
+    /**
+     * Merged mood log history for the collapsible log section UI (most recent first).
+     */
+    public function moodLogHistory(int $medicationId, int $days = 365): array
+    {
+        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+
+        $stmt1 = $this->db->prepare(
+            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+                    dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.medication_id = :medication_id
+               AND m.user_id = :user_id
+               AND dl.mood_level IS NOT NULL
+               AND dl.scheduled_for_date >= :start_date'
+        );
+        $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $doseRows = $stmt1->fetchAll();
+
+        $stmt2 = $this->db->prepare(
+            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+                    s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
+             FROM standalone_pain_mood_logs s
+             WHERE s.medication_id = :medication_id
+               AND s.user_id = :user_id
+               AND s.mood_level IS NOT NULL
+               AND DATE(s.logged_at) >= :start_date'
+        );
+        $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
+        $standaloneRows = $stmt2->fetchAll();
+
+        return $this->mergeAndSortMoodRows($doseRows, $standaloneRows, 'desc');
+    }
+
+    /**
+     * Insert a standalone (non-dose-linked) pain or mood log entry. Returns the new row ID.
+     */
+    public function insertStandalonePainMoodLog(
+        int $medicationId,
+        string $logType,
+        ?int $painLevel,
+        ?int $moodLevel,
+        string $note
+    ): int {
+        $stmt = $this->db->prepare(
+            'INSERT INTO standalone_pain_mood_logs
+                 (user_id, medication_id, log_type, pain_level, mood_level, note)
+             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note)'
+        );
+        $stmt->execute([
+            'user_id'       => $this->userId,
+            'medication_id' => $medicationId,
+            'log_type'      => $logType,
+            'pain_level'    => $painLevel,
+            'mood_level'    => $moodLevel,
+            'note'          => $note,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    /**
+     * Edit the pain/mood feedback fields on a dose_log row owned by this user.
+     */
+    public function updateDoseLogFeedback(int $logId, ?int $painLevel, ?int $moodLevel, string $note): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             SET dl.pain_level = COALESCE(:pain_level, dl.pain_level),
+                 dl.mood_level = COALESCE(:mood_level, dl.mood_level),
+                 dl.note = :note,
+                 dl.feedback_edited_at = NOW()
+             WHERE dl.id = :id
+               AND m.user_id = :user_id'
+        );
+        $stmt->execute([
+            'id'         => $logId,
+            'user_id'    => $this->userId,
+            'pain_level' => $painLevel,
+            'mood_level' => $moodLevel,
+            'note'       => $note,
+        ]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Edit a standalone pain/mood log entry owned by this user.
+     */
+    public function updateStandaloneLog(int $logId, ?int $painLevel, ?int $moodLevel, string $note): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE standalone_pain_mood_logs
+             SET pain_level = COALESCE(:pain_level, pain_level),
+                 mood_level = COALESCE(:mood_level, mood_level),
+                 note = :note,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND user_id = :user_id'
+        );
+        $stmt->execute([
+            'id'         => $logId,
+            'user_id'    => $this->userId,
+            'pain_level' => $painLevel,
+            'mood_level' => $moodLevel,
+            'note'       => $note,
+        ]);
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Merge pain dose rows and standalone rows, tag source/entry_id, sort by date+time.
+     * @param string $dir 'asc' or 'desc'
+     */
+    private function mergeAndSortPainRows(array $doseRows, array $standaloneRows, string $dir): array
+    {
+        foreach ($doseRows as &$row) {
+            $row['source']   = 'dose';
+            $row['entry_id'] = 'dose-' . $row['id'];
+            $row['logged_at'] = $row['date'] . ' ' . $row['time'];
+        }
+        unset($row);
+        foreach ($standaloneRows as &$row) {
+            $row['source']   = 'standalone';
+            $row['entry_id'] = 'standalone-' . $row['id'];
+            $row['logged_at'] = $row['date'] . ' ' . $row['time'];
+        }
+        unset($row);
+
+        $all = array_merge($doseRows, $standaloneRows);
+        if ($dir === 'desc') {
+            usort($all, static fn ($a, $b) => strcmp((string) $b['logged_at'], (string) $a['logged_at']));
+        } else {
+            usort($all, static fn ($a, $b) => strcmp((string) $a['logged_at'], (string) $b['logged_at']));
+        }
+        return $all;
+    }
+
+    /**
+     * Merge mood dose rows and standalone rows, tag source/entry_id, sort by date+time.
+     * @param string $dir 'asc' or 'desc'
+     */
+    private function mergeAndSortMoodRows(array $doseRows, array $standaloneRows, string $dir): array
+    {
+        foreach ($doseRows as &$row) {
+            $row['source']   = 'dose';
+            $row['entry_id'] = 'dose-' . $row['id'];
+            $row['logged_at'] = $row['date'] . ' ' . $row['time'];
+        }
+        unset($row);
+        foreach ($standaloneRows as &$row) {
+            $row['source']   = 'standalone';
+            $row['entry_id'] = 'standalone-' . $row['id'];
+            $row['logged_at'] = $row['date'] . ' ' . $row['time'];
+        }
+        unset($row);
+
+        $all = array_merge($doseRows, $standaloneRows);
+        if ($dir === 'desc') {
+            usort($all, static fn ($a, $b) => strcmp((string) $b['logged_at'], (string) $a['logged_at']));
+        } else {
+            usort($all, static fn ($a, $b) => strcmp((string) $a['logged_at'], (string) $b['logged_at']));
+        }
+        return $all;
     }
 
     /**
@@ -3548,6 +3819,83 @@ final class MedicationRepository
                 if (!$hasColumn) {
                     $this->db->exec("ALTER TABLE medications ADD COLUMN start_date TEXT NULL");
                     $this->db->exec("UPDATE medications SET start_date = date(created_at) WHERE start_date IS NULL");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureStandalonePainMoodLogsTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS standalone_pain_mood_logs (
+                        id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        user_id       INT UNSIGNED NOT NULL,
+                        medication_id INT UNSIGNED NOT NULL,
+                        log_type      ENUM('pain','mood','both') NOT NULL,
+                        pain_level    TINYINT UNSIGNED NULL,
+                        mood_level    TINYINT UNSIGNED NULL,
+                        note          VARCHAR(255) NOT NULL DEFAULT '',
+                        logged_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    TIMESTAMP NULL DEFAULT NULL,
+                        INDEX idx_standalone_user_med_date (user_id, medication_id, logged_at),
+                        CONSTRAINT fk_standalone_user
+                            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_standalone_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS standalone_pain_mood_logs (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id       INTEGER NOT NULL,
+                        medication_id INTEGER NOT NULL,
+                        log_type      TEXT NOT NULL DEFAULT 'pain',
+                        pain_level    INTEGER NULL,
+                        mood_level    INTEGER NULL,
+                        note          TEXT NOT NULL DEFAULT '',
+                        logged_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    TEXT NULL
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureFeedbackEditedAtColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE 'feedback_edited_at'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE dose_logs ADD COLUMN feedback_edited_at TIMESTAMP NULL DEFAULT NULL AFTER mood_level");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(dose_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'feedback_edited_at') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE dose_logs ADD COLUMN feedback_edited_at TEXT NULL');
                 }
             }
         } catch (Throwable) {
