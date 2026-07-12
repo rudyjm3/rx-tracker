@@ -70,7 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_log') {
         exit;
     }
     $days = max(1, min(365, (int) ($_GET['days'] ?? 365)));
-    $entries = $repository->painLogHistory($medicationId, $days);
+    $dateParam = (string) ($_GET['date'] ?? '');
+    $onDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateParam) === 1 ? $dateParam : null;
+    $entries = $repository->painLogHistory($medicationId, $days, $onDate);
     echo json_encode(['ok' => true, 'entries' => $entries], JSON_THROW_ON_ERROR);
     exit;
 }
@@ -83,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_log') {
         exit;
     }
     $days = max(1, min(365, (int) ($_GET['days'] ?? 365)));
-    $entries = $repository->moodLogHistory($medicationId, $days);
+    $dateParam = (string) ($_GET['date'] ?? '');
+    $onDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateParam) === 1 ? $dateParam : null;
+    $entries = $repository->moodLogHistory($medicationId, $days, $onDate);
     echo json_encode(['ok' => true, 'entries' => $entries], JSON_THROW_ON_ERROR);
     exit;
 }

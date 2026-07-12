@@ -460,31 +460,32 @@ final class MedicationRepository
     /**
      * Merged pain log history for the collapsible log section UI (most recent first).
      */
-    public function painLogHistory(int $medicationId, int $days = 365): array
+    public function painLogHistory(int $medicationId, int $days = 365, ?string $onDate = null): array
     {
-        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $startDate = $onDate ?? (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $dateOp = $onDate !== null ? '=' : '>=';
 
         $stmt1 = $this->db->prepare(
-            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+            "SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
                     dl.pain_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.pain_level IS NOT NULL
-               AND dl.scheduled_for_date >= :start_date'
+               AND dl.scheduled_for_date $dateOp :start_date"
         );
         $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
         $doseRows = $stmt1->fetchAll();
 
         $stmt2 = $this->db->prepare(
-            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+            "SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
                     s.pain_level, s.note, NULL AS status, s.updated_at AS edited_at
              FROM standalone_pain_mood_logs s
              WHERE s.medication_id = :medication_id
                AND s.user_id = :user_id
                AND s.pain_level IS NOT NULL
-               AND DATE(s.logged_at) >= :start_date'
+               AND DATE(s.logged_at) $dateOp :start_date"
         );
         $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
         $standaloneRows = $stmt2->fetchAll();
@@ -495,31 +496,32 @@ final class MedicationRepository
     /**
      * Merged mood log history for the collapsible log section UI (most recent first).
      */
-    public function moodLogHistory(int $medicationId, int $days = 365): array
+    public function moodLogHistory(int $medicationId, int $days = 365, ?string $onDate = null): array
     {
-        $startDate = (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $startDate = $onDate ?? (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+        $dateOp = $onDate !== null ? '=' : '>=';
 
         $stmt1 = $this->db->prepare(
-            'SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
+            "SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
                     dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
                AND m.user_id = :user_id
                AND dl.mood_level IS NOT NULL
-               AND dl.scheduled_for_date >= :start_date'
+               AND dl.scheduled_for_date $dateOp :start_date"
         );
         $stmt1->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
         $doseRows = $stmt1->fetchAll();
 
         $stmt2 = $this->db->prepare(
-            'SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
+            "SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
                     s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
              FROM standalone_pain_mood_logs s
              WHERE s.medication_id = :medication_id
                AND s.user_id = :user_id
                AND s.mood_level IS NOT NULL
-               AND DATE(s.logged_at) >= :start_date'
+               AND DATE(s.logged_at) $dateOp :start_date"
         );
         $stmt2->execute(['medication_id' => $medicationId, 'user_id' => $this->userId, 'start_date' => $startDate]);
         $standaloneRows = $stmt2->fetchAll();

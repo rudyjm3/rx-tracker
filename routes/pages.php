@@ -707,40 +707,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <?php else: ?>
 
-    <div class="pain-tracking-med-panel">
-      <div class="panel-heading"><h2>Tracked medications</h2></div>
-      <div class="pain-tracking-med-list" role="group" aria-label="Select medication to view">
-        <?php foreach ($trackedMedications as $trackedMed): ?>
-        <button
-          type="button"
-          class="pain-tracking-med-btn"
-          data-select-medication
-          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
-          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
-        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
-        <?php endforeach; ?>
-      </div>
-    </div>
-
-    <div class="pain-tracking-chart-section">
-      <div class="pain-tracking-med-name" data-pain-page-med-name aria-live="polite"></div>
-      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-        <button class="pain-page-range-tab is-active" data-range="0">Today</button>
-        <button class="pain-page-range-tab" data-range="7">7 days</button>
-        <button class="pain-page-range-tab" data-range="30">30 days</button>
-        <button class="pain-page-range-tab" data-range="90">90 days</button>
-      </div>
-      <p class="mood-graph-day-banner" data-pain-page-day-banner hidden>
-        <span data-pain-page-day-label></span>
-        <button type="button" class="mood-graph-day-back" data-pain-page-day-back>&larr; Back to trend</button>
-      </p>
-      <div class="pain-graph-body" data-pain-page-body></div>
-      <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
-      <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
-    </div>
-
     <div class="pain-log-panel" data-pain-log-panel>
-      <button type="button" class="history-view-link" data-pain-log-toggle>Log pain level now</button>
+      <p class="pain-log-intro-text">Use this to record a pain level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
+      <button type="button" class="pain-log-cta" data-pain-log-toggle>Log pain level now</button>
       <div class="pain-log-form-wrap" data-pain-log-form-wrap hidden>
         <form class="pain-log-form" data-pain-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
@@ -767,14 +736,49 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
 
-    <div class="pain-history-section" data-pain-history-section>
-      <button type="button" class="history-view-link" data-pain-history-toggle>View pain level log</button>
-      <div data-pain-history-panel hidden>
-        <p class="pain-graph-loading" data-pain-history-loading hidden>Loading&hellip;</p>
-        <ol class="pain-history-list" data-pain-history-list></ol>
-        <p class="pain-graph-empty" data-pain-history-empty hidden>No pain levels recorded for this medication yet.</p>
+    <div class="pain-tracking-med-panel">
+      <div class="panel-heading"><h2>Tracked medications</h2></div>
+      <div class="pain-tracking-med-list" role="group" aria-label="Select medication to view">
+        <?php foreach ($trackedMedications as $trackedMed): ?>
+        <button
+          type="button"
+          class="pain-tracking-med-btn"
+          data-select-medication
+          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
+          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
+          data-medication-dose="<?= e(formattedDose($trackedMed)) ?>"
+        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
+        <?php endforeach; ?>
       </div>
     </div>
+
+    <div class="pain-tracking-chart-section">
+      <div class="pain-tracking-med-name" data-pain-page-med-name aria-live="polite"></div>
+      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+        <button class="pain-page-range-tab is-active" data-range="0">Today</button>
+        <button class="pain-page-range-tab" data-range="7">7 days</button>
+        <button class="pain-page-range-tab" data-range="30">30 days</button>
+        <button class="pain-page-range-tab" data-range="90">90 days</button>
+      </div>
+      <p class="mood-graph-day-banner" data-pain-page-day-banner hidden>
+        <span data-pain-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-pain-page-day-back>&larr; Back to trend</button>
+      </p>
+      <div class="pain-graph-body" data-pain-page-body></div>
+      <p class="pain-graph-empty" data-pain-page-empty hidden>No pain level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each pain score logged that day. On a multi-day view, click a point to see that day&rsquo;s pain levels throughout the day.</p>
+    </div>
+
+    <section class="panel history-panel" data-pain-history-panel>
+      <div class="panel-heading">
+        <h2>Pain log history</h2>
+        <button type="button" class="panel-heading-link" data-pain-history-view-more>View more</button>
+      </div>
+      <p class="pain-graph-loading" data-pain-history-loading hidden>Loading&hellip;</p>
+      <ol class="history-list pain-history-list" data-pain-history-list></ol>
+      <p class="history-empty" data-pain-history-empty hidden>No pain levels recorded for this medication yet.</p>
+      <button type="button" class="history-view-more" data-pain-history-view-more>View more</button>
+    </section>
 
     <?php endif; ?>
   </section>
@@ -799,40 +803,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <?php else: ?>
 
-    <div class="pain-tracking-med-panel mood-tracking-med-panel">
-      <div class="panel-heading"><h2>Tracked medications</h2></div>
-      <div class="pain-tracking-med-list mood-tracking-med-list" role="group" aria-label="Select medication to view">
-        <?php foreach ($moodTrackedMedications as $trackedMed): ?>
-        <button
-          type="button"
-          class="pain-tracking-med-btn mood-tracking-med-btn"
-          data-select-mood-medication
-          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
-          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
-        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
-        <?php endforeach; ?>
-      </div>
-    </div>
-
-    <div class="pain-tracking-chart-section mood-tracking-chart-section">
-      <div class="pain-tracking-med-name mood-tracking-med-name" data-mood-page-med-name aria-live="polite"></div>
-      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
-        <button class="mood-page-range-tab is-active" data-range="0">Today</button>
-        <button class="mood-page-range-tab" data-range="7">7 days</button>
-        <button class="mood-page-range-tab" data-range="30">30 days</button>
-        <button class="mood-page-range-tab" data-range="90">90 days</button>
-      </div>
-      <p class="mood-graph-day-banner" data-mood-page-day-banner hidden>
-        <span data-mood-page-day-label></span>
-        <button type="button" class="mood-graph-day-back" data-mood-page-day-back>&larr; Back to trend</button>
-      </p>
-      <div class="pain-graph-body" data-mood-page-body></div>
-      <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
-      <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
-    </div>
-
     <div class="mood-log-panel" data-mood-log-panel>
-      <button type="button" class="history-view-link" data-mood-log-toggle>Log mood level now</button>
+      <p class="pain-log-intro-text">Use this to record a mood level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
+      <button type="button" class="pain-log-cta" data-mood-log-toggle>Log mood level now</button>
       <div class="mood-log-form-wrap" data-mood-log-form-wrap hidden>
         <form class="mood-log-form" data-mood-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
@@ -859,14 +832,49 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
 
-    <div class="mood-history-section" data-mood-history-section>
-      <button type="button" class="history-view-link" data-mood-history-toggle>View mood level log</button>
-      <div data-mood-history-panel hidden>
-        <p class="pain-graph-loading" data-mood-history-loading hidden>Loading&hellip;</p>
-        <ol class="mood-history-list" data-mood-history-list></ol>
-        <p class="pain-graph-empty" data-mood-history-empty hidden>No mood levels recorded for this medication yet.</p>
+    <div class="pain-tracking-med-panel mood-tracking-med-panel">
+      <div class="panel-heading"><h2>Tracked medications</h2></div>
+      <div class="pain-tracking-med-list mood-tracking-med-list" role="group" aria-label="Select medication to view">
+        <?php foreach ($moodTrackedMedications as $trackedMed): ?>
+        <button
+          type="button"
+          class="pain-tracking-med-btn mood-tracking-med-btn"
+          data-select-mood-medication
+          data-medication-id="<?= e((string) $trackedMed['id']) ?>"
+          data-medication-name="<?= e((string) $trackedMed['name']) ?>"
+          data-medication-dose="<?= e(formattedDose($trackedMed)) ?>"
+        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
+        <?php endforeach; ?>
       </div>
     </div>
+
+    <div class="pain-tracking-chart-section mood-tracking-chart-section">
+      <div class="pain-tracking-med-name mood-tracking-med-name" data-mood-page-med-name aria-live="polite"></div>
+      <div class="pain-graph-range-tabs" role="group" aria-label="Date range">
+        <button class="mood-page-range-tab is-active" data-range="0">Today</button>
+        <button class="mood-page-range-tab" data-range="7">7 days</button>
+        <button class="mood-page-range-tab" data-range="30">30 days</button>
+        <button class="mood-page-range-tab" data-range="90">90 days</button>
+      </div>
+      <p class="mood-graph-day-banner" data-mood-page-day-banner hidden>
+        <span data-mood-page-day-label></span>
+        <button type="button" class="mood-graph-day-back" data-mood-page-day-back>&larr; Back to trend</button>
+      </p>
+      <div class="pain-graph-body" data-mood-page-body></div>
+      <p class="pain-graph-empty" data-mood-page-empty hidden>No mood level data recorded for this period.</p>
+      <p class="graph-hint">Tip: hover over a point to see each mood score logged that day. On a multi-day view, click a point to see that day&rsquo;s mood levels throughout the day.</p>
+    </div>
+
+    <section class="panel history-panel" data-mood-history-panel>
+      <div class="panel-heading">
+        <h2>Mood log history</h2>
+        <button type="button" class="panel-heading-link" data-mood-history-view-more>View more</button>
+      </div>
+      <p class="pain-graph-loading" data-mood-history-loading hidden>Loading&hellip;</p>
+      <ol class="history-list mood-history-list" data-mood-history-list></ol>
+      <p class="history-empty" data-mood-history-empty hidden>No mood levels recorded for this medication yet.</p>
+      <button type="button" class="history-view-more" data-mood-history-view-more>View more</button>
+    </section>
 
     <?php endif; ?>
   </section>
