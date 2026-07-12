@@ -6544,3 +6544,127 @@ a.nav-user-btn.is-active {
   gap: 0.3rem;
   width: 100%;
 }
+
+/* ── Notes modal (wider) ─────────────────────────────────────────────────── */
+
+.modal-dialog--wide {
+  max-width: 600px;
+}
+
+/* ── Note cards ─────────────────────────────────────────────────────────── */
+
+.notes-section {
+  margin-top: 0.5rem;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.note-card {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.note-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-text {
+  font-size: 0.9rem;
+  margin: 0 0 0.35rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-meta {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.note-edit-form {
+  margin-top: 0.5rem;
+}
+
+.note-edit-textarea {
+  width: 100%;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  background: var(--rx-bg);
+  color: var(--rx-text);
+  resize: vertical;
+}
+
+.note-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.note-actions-menu {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.note-actions-dropdown {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  box-shadow: 0 6px 20px rgba(3,18,42,.2);
+  min-width: 130px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+}
+
+.note-action-item {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: block;
+  font-size: 0.85rem;
+  padding: 0.55rem 0.85rem;
+  text-align: left;
+  width: 100%;
+  color: var(--rx-text);
+}
+
+.note-action-item:hover {
+  background: var(--rx-hover);
+}
+
+.note-action-item--danger {
+  color: var(--rx-danger, #e5484d);
+}
+
+.add-note-link {
+  background: none;
+  border: none;
+  color: var(--rx-accent);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+  text-decoration: underline;
+}
+
+.add-note-link:hover {
+  opacity: 0.8;
+}
+
+/* ── Dose-change history inside notes modal ──────────────────────────────── */
+
+[data-notes-dose-history] .med-detail-section {
+  margin-bottom: 1rem;
+}

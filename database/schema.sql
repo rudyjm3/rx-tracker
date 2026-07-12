@@ -344,6 +344,19 @@ CREATE TABLE IF NOT EXISTS medication_dose_changes (
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Migration 008: Per-medication notes (replaces single instructions field with multiple notes)
+CREATE TABLE IF NOT EXISTS medication_notes (
+    id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    medication_id INT UNSIGNED NOT NULL,
+    note          TEXT NOT NULL,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_notes_medication (medication_id),
+    CONSTRAINT fk_notes_medication
+        FOREIGN KEY (medication_id) REFERENCES medications (id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Migration 007: Standalone pain/mood log entries (not tied to a scheduled dose)
 CREATE TABLE IF NOT EXISTS standalone_pain_mood_logs (
     id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

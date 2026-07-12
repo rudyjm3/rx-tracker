@@ -78,6 +78,7 @@ final class DoctorVisitReport
         $adherence    = $this->repository->adherenceForDateRange($startDate, $endDate);
         $missedDoses  = $this->repository->missedAndSkippedForDateRange($startDate, $endDate);
         $sideEffects  = $this->sideEffectRepo->sideEffectsForDateRange($startDate, $endDate);
+        $doseChanges  = $this->repository->doseChangesForDateRange($startDate, $endDate);
 
         $html  = $this->docHead($title, $generatedDate);
         $html .= '<body>';
@@ -85,6 +86,7 @@ final class DoctorVisitReport
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
         $html .= $this->sectionAdherence($adherence);
         $html .= $this->sectionMedications($medications);
+        $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses);
         $html .= $chartSection($medications, $startDate, $endDate);
         $html .= $this->sectionSideEffects($sideEffects);
@@ -317,6 +319,44 @@ HTML;
 <div class="section-block">
   <table>
     <thead><tr><th>Medication</th><th>Dose</th><th>Start Date</th><th>Schedule</th><th>Instructions</th></tr></thead>
+    <tbody>{$rows}</tbody>
+  </table>
+</div>
+HTML;
+    }
+
+    // -------------------------------------------------------------------------
+    // Section 3b: Dose Change History
+    // -------------------------------------------------------------------------
+
+    private function sectionDoseChanges(array $changes): string
+    {
+        if (empty($changes)) {
+            return <<<HTML
+<div class="section-title">Dose Changes</div>
+<div class="section-block section-caption" style="margin-bottom:12pt;">No dose changes recorded during this period.</div>
+HTML;
+        }
+
+        $rows = '';
+        foreach ($changes as $c) {
+            $date    = $this->h(date('M j, Y', (int) strtotime((string) $c['changed_at'])));
+            $med     = $this->h((string) $c['name']);
+            $fmtDose = static function (?string $amount, string $unit): string {
+                if ($amount === null || $amount === '') return '—';
+                return rtrim(rtrim(number_format((float) $amount, 3), '0'), '.') . ($unit !== '' ? ' ' . $unit : '');
+            };
+            $old     = $this->h($fmtDose($c['old_dose_amount'] ?? null, (string) ($c['old_dose_unit'] ?? '')));
+            $new     = $this->h($fmtDose($c['new_dose_amount'] ?? null, (string) ($c['new_dose_unit'] ?? '')));
+            $reason  = $this->h((string) ($c['comment'] ?? ''));
+            $rows   .= "<tr><td>{$date}</td><td>{$med}</td><td>{$old} &rarr; <strong>{$new}</strong></td><td>{$reason}</td></tr>";
+        }
+
+        return <<<HTML
+<div class="section-title">Dose Changes</div>
+<div class="section-block">
+  <table>
+    <thead><tr><th>Date</th><th>Medication</th><th>Dose Change</th><th>Reason</th></tr></thead>
     <tbody>{$rows}</tbody>
   </table>
 </div>
