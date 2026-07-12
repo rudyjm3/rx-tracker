@@ -4174,8 +4174,6 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
     if (medDetailBody) medDetailBody.innerHTML = '<p class="pain-graph-loading">Loading&hellip;</p>';
     openMedDetailModal();
 
-    const doseHistoryPromise = fetchDoseChangeHistoryHtml(medicationId);
-
     const cacheKey = setId || `name_${medicationName}`;
     if (!medDetailCache[cacheKey]) {
       const [ofdaResult, imgResult] = await Promise.allSettled([
@@ -4193,8 +4191,7 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
     if (medDetailBody) {
       try {
         const { ofda, productLabelUrl } = medDetailCache[cacheKey];
-        const doseHistoryHtml = await doseHistoryPromise;
-        medDetailBody.innerHTML = doseHistoryHtml + renderDetailContent(medicationName, setId, ofda, productLabelUrl);
+        medDetailBody.innerHTML = renderDetailContent(medicationName, setId, ofda, productLabelUrl);
         // Wire up lightbox on both images
         medDetailBody.querySelectorAll('[data-detail-img-url]').forEach((fig) => {
           fig.style.cursor = 'zoom-in';
@@ -4898,24 +4895,6 @@ document.querySelector('[data-mood-scheme-toggle]')?.addEventListener('change', 
   }
 });
 
-// ── Dose-change comment reveal (edit-medication form) ─────────────────────────
-
-(function () {
-  const commentRow = document.querySelector('[data-dose-change-comment-row]');
-  if (!commentRow) return;
-  const amountEl = document.querySelector('[data-initial-dose-amount]');
-  const unitEl = document.querySelector('[data-initial-dose-unit]');
-  const asFloat = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v));
-  const update = () => {
-    const amountChanged = amountEl
-      ? asFloat(amountEl.value) !== asFloat(amountEl.dataset.initialDoseAmount)
-      : false;
-    const unitChanged = unitEl ? unitEl.value !== unitEl.dataset.initialDoseUnit : false;
-    commentRow.hidden = !(amountChanged || unitChanged);
-  };
-  amountEl?.addEventListener('input', update);
-  unitEl?.addEventListener('change', update);
-})();
 
 refillForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -4947,51 +4926,197 @@ refillForm?.addEventListener('submit', async (event) => {
   }
 });
 
-// ── Instructions modal ────────────────────────────────────────────────────────
+// ── Notes & Dose History modal ────────────────────────────────────────────────
 
 const instructionsModal = document.querySelector('[data-instructions-modal]');
 const instructionsModalNameEl = document.querySelector('[data-instructions-modal-name]');
-const instructionsModalBodyEl = document.querySelector('[data-instructions-modal-body]');
-const instructionsModalEditEl = document.querySelector('[data-instructions-modal-edit]');
-const instructionsModalSaveRowEl = document.querySelector('[data-instructions-modal-save-row]');
-const instructionsModalEditBtn = document.querySelector('[data-edit-instructions]');
+const instructionsModalDoseEl = document.querySelector('[data-instructions-modal-dose]');
+const notesDoseHistoryEl = document.querySelector('[data-notes-dose-history]');
+const notesListEl = document.querySelector('[data-notes-list]');
+const addNoteFormEl = document.querySelector('[data-add-note-form]');
+const addNoteTextareaEl = document.querySelector('[data-add-note-textarea]');
 
-let instructionsModalMedicationId = '';
-let instructionsModalSourceBtn = null;
+let notesModalMedicationId = '';
 
-const setInstructionsModalEditing = (editing) => {
-  if (instructionsModalBodyEl) instructionsModalBodyEl.style.display = editing ? 'none' : '';
-  if (instructionsModalEditEl) instructionsModalEditEl.style.display = editing ? '' : 'none';
-  if (instructionsModalSaveRowEl) instructionsModalSaveRowEl.style.display = editing ? 'flex' : 'none';
-  if (instructionsModalEditBtn) instructionsModalEditBtn.style.display = editing ? 'none' : '';
+const fmtNoteDate = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts.replace ? ts.replace(' ', 'T') : ts);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
-const openInstructionsModal = (medicationId, medicationName, medicationDose, instructions) => {
+const buildNoteCard = (note) => {
+  const card = document.createElement('div');
+  card.className = 'note-card';
+  card.dataset.noteId = String(note.id);
+
+  const createdFmt = fmtNoteDate(note.created_at);
+  const updatedFmt = fmtNoteDate(note.updated_at);
+  const wasEdited = note.updated_at && note.updated_at !== note.created_at;
+
+  card.innerHTML = `
+    <div class="note-card-body">
+      <p class="note-text">${escHtml(note.note)}</p>
+      <div class="note-edit-form" hidden>
+        <textarea class="note-edit-textarea" rows="4" maxlength="5000">${escHtml(note.note)}</textarea>
+        <div class="note-edit-actions">
+          <button type="button" class="note-save-edit-btn">Save</button>
+          <button type="button" class="secondary note-cancel-edit-btn">Cancel</button>
+        </div>
+      </div>
+      <p class="note-meta muted">Added ${escHtml(createdFmt)}${wasEdited ? ` · Edited ${escHtml(updatedFmt)}` : ''}</p>
+    </div>
+    <div class="note-actions-menu">
+      <button type="button" class="icon-button note-actions-trigger" aria-label="Note options" aria-haspopup="true" aria-expanded="false">&#8942;</button>
+      <div class="note-actions-dropdown" hidden>
+        <button type="button" class="note-action-item note-edit-btn"><i class="fa-solid fa-pen" aria-hidden="true"></i> Edit</button>
+        <button type="button" class="note-action-item note-action-item--danger note-delete-btn"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete note</button>
+      </div>
+    </div>`;
+
+  const textEl = card.querySelector('.note-text');
+  const editFormEl = card.querySelector('.note-edit-form');
+  const editTextareaEl = card.querySelector('.note-edit-textarea');
+  const metaEl = card.querySelector('.note-meta');
+  const trigger = card.querySelector('.note-actions-trigger');
+  const dropdown = card.querySelector('.note-actions-dropdown');
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !dropdown.hidden;
+    document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
+    dropdown.hidden = isOpen;
+    trigger.setAttribute('aria-expanded', String(!isOpen));
+  });
+
+  card.querySelector('.note-edit-btn').addEventListener('click', () => {
+    dropdown.hidden = true;
+    textEl.style.display = 'none';
+    editFormEl.hidden = false;
+    editTextareaEl.focus();
+  });
+
+  card.querySelector('.note-cancel-edit-btn').addEventListener('click', () => {
+    editTextareaEl.value = textEl.textContent;
+    editFormEl.hidden = true;
+    textEl.style.display = '';
+  });
+
+  card.querySelector('.note-save-edit-btn').addEventListener('click', async (evt) => {
+    const saveBtn = evt.currentTarget;
+    const newText = editTextareaEl.value.trim();
+    if (!newText) { alert('Note cannot be empty.'); return; }
+    saveBtn.disabled = true;
+    try {
+      const res = await window.fetch('index.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          csrf_token: getCsrfToken(),
+          json_response: '1',
+          action: 'update_note',
+          note_id: String(note.id),
+          medication_id: notesModalMedicationId,
+          note: newText,
+        }).toString(),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? 'Failed to save note.');
+      textEl.textContent = newText;
+      editTextareaEl.value = newText;
+      note.updated_at = data.updated_at;
+      const nowEdited = data.updated_at && data.updated_at !== note.created_at;
+      metaEl.innerHTML = `Added ${escHtml(fmtNoteDate(note.created_at))}${nowEdited ? ` · Edited ${escHtml(fmtNoteDate(data.updated_at))}` : ''}`;
+      editFormEl.hidden = true;
+      textEl.style.display = '';
+    } catch (err) {
+      alert(err.message || 'Failed to save note.');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  card.querySelector('.note-delete-btn').addEventListener('click', async () => {
+    dropdown.hidden = true;
+    if (!confirm('Delete this note?')) return;
+    try {
+      const res = await window.fetch('index.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          csrf_token: getCsrfToken(),
+          json_response: '1',
+          action: 'delete_note',
+          note_id: String(note.id),
+          medication_id: notesModalMedicationId,
+        }).toString(),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? 'Failed to delete note.');
+      card.remove();
+    } catch (err) {
+      alert(err.message || 'Failed to delete note.');
+    }
+  });
+
+  return card;
+};
+
+const openNotesModal = async (medicationId, medicationName, medicationDose) => {
   if (!instructionsModal) return;
-  instructionsModalMedicationId = medicationId;
-  if (instructionsModalNameEl) {
-    instructionsModalNameEl.textContent = medicationDose ? `${medicationName} — ${medicationDose}` : medicationName;
-  }
-  if (instructionsModalBodyEl) instructionsModalBodyEl.textContent = instructions;
-  if (instructionsModalEditEl) instructionsModalEditEl.value = instructions;
-  setInstructionsModalEditing(false);
+  notesModalMedicationId = medicationId;
+  if (instructionsModalNameEl) instructionsModalNameEl.textContent = medicationName;
+  if (instructionsModalDoseEl) instructionsModalDoseEl.textContent = medicationDose || '';
+  if (notesDoseHistoryEl) notesDoseHistoryEl.innerHTML = '';
+  if (notesListEl) notesListEl.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
+  if (addNoteFormEl) addNoteFormEl.hidden = true;
+  if (addNoteTextareaEl) addNoteTextareaEl.value = '';
   instructionsModal.classList.add('is-open');
   lockBodyScroll();
+
+  const [notesResult, historyResult] = await Promise.allSettled([
+    window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ csrf_token: getCsrfToken(), json_response: '1', action: 'get_notes', medication_id: medicationId }).toString(),
+    }).then((r) => r.json()),
+    fetchDoseChangeHistoryHtml(medicationId),
+  ]);
+
+  if (notesDoseHistoryEl) {
+    notesDoseHistoryEl.innerHTML = historyResult.status === 'fulfilled' ? (historyResult.value || '') : '';
+  }
+
+  if (notesListEl) {
+    notesListEl.innerHTML = '';
+    if (notesResult.status === 'fulfilled' && notesResult.value.ok && Array.isArray(notesResult.value.notes)) {
+      const notes = notesResult.value.notes;
+      if (notes.length === 0) {
+        notesListEl.innerHTML = '<p class="muted" style="margin-bottom:.75rem">No notes yet. Add one below.</p>';
+      } else {
+        notes.forEach((n) => notesListEl.appendChild(buildNoteCard(n)));
+      }
+    } else {
+      notesListEl.innerHTML = '<p class="muted">Could not load notes.</p>';
+    }
+  }
 };
 
 const closeInstructionsModal = () => {
   if (!instructionsModal) return;
   if (!instructionsModal.classList.contains('is-open')) return;
-  setInstructionsModalEditing(false);
   instructionsModal.classList.remove('is-open');
   unlockBodyScroll();
+  document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
 };
 
 document.querySelectorAll('[data-view-instructions]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const { medicationId = '', medicationName = '', medicationDose = '', instructions = '' } = btn.dataset;
-    instructionsModalSourceBtn = btn;
-    openInstructionsModal(medicationId, medicationName, medicationDose, instructions);
+    const { medicationId = '', medicationName = '', medicationDose = '' } = btn.dataset;
+    openNotesModal(medicationId, medicationName, medicationDose);
   });
 });
 
@@ -5003,41 +5128,128 @@ instructionsModal?.addEventListener('click', (event) => {
   if (event.target === instructionsModal) closeInstructionsModal();
 });
 
-instructionsModalEditBtn?.addEventListener('click', () => {
-  setInstructionsModalEditing(true);
-  instructionsModalEditEl?.focus();
+document.querySelector('[data-open-add-note]')?.addEventListener('click', () => {
+  if (!addNoteFormEl) return;
+  addNoteFormEl.hidden = false;
+  addNoteTextareaEl?.focus();
 });
 
-document.querySelector('[data-cancel-instructions-edit]')?.addEventListener('click', () => {
-  if (instructionsModalEditEl) instructionsModalEditEl.value = instructionsModalBodyEl?.textContent ?? '';
-  setInstructionsModalEditing(false);
+document.querySelector('[data-cancel-add-note]')?.addEventListener('click', () => {
+  if (addNoteFormEl) addNoteFormEl.hidden = true;
+  if (addNoteTextareaEl) addNoteTextareaEl.value = '';
 });
 
-document.querySelector('[data-save-instructions]')?.addEventListener('click', async (event) => {
+document.querySelector('[data-save-add-note]')?.addEventListener('click', async (event) => {
   const saveBtn = event.currentTarget;
-  const newInstructions = instructionsModalEditEl?.value ?? '';
+  const text = addNoteTextareaEl?.value.trim() ?? '';
+  if (!text) { alert('Note cannot be empty.'); return; }
   saveBtn.disabled = true;
   try {
-    const params = new URLSearchParams({
-      csrf_token: getCsrfToken(),
-      json_response: '1',
-      action: 'update_instructions',
-      medication_id: instructionsModalMedicationId,
-      instructions: newInstructions,
-    });
-    const resp = await window.fetch('index.php', {
+    const res = await window.fetch('index.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
+      body: new URLSearchParams({
+        csrf_token: getCsrfToken(),
+        json_response: '1',
+        action: 'add_note',
+        medication_id: notesModalMedicationId,
+        note: text,
+      }).toString(),
     });
-    const data = await resp.json();
-    if (!data.ok) throw new Error(data.error ?? 'Failed to save instructions.');
-    if (instructionsModalBodyEl) instructionsModalBodyEl.textContent = newInstructions;
-    if (instructionsModalSourceBtn) instructionsModalSourceBtn.dataset.instructions = newInstructions;
-    setInstructionsModalEditing(false);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to save note.');
+    if (notesListEl) {
+      const emptyMsg = notesListEl.querySelector('.muted');
+      if (emptyMsg) emptyMsg.remove();
+      notesListEl.appendChild(buildNoteCard(data.note));
+    }
+    if (addNoteFormEl) addNoteFormEl.hidden = true;
+    if (addNoteTextareaEl) addNoteTextareaEl.value = '';
   } catch (err) {
-    alert(err.message || 'Failed to save instructions. Please try again.');
+    alert(err.message || 'Failed to save note.');
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
+});
+
+// ── Update Prescribed Dose modal ──────────────────────────────────────────────
+
+const updateDoseModal = document.querySelector('[data-update-dose-modal]');
+const updateDoseMedNameEl = document.querySelector('[data-update-dose-med-name]');
+const updateDoseCurrentEl = document.querySelector('[data-update-dose-current]');
+const updateDoseAmountEl = document.querySelector('[data-update-dose-amount]');
+const updateDoseUnitEl = document.querySelector('[data-update-dose-unit]');
+const updateDoseReasonEl = document.querySelector('[data-update-dose-reason]');
+
+let updateDoseMedicationId = '';
+
+const openUpdateDoseModal = (medicationId, medicationName, doseAmount, doseUnit, formattedDose) => {
+  if (!updateDoseModal) return;
+  updateDoseMedicationId = medicationId;
+  if (updateDoseMedNameEl) updateDoseMedNameEl.textContent = medicationName;
+  if (updateDoseCurrentEl) updateDoseCurrentEl.textContent = formattedDose || '—';
+  if (updateDoseAmountEl) updateDoseAmountEl.value = doseAmount || '';
+  if (updateDoseUnitEl) updateDoseUnitEl.value = doseUnit || 'mg';
+  if (updateDoseReasonEl) updateDoseReasonEl.value = '';
+  updateDoseModal.classList.add('is-open');
+  lockBodyScroll();
+  updateDoseAmountEl?.focus();
+};
+
+const closeUpdateDoseModal = () => {
+  if (!updateDoseModal) return;
+  updateDoseModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-open-update-dose-modal]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const { medicationId = '', medicationName = '', doseAmount = '', doseUnit = 'mg', medicationDose = '' } = btn.dataset;
+    openUpdateDoseModal(medicationId, medicationName, doseAmount, doseUnit, medicationDose);
+  });
+});
+
+document.querySelectorAll('[data-close-update-dose-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeUpdateDoseModal);
+});
+
+updateDoseModal?.addEventListener('click', (event) => {
+  if (event.target === updateDoseModal) closeUpdateDoseModal();
+});
+
+document.querySelector('[data-save-update-dose]')?.addEventListener('click', async (event) => {
+  const saveBtn = event.currentTarget;
+  const newAmount = updateDoseAmountEl?.value ?? '';
+  const newUnit = updateDoseUnitEl?.value ?? 'mg';
+  const reason = updateDoseReasonEl?.value.trim() ?? '';
+  if (!newAmount) { alert('Please enter a dose amount.'); return; }
+  saveBtn.disabled = true;
+  try {
+    const res = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        csrf_token: getCsrfToken(),
+        json_response: '1',
+        action: 'update_dose',
+        medication_id: updateDoseMedicationId,
+        dose_amount: newAmount,
+        dose_unit: newUnit,
+        comment: reason,
+      }).toString(),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to update dose.');
+    closeUpdateDoseModal();
+    window.location.reload();
+  } catch (err) {
+    alert(err.message || 'Failed to update dose. Please try again.');
   } finally {
     saveBtn.disabled = false;
   }

@@ -119,6 +119,19 @@
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     Log refill
                   </button>
+                  <button
+                    type="button"
+                    class="med-actions-item"
+                    data-open-update-dose-modal
+                    data-medication-id="<?= e((string) $medication['id']) ?>"
+                    data-medication-name="<?= e((string) $medication['name']) ?>"
+                    data-dose-amount="<?= e((string) ($medication['dose_amount'] ?? '')) ?>"
+                    data-dose-unit="<?= e((string) ($medication['dose_unit'] ?? 'mg')) ?>"
+                    data-medication-dose="<?= e(formattedDose($medication)) ?>"
+                  >
+                    <i class="fa-solid fa-syringe" aria-hidden="true"></i>
+                    Update prescribed dose
+                  </button>
                   <button type="button" class="med-actions-item" data-open-refill-history data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>">
                     <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
                     Refill history
@@ -192,16 +205,13 @@
                   data-medication-id="<?= e((string) $medication['id']) ?>"
                   data-medication-name="<?= e((string) $medication['name']) ?>"
                   data-set-id="<?= e((string) ($medication['set_id'] ?? '')) ?>">View details</button>
-          <?php if (trim((string) $medication['instructions']) !== ''): ?>
           <button type="button" class="view-instructions-link" data-view-instructions
                   data-medication-id="<?= e((string) $medication['id']) ?>"
                   data-medication-name="<?= e((string) $medication['name']) ?>"
-                  data-medication-dose="<?= e(formattedDose($medication)) ?>"
-                  data-instructions="<?= e((string) $medication['instructions']) ?>">
+                  data-medication-dose="<?= e(formattedDose($medication)) ?>">
             <span class="instructions-label-desktop">View instructions / Notes</span>
             <span class="instructions-label-mobile">View instr/Notes</span>
           </button>
-          <?php endif; ?>
         </div>
         
         <div class="row-actions medication-actions-bottom">

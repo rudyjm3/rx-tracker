@@ -198,6 +198,81 @@ try {
         redirect_home();
     }
 
+    if ($action === 'update_dose') {
+        $medId      = (int) post_string('medication_id');
+        $existingMed = $repository->findMedication($medId);
+        if ($existingMed === null) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Medication not found.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $newAmountRaw = post_string('dose_amount');
+        $newAmount    = ($newAmountRaw !== '' && $newAmountRaw !== null) ? (float) $newAmountRaw : null;
+        $newUnit      = substr(trim(post_string('dose_unit')), 0, 20);
+        $comment      = substr(trim(post_string('comment')), 0, 500);
+        $oldAmountRaw = $existingMed['dose_amount'] ?? null;
+        $oldAmount    = ($oldAmountRaw !== null && $oldAmountRaw !== '') ? (float) $oldAmountRaw : null;
+        $oldUnit      = (string) ($existingMed['dose_unit'] ?? '');
+        $repository->updateDose($medId, $newAmount, $newUnit);
+        $repository->recordDoseChange($medId, $oldAmount, $oldUnit, $newAmount, $newUnit, $comment);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'get_notes') {
+        $medId = (int) post_string('medication_id');
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok'    => true,
+            'notes' => $repository->getNotesByMedicationId($medId),
+        ], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'add_note') {
+        $medId = (int) post_string('medication_id');
+        if ($repository->findMedication($medId) === null) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Medication not found.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $noteText = substr(trim(post_string('note')), 0, 5000);
+        if ($noteText === '') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Note cannot be empty.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $note = $repository->addNote($medId, $noteText);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'note' => $note], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'update_note') {
+        $noteId   = (int) post_string('note_id');
+        $medId    = (int) post_string('medication_id');
+        $noteText = substr(trim(post_string('note')), 0, 5000);
+        if ($noteText === '') {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'Note cannot be empty.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $updatedAt = $repository->updateNote($noteId, $medId, $noteText);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'updated_at' => $updatedAt], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'delete_note') {
+        $noteId = (int) post_string('note_id');
+        $medId  = (int) post_string('medication_id');
+        $repository->deleteNote($noteId, $medId);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     if ($action === 'delete_group') {
         $repository->deleteGroup((int) post_string('group_id'));
         if ($jsonResponse) {

@@ -38,6 +38,7 @@ final class MedicationRepository
         $this->ensureStartDateColumn();
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
+        $this->ensureMedicationNotesTable();
     }
 
     private function profileSql(string $alias = 'm'): string
@@ -1441,6 +1442,96 @@ final class MedicationRepository
         );
         $statement->execute(array_merge(['medication_id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         return $statement->fetchAll();
+    }
+
+    public function updateDose(int $medicationId, ?float $doseAmount, string $doseUnit): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medications SET dose_amount = :dose_amount, dose_unit = :dose_unit
+             WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge([
+            'id'          => $medicationId,
+            'user_id'     => $this->userId,
+            'dose_amount' => $doseAmount,
+            'dose_unit'   => $doseUnit,
+        ], $this->profileParam()));
+    }
+
+    public function doseChangesForDateRange(string $startDate, string $endDate): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT dc.changed_at, dc.old_dose_amount, dc.old_dose_unit,
+                    dc.new_dose_amount, dc.new_dose_unit, dc.comment, m.name
+             FROM medication_dose_changes dc
+             INNER JOIN medications m ON m.id = dc.medication_id
+             WHERE m.user_id = :user_id ' . $this->profileSql() . '
+               AND dc.changed_at BETWEEN :start_date AND :end_date
+             ORDER BY m.name, dc.changed_at'
+        );
+        $statement->execute(array_merge(
+            ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate . ' 23:59:59'],
+            $this->profileParam()
+        ));
+        return $statement->fetchAll();
+    }
+
+    public function getNotesByMedicationId(int $medicationId): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT n.id, n.note, n.created_at, n.updated_at
+             FROM medication_notes n
+             INNER JOIN medications m ON m.id = n.medication_id
+             WHERE n.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql() . '
+             ORDER BY n.created_at ASC, n.id ASC'
+        );
+        $statement->execute(array_merge(
+            ['medication_id' => $medicationId, 'user_id' => $this->userId],
+            $this->profileParam()
+        ));
+        return $statement->fetchAll();
+    }
+
+    public function addNote(int $medicationId, string $noteText): array
+    {
+        $statement = $this->db->prepare(
+            'INSERT INTO medication_notes (medication_id, note) VALUES (:medication_id, :note)'
+        );
+        $statement->execute(['medication_id' => $medicationId, 'note' => $noteText]);
+        $id = (int) $this->db->lastInsertId();
+        $row = $this->db->prepare('SELECT id, note, created_at, updated_at FROM medication_notes WHERE id = :id');
+        $row->execute(['id' => $id]);
+        return (array) $row->fetch();
+    }
+
+    public function updateNote(int $noteId, int $medicationId, string $noteText): string
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medication_notes n
+             INNER JOIN medications m ON m.id = n.medication_id
+             SET n.note = :note
+             WHERE n.id = :id AND n.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql()
+        );
+        $statement->execute(array_merge(
+            ['id' => $noteId, 'medication_id' => $medicationId, 'note' => $noteText, 'user_id' => $this->userId],
+            $this->profileParam()
+        ));
+        $row = $this->db->prepare('SELECT updated_at FROM medication_notes WHERE id = :id');
+        $row->execute(['id' => $noteId]);
+        return (string) ($row->fetchColumn() ?: '');
+    }
+
+    public function deleteNote(int $noteId, int $medicationId): void
+    {
+        $statement = $this->db->prepare(
+            'DELETE n FROM medication_notes n
+             INNER JOIN medications m ON m.id = n.medication_id
+             WHERE n.id = :id AND n.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql()
+        );
+        $statement->execute(array_merge(
+            ['id' => $noteId, 'medication_id' => $medicationId, 'user_id' => $this->userId],
+            $this->profileParam()
+        ));
     }
 
     public function getMissedGraceMinutes(): int
@@ -3902,6 +3993,62 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureMedicationNotesTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_notes (
+                        id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id INT UNSIGNED NOT NULL,
+                        note          TEXT NOT NULL,
+                        created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_notes_medication (medication_id),
+                        CONSTRAINT fk_notes_medication
+                            FOREIGN KEY (medication_id) REFERENCES medications (id)
+                            ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                // Migrate existing instructions into notes (runs only if notes table was just created and is empty)
+                $count = $this->db->query('SELECT COUNT(*) FROM medication_notes')->fetchColumn();
+                if ($count === '0' || $count === 0) {
+                    $this->db->exec(
+                        "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
+                         SELECT id, instructions, created_at, updated_at
+                         FROM medications
+                         WHERE instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                    );
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_notes (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        note          TEXT NOT NULL DEFAULT '',
+                        created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (medication_id) REFERENCES medications (id) ON DELETE CASCADE
+                    )"
+                );
+                $count = $this->db->query('SELECT COUNT(*) FROM medication_notes')->fetchColumn();
+                if ($count === '0' || $count === 0) {
+                    $this->db->exec(
+                        "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
+                         SELECT id, instructions, created_at, updated_at
+                         FROM medications
+                         WHERE instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                    );
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if table setup fails.
         }
     }
 }

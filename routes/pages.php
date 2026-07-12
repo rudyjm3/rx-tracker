@@ -372,11 +372,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <?php endforeach; ?>
             </select>
           </label>
-          <?php if ($editing): ?>
-          <label data-dose-change-comment-row hidden>Reason for dose change <span class="field-optional">(optional)</span>
-            <input name="dose_change_comment" maxlength="500" placeholder="e.g. Doctor increased dose at last visit">
-          </label>
-          <?php endif; ?>
           <label>Dose form <span class="field-optional">(optional)</span>
             <select name="dose_form" data-dailymed-dose-form>
               <?php
@@ -1860,23 +1855,59 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 </div>
 
 <div class="modal-overlay" data-instructions-modal>
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="instructions-modal-title">
+  <div class="modal-dialog modal-dialog--wide" role="dialog" aria-modal="true" aria-labelledby="instructions-modal-title">
     <div class="modal-header">
-      <h2 id="instructions-modal-title" data-instructions-modal-name>Instructions</h2>
+      <div>
+        <h2 id="instructions-modal-title" data-instructions-modal-name></h2>
+        <p class="refill-modal-subtitle muted" data-instructions-modal-dose></p>
+      </div>
       <button type="button" class="icon-button" data-close-instructions-modal aria-label="Close instructions">&#10005;</button>
     </div>
-    <div class="modal-scroll">
-      <div class="instructions-content-wrap">
-        <div class="instructions-content-box">
-          <p data-instructions-modal-body></p>
-          <textarea data-instructions-modal-edit rows="4" style="display:none"></textarea>
+    <div class="modal-scroll" style="padding:1rem">
+      <div data-notes-dose-history></div>
+      <div class="notes-section">
+        <div data-notes-list class="notes-list">
+          <p class="pain-graph-loading" data-notes-loading>Loading&#8230;</p>
         </div>
-        <button type="button" class="icon-button med-actions-trigger instructions-edit-btn" data-edit-instructions aria-label="Edit instructions" title="Edit instructions"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+        <button type="button" class="add-note-link" data-open-add-note>+ Add new note</button>
+      </div>
+      <div data-add-note-form hidden class="note-edit-form" style="margin-top:.75rem">
+        <textarea data-add-note-textarea rows="4" maxlength="5000" placeholder="Enter note&#8230;" style="width:100%"></textarea>
+        <div class="refill-form-actions" style="padding:.5rem 0 0">
+          <button type="button" data-save-add-note>Save note</button>
+          <button type="button" class="secondary" data-cancel-add-note>Cancel</button>
+        </div>
       </div>
     </div>
-    <div class="refill-form-actions" data-instructions-modal-save-row style="display:none; padding: 0 1rem 1rem;">
-      <button type="button" data-save-instructions>Save</button>
-      <button type="button" class="secondary" data-cancel-instructions-edit>Cancel</button>
+  </div>
+</div>
+
+<div class="modal-overlay" data-update-dose-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dose-title">
+    <div class="modal-header">
+      <h2 id="update-dose-title">Update Prescribed Dose</h2>
+      <button type="button" class="icon-button" data-close-update-dose-modal aria-label="Close">&#10005;</button>
+    </div>
+    <div class="modal-scroll" style="padding:1rem">
+      <p style="margin-bottom:.25rem"><strong data-update-dose-med-name></strong></p>
+      <p class="muted" style="margin-bottom:1.25rem">Current dose: <span data-update-dose-current></span></p>
+      <label style="display:block;margin-bottom:.75rem">New dose amount
+        <div style="display:flex;gap:.5rem;margin-top:.25rem">
+          <input type="number" step="0.001" min="0" data-update-dose-amount placeholder="e.g. 15" style="flex:1">
+          <select data-update-dose-unit>
+            <?php foreach (['mg','mcg','g','mL','tsp','tbsp','oz','IU','units','drops','puffs','patches'] as $u): ?>
+            <option value="<?= e($u) ?>"><?= e($u) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </label>
+      <label style="display:block">Reason <span class="field-optional">(optional)</span>
+        <textarea data-update-dose-reason rows="3" maxlength="500" placeholder="e.g. Doctor increased dose at last visit" style="width:100%;margin-top:.25rem"></textarea>
+      </label>
+    </div>
+    <div class="refill-form-actions" style="padding:0 1rem 1rem">
+      <button type="button" data-save-update-dose>Save dose change</button>
+      <button type="button" class="secondary" data-close-update-dose-modal>Cancel</button>
     </div>
   </div>
 </div>
