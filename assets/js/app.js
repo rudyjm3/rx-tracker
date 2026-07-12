@@ -5094,8 +5094,19 @@ const openNotesModal = async (medicationId, medicationName, medicationDose) => {
     notesListEl.innerHTML = '';
     if (notesResult.status === 'fulfilled' && notesResult.value.ok && Array.isArray(notesResult.value.notes)) {
       const notes = notesResult.value.notes;
-      if (notes.length === 0) {
-        notesListEl.innerHTML = '<p class="muted" style="margin-bottom:.75rem">No notes yet. Add one below.</p>';
+      const legacy = (notesResult.value.legacy_instructions || '').trim();
+      if (legacy) {
+        const legacyDiv = document.createElement('div');
+        legacyDiv.className = 'note-legacy-banner';
+        legacyDiv.innerHTML = `<p class="note-meta muted">Instructions (from medication record)</p><p class="note-text">${escHtml(legacy)}</p>`;
+        notesListEl.appendChild(legacyDiv);
+      }
+      if (notes.length === 0 && !legacy) {
+        const emptyP = document.createElement('p');
+        emptyP.className = 'muted';
+        emptyP.style.marginBottom = '.75rem';
+        emptyP.textContent = 'No notes yet. Add one below.';
+        notesListEl.appendChild(emptyP);
       } else {
         notes.forEach((n) => notesListEl.appendChild(buildNoteCard(n)));
       }

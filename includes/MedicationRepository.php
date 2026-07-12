@@ -1507,13 +1507,18 @@ final class MedicationRepository
     public function updateNote(int $noteId, int $medicationId, string $noteText): string
     {
         $statement = $this->db->prepare(
-            'UPDATE medication_notes n
-             INNER JOIN medications m ON m.id = n.medication_id
-             SET n.note = :note
-             WHERE n.id = :id AND n.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql()
+            'UPDATE medication_notes
+             SET note = :note, updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id
+               AND medication_id = :medication_id
+               AND EXISTS (
+                 SELECT 1 FROM medications
+                 WHERE id = :check_med_id AND user_id = :user_id ' . $this->profileSql('') . '
+               )'
         );
         $statement->execute(array_merge(
-            ['id' => $noteId, 'medication_id' => $medicationId, 'note' => $noteText, 'user_id' => $this->userId],
+            ['id' => $noteId, 'medication_id' => $medicationId, 'note' => $noteText,
+             'user_id' => $this->userId, 'check_med_id' => $medicationId],
             $this->profileParam()
         ));
         $row = $this->db->prepare('SELECT updated_at FROM medication_notes WHERE id = :id');
@@ -1524,12 +1529,16 @@ final class MedicationRepository
     public function deleteNote(int $noteId, int $medicationId): void
     {
         $statement = $this->db->prepare(
-            'DELETE n FROM medication_notes n
-             INNER JOIN medications m ON m.id = n.medication_id
-             WHERE n.id = :id AND n.medication_id = :medication_id AND m.user_id = :user_id ' . $this->profileSql()
+            'DELETE FROM medication_notes
+             WHERE id = :id
+               AND medication_id = :medication_id
+               AND EXISTS (
+                 SELECT 1 FROM medications
+                 WHERE id = :check_med_id AND user_id = :user_id ' . $this->profileSql('') . '
+               )'
         );
         $statement->execute(array_merge(
-            ['id' => $noteId, 'medication_id' => $medicationId, 'user_id' => $this->userId],
+            ['id' => $noteId, 'medication_id' => $medicationId, 'user_id' => $this->userId, 'check_med_id' => $medicationId],
             $this->profileParam()
         ));
     }
@@ -4014,15 +4023,24 @@ final class MedicationRepository
                             ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
                 );
-                // Migrate existing instructions into notes (runs only if notes table was just created and is empty)
-                $count = $this->db->query('SELECT COUNT(*) FROM medication_notes')->fetchColumn();
-                if ($count === '0' || $count === 0) {
-                    $this->db->exec(
-                        "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
-                         SELECT id, instructions, created_at, updated_at
-                         FROM medications
-                         WHERE instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                if ($this->userId > 0) {
+                    $flagStmt = $this->db->prepare(
+                        'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
                     );
+                    $flagStmt->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done']);
+                    if (!$flagStmt->fetchColumn()) {
+                        $this->db->prepare(
+                            "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
+                             SELECT id, instructions, created_at, updated_at
+                             FROM medications
+                             WHERE user_id = :user_id AND instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                        )->execute(['user_id' => $this->userId]);
+                        $this->db->prepare(
+                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                             VALUES (:user_id, :key, :insert_value)
+                             ON DUPLICATE KEY UPDATE setting_value = :update_value'
+                        )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'insert_value' => '1', 'update_value' => '1']);
+                    }
                 }
                 return;
             }
@@ -4037,14 +4055,24 @@ final class MedicationRepository
                         FOREIGN KEY (medication_id) REFERENCES medications (id) ON DELETE CASCADE
                     )"
                 );
-                $count = $this->db->query('SELECT COUNT(*) FROM medication_notes')->fetchColumn();
-                if ($count === '0' || $count === 0) {
-                    $this->db->exec(
-                        "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
-                         SELECT id, instructions, created_at, updated_at
-                         FROM medications
-                         WHERE instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                if ($this->userId > 0) {
+                    $flagStmt = $this->db->prepare(
+                        'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
                     );
+                    $flagStmt->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done']);
+                    if (!$flagStmt->fetchColumn()) {
+                        $this->db->prepare(
+                            "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
+                             SELECT id, instructions, created_at, updated_at
+                             FROM medications
+                             WHERE user_id = :user_id AND instructions IS NOT NULL AND TRIM(instructions) <> ''"
+                        )->execute(['user_id' => $this->userId]);
+                        $this->db->prepare(
+                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                             VALUES (:user_id, :key, :value)
+                             ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+                        )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'value' => '1']);
+                    }
                 }
             }
         } catch (Throwable) {

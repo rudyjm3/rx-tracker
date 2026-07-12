@@ -213,6 +213,14 @@ try {
         $oldAmountRaw = $existingMed['dose_amount'] ?? null;
         $oldAmount    = ($oldAmountRaw !== null && $oldAmountRaw !== '') ? (float) $oldAmountRaw : null;
         $oldUnit      = (string) ($existingMed['dose_unit'] ?? '');
+        $amountChanged = ($oldAmount === null) !== ($newAmount === null)
+            || ($oldAmount !== null && $newAmount !== null && abs($oldAmount - $newAmount) > 0.0001);
+        $unitChanged = $newUnit !== $oldUnit && ($oldAmount !== null || $newAmount !== null);
+        if (!$amountChanged && !$unitChanged) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => false, 'error' => 'No change to dose.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
         $repository->updateDose($medId, $newAmount, $newUnit);
         $repository->recordDoseChange($medId, $oldAmount, $oldUnit, $newAmount, $newUnit, $comment);
         header('Content-Type: application/json; charset=utf-8');
@@ -222,10 +230,12 @@ try {
 
     if ($action === 'get_notes') {
         $medId = (int) post_string('medication_id');
+        $med   = $repository->findMedication($medId);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'ok'    => true,
-            'notes' => $repository->getNotesByMedicationId($medId),
+            'ok'                  => true,
+            'notes'               => $repository->getNotesByMedicationId($medId),
+            'legacy_instructions' => $med !== null ? trim((string) ($med['instructions'] ?? '')) : '',
         ], JSON_THROW_ON_ERROR);
         exit;
     }
