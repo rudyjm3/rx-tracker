@@ -332,7 +332,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
       <div class="modal-header">
         <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
-        <button type="button" class="icon-button" data-close-medication-modal aria-label="Close modal">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-medication-modal aria-label="Close modal">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
       <form class="medication-form" method="post" action="index.php">
@@ -488,7 +490,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <?php endforeach; ?>
           </select>
         </label>
-        <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+        <div class="modal-footer">
+          <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+        </div>
       </form>
       </div>
     </div>
@@ -498,7 +502,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-graph-title">
       <div class="modal-header">
         <h2 id="pain-graph-title" data-pain-graph-title>Pain Level Trend</h2>
-        <button type="button" class="icon-button" data-close-pain-graph aria-label="Close pain graph">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-pain-graph aria-label="Close pain graph">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
         <div class="pain-graph-controls">
@@ -527,7 +533,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-dialog pain-graph-dialog" role="dialog" aria-modal="true" aria-labelledby="mood-graph-title">
       <div class="modal-header">
         <h2 id="mood-graph-title" data-mood-graph-title>Mood Trend</h2>
-        <button type="button" class="icon-button" data-close-mood-graph aria-label="Close mood graph">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-mood-graph aria-label="Close mood graph">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
         <div class="pain-graph-controls">
@@ -559,7 +567,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <h2 id="feedback-modal-title">How are you feeling?</h2>
           <p class="feedback-queue-progress" data-feedback-queue-progress hidden></p>
         </div>
-        <button type="button" class="icon-button" data-close-feedback-modal aria-label="Close feedback modal">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-feedback-modal aria-label="Close feedback modal">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
       <form method="post" action="index.php" class="stacked-form" data-feedback-form>
@@ -569,6 +579,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="medication_id" data-feedback-medication-id value="">
         <input type="hidden" name="scheduled_date" data-feedback-scheduled-date value="">
         <input type="hidden" name="scheduled_time" data-feedback-scheduled-time value="">
+        <input type="hidden" name="actual_taken_time" data-feedback-actual-time value="">
         <input type="hidden" name="pain_level" data-feedback-pain-level value="">
         <input type="hidden" name="mood_level" data-feedback-mood-level value="">
 
@@ -595,7 +606,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <span class="char-counter" data-feedback-char-counter>[0/250]</span>
         </label>
 
-        <div class="feedback-actions">
+        <div class="feedback-actions modal-footer">
           <button type="submit">Log dose</button>
           <button type="button" class="secondary" data-skip-feedback>Take without comment</button>
         </div>
@@ -609,7 +620,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-dialog med-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="med-detail-title">
       <div class="modal-header">
         <h2 id="med-detail-title" data-med-detail-title></h2>
-        <button type="button" class="icon-button" data-close-med-detail aria-label="Close">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-med-detail aria-label="Close">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
         <div data-med-detail-body>
@@ -624,7 +637,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="se-modal-title">
       <div class="modal-header">
         <h2 id="se-modal-title">Log Side Effect</h2>
-        <button type="button" class="icon-button" data-close-se-modal aria-label="Close">&#10005;</button>
+        <button type="button" class="modal-close-btn" data-close-se-modal aria-label="Close">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
       </div>
       <div class="modal-scroll">
       <form method="post" action="index.php" class="stacked-form" data-se-form>
@@ -647,8 +662,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <label>Notes <span class="field-optional">(optional)</span>
           <textarea name="note" rows="3" maxlength="500" placeholder="Any additional context or observations"></textarea>
         </label>
-        <button type="submit">Log side effect</button>
-        <button type="button" class="secondary" data-close-se-modal>Cancel</button>
+        <div class="modal-footer">
+          <button type="submit">Log side effect</button>
+          <button type="button" class="secondary" data-close-se-modal>Cancel</button>
+        </div>
       </form>
       </div>
     </div>
@@ -1150,7 +1167,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog calendar-day-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-day-modal-title">
     <div class="modal-header">
       <h2 id="calendar-day-modal-title" data-calendar-day-modal-title></h2>
-      <button type="button" class="modal-close" data-close-calendar-day-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-calendar-day-modal aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll" data-calendar-day-modal-body></div>
   </div>
@@ -1725,7 +1744,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog postpone-dialog" role="dialog" aria-modal="true" aria-labelledby="postpone-modal-title">
     <div class="modal-header">
       <h2 id="postpone-modal-title">Snooze reminder</h2>
-      <button type="button" class="icon-button" data-close-postpone-modal aria-label="Close postpone modal">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-postpone-modal aria-label="Close postpone modal">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
     <form method="post" action="index.php" class="stacked-form">
@@ -1742,7 +1763,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <option value="30">30 minutes</option>
         </select>
       </label>
-      <button type="submit">Snooze</button>
+      <div class="modal-footer">
+        <button type="submit">Snooze</button>
+      </div>
     </form>
     </div>
   </div>
@@ -1753,9 +1776,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-header">
       <div>
         <h2 id="refill-modal-title">Log Refill</h2>
-        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-refill-med-name></span> <span class="refill-med-dose" data-refill-med-dose></span></p>
+        <p class="refill-modal-subtitle"><strong data-refill-med-name></strong> <span class="dose-inline" data-refill-med-dose></span></p>
       </div>
-      <button type="button" class="icon-button" data-close-refill-modal aria-label="Close refill modal">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-refill-modal aria-label="Close refill modal">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
     <form class="stacked-form" data-refill-form>
@@ -1769,7 +1794,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <label>Note <span class="field-optional">(optional)</span>
         <input name="note" placeholder="e.g. 30-day supply" maxlength="255">
       </label>
-      <div class="refill-form-actions">
+      <div class="refill-form-actions modal-footer">
         <button type="submit">Log refill</button>
         <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
       </div>
@@ -1783,9 +1808,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-header">
       <div>
         <h2 id="adjust-qty-modal-title">Adjust Quantity</h2>
-        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-adjust-qty-med-name></span> <span class="refill-med-dose" data-adjust-qty-med-dose></span></p>
+        <p class="refill-modal-subtitle"><strong data-adjust-qty-med-name></strong> <span class="dose-inline" data-adjust-qty-med-dose></span></p>
       </div>
-      <button type="button" class="icon-button" data-close-adjust-qty-modal aria-label="Close adjust quantity modal">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-adjust-qty-modal aria-label="Close adjust quantity modal">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
     <form class="stacked-form" data-adjust-qty-form>
@@ -1800,7 +1827,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <label>Reason <span class="field-optional">(optional)</span>
         <input name="note" placeholder="e.g. recount, dropped a pill" maxlength="255">
       </label>
-      <div class="refill-form-actions">
+      <div class="refill-form-actions modal-footer">
         <button type="submit">Save adjustment</button>
         <button type="button" class="secondary" data-close-adjust-qty-modal>Cancel</button>
       </div>
@@ -1814,9 +1841,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-header">
       <div>
         <h2 id="discontinue-modal-title">Discontinue Use</h2>
-        <p class="refill-modal-subtitle"><span class="refill-med-name-pill" data-discontinue-med-name></span></p>
+        <p class="refill-modal-subtitle"><strong data-discontinue-med-name></strong></p>
       </div>
-      <button type="button" class="icon-button" data-close-discontinue-modal aria-label="Close discontinue modal">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-discontinue-modal aria-label="Close discontinue modal">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
     <form class="stacked-form" method="post" action="index.php" data-discontinue-form>
@@ -1845,7 +1874,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <label>Comment <span class="field-optional">(optional)</span>
         <textarea name="comment" rows="3" maxlength="500" placeholder="Add more detail about why you're stopping this medication"></textarea>
       </label>
-      <div class="refill-form-actions">
+      <div class="refill-form-actions modal-footer">
         <button type="submit" class="danger">Discontinue Use</button>
         <button type="button" class="secondary" data-close-discontinue-modal>Cancel</button>
       </div>
@@ -1858,10 +1887,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog modal-dialog--wide" role="dialog" aria-modal="true" aria-labelledby="instructions-modal-title">
     <div class="modal-header">
       <div>
-        <h2 id="instructions-modal-title" data-instructions-modal-name></h2>
-        <p class="refill-modal-subtitle muted" data-instructions-modal-dose></p>
+        <h2 id="instructions-modal-title"><span data-instructions-modal-name></span> <span class="dose-inline" data-instructions-modal-dose></span></h2>
       </div>
-      <button type="button" class="icon-button" data-close-instructions-modal aria-label="Close instructions">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-instructions-modal aria-label="Close instructions">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll" style="padding:1rem">
       <div data-notes-dose-history></div>
@@ -1886,7 +1916,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dose-title">
     <div class="modal-header">
       <h2 id="update-dose-title">Update Prescribed Dose</h2>
-      <button type="button" class="icon-button" data-close-update-dose-modal aria-label="Close">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-update-dose-modal aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll" style="padding:1rem">
       <p style="margin-bottom:.25rem"><strong data-update-dose-med-name></strong></p>
@@ -1905,7 +1937,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <textarea data-update-dose-reason rows="3" maxlength="500" placeholder="e.g. Doctor increased dose at last visit" style="width:100%;margin-top:.25rem"></textarea>
       </label>
     </div>
-    <div class="refill-form-actions" style="padding:0 1rem 1rem">
+    <div class="refill-form-actions modal-footer">
       <button type="button" data-save-update-dose>Save dose change</button>
       <button type="button" class="secondary" data-close-update-dose-modal>Cancel</button>
     </div>
@@ -1917,9 +1949,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="modal-header">
       <div>
         <h2 id="refill-history-title">Refill History</h2>
-        <p class="refill-modal-subtitle" data-refill-history-med-name></p>
+        <p class="refill-modal-subtitle"><strong data-refill-history-med-name></strong></p>
       </div>
-      <button type="button" class="icon-button" data-close-refill-history aria-label="Close refill history">&#10005;</button>
+      <button type="button" class="modal-close-btn" data-close-refill-history aria-label="Close refill history">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
       <div class="refill-history-body" data-refill-history-body>
@@ -1933,7 +1967,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog">
     <div class="modal-header">
       <h2 class="modal-title" data-slot-picker-title>Log dose</h2>
-      <button type="button" class="modal-close" data-close-slot-picker aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-slot-picker aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">Select which scheduled dose you are logging:</p>
@@ -1942,6 +1978,10 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <p>This dose time has already passed. When you actually took it:</p>
         <label class="slot-late-option"><input type="radio" name="slot_timing" value="on_time" checked> I took it on time &mdash; just logging it now</label>
         <label class="slot-late-option"><input type="radio" name="slot_timing" value="late"> I took it late (after the scheduled window)</label>
+        <div class="slot-late-time" data-slot-late-time hidden style="margin-top:.75rem;">
+          <label for="slot-late-time-input" class="form-label">Time taken</label>
+          <input type="time" id="slot-late-time-input" data-slot-late-time-input class="form-control" style="width:100%;margin-top:.375rem;">
+        </div>
       </div>
       <div class="slot-free-time" data-slot-free-time hidden>
         <p style="margin-bottom:0.5rem;font-size:0.875rem;color:var(--rx-text-muted);">All scheduled times are logged. Log at a different time:</p>
@@ -1959,7 +1999,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog">
     <div class="modal-header">
       <h2 class="modal-title" data-missed-dose-title>Log missed dose</h2>
-      <button type="button" class="modal-close" data-close-missed-dose-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-missed-dose-modal aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">When did you take this dose?</p>
@@ -2015,7 +2057,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="log-past-dose-title">
     <div class="modal-header">
       <h2 class="modal-title" id="log-past-dose-title" data-log-past-dose-title>Log past dose</h2>
-      <button type="button" class="modal-close" data-close-log-past-dose aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-log-past-dose aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">Which day and dose was this?</p>
@@ -2087,7 +2131,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog slot-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="free-log-title">
     <div class="modal-header">
       <h2 class="modal-title" id="free-log-title" data-free-log-title>Log dose</h2>
-      <button type="button" class="modal-close" data-close-free-log aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-free-log aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-body slot-picker-body">
       <p class="slot-picker-hint">Select the time you are taking this dose:</p>
@@ -2107,7 +2153,9 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <div class="modal-dialog required-doses-dialog" role="dialog" aria-modal="true" aria-labelledby="required-doses-modal-title">
     <div class="modal-header">
       <h2 id="required-doses-modal-title" class="modal-title"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Required doses — today</h2>
-      <button type="button" class="modal-close" data-close-required-doses-modal aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      <button type="button" class="modal-close-btn" data-close-required-doses-modal aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
     </div>
     <div class="modal-scroll">
       <?php if (empty($requiredByMed)): ?>

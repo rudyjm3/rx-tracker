@@ -399,13 +399,17 @@ try {
     }
 
     if ($action === 'log_dose_now') {
-        $medicationId  = (int) post_string('medication_id');
-        $scheduledTime = post_string('scheduled_time') ?: null;
-        $takenOnTime   = post_string('taken_on_time') === '1';
+        $medicationId    = (int) post_string('medication_id');
+        $scheduledTime   = post_string('scheduled_time') ?: null;
+        $takenOnTime     = post_string('taken_on_time') === '1';
+        $actualTakenTime = post_string('actual_taken_time') ?: null;
+        if ($actualTakenTime !== null && !preg_match('/^\d{2}:\d{2}$/', $actualTakenTime)) {
+            throw new RuntimeException('Invalid time format.');
+        }
         if ($medicationId <= 0) {
             throw new RuntimeException('Choose a medication first.');
         }
-        $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime);
+        $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime, $actualTakenTime);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);

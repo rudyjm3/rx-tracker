@@ -1125,7 +1125,7 @@ final class MedicationRepository
         }
     }
 
-    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false): void
+    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): void
     {
         $ownerCheck = $this->db->prepare(
             'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
@@ -1139,10 +1139,18 @@ final class MedicationRepository
         $date = $now->format('Y-m-d');
 
         if ($scheduledTime !== null) {
-            $time    = $scheduledTime . ':00';
-            $takenAt = $takenOnTime
-                ? new DateTimeImmutable($date . ' ' . $scheduledTime)
-                : $now;
+            $time = $scheduledTime . ':00';
+            if ($actualTakenTime !== null) {
+                $candidateAt = new DateTimeImmutable($date . ' ' . $actualTakenTime . ':00');
+                if ($candidateAt > $now) {
+                    throw new RuntimeException('Taken time cannot be in the future.');
+                }
+                $takenAt = $candidateAt;
+            } else {
+                $takenAt = $takenOnTime
+                    ? new DateTimeImmutable($date . ' ' . $scheduledTime)
+                    : $now;
+            }
         } else {
             // Map to the closest unlogged scheduled slot so todaySchedule can match it.
             $medication = $this->medicationById($medicationId);

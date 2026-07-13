@@ -1487,7 +1487,8 @@ button.medications-overview-row:active {
 
 .medication-form > label:nth-last-of-type(-n+2),
 .medication-form > button,
-.medication-form > .form-disclosure {
+.medication-form > .form-disclosure,
+.medication-form > .modal-footer {
   grid-column: 1 / -1;
 }
 
@@ -2040,14 +2041,16 @@ textarea:focus,
   box-shadow: none;
 }
 
-.med-actions-trigger {
+.med-actions-trigger,
+.note-actions-trigger {
   background: none;
   border: none;
   color: var(--rx-text-muted);
   font-size: 1.1rem;
 }
 
-.med-actions-trigger:hover {
+.med-actions-trigger:hover,
+.note-actions-trigger:hover {
   background: none;
   color: var(--rx-text);
 }
@@ -3175,14 +3178,64 @@ button.danger:hover {
 
 .modal-header {
   align-items: center;
+  border-bottom: 1px solid var(--rx-border);
   display: flex;
   flex-shrink: 0;
   justify-content: space-between;
-  padding: 1rem 1rem 0.75rem;
+  margin-bottom: 0.8rem;
+  padding: 1rem 1.25rem;
 }
 
-.modal-header h2 {
+.modal-header h2,
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
   margin: 0;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--rx-border);
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+  margin-top: 0.8rem;
+  padding: 0.75rem 1.25rem;
+}
+
+.modal-scroll .modal-footer {
+  margin: 0 -1rem -1rem;
+}
+
+.modal-close-btn {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.3rem;
+  height: 2rem;
+  justify-content: center;
+  position: relative;
+  transition: color 0.15s ease;
+  width: 2rem;
+}
+
+.modal-close-btn:hover {
+  background: none;
+  box-shadow: none;
+  color: var(--rx-danger);
+  transform: none;
+}
+
+.modal-footer button,
+.slot-picker-footer button,
+.feedback-actions button,
+.refill-form-actions button,
+.group-form-actions button,
+.stacked-form button[type="submit"] {
+  font-weight: 600;
+  padding: 0.5rem 1rem;
 }
 
 .disclaimer {
@@ -4096,7 +4149,7 @@ button.danger:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-top: 0.85rem;
+  margin-top: 0.8rem;
 }
 
 .field-optional {
@@ -4659,6 +4712,7 @@ details.med-detail-section[open] .med-detail-section-title::after {
   display: flex;
   gap: 0.5rem;
   grid-column: 1 / -1;
+  margin-top: 0.8rem;
 }
 
 .drag-handle {
@@ -4984,24 +5038,10 @@ details.med-detail-section[open] .med-detail-section-title::after {
   margin: 0.15rem 0 0;
 }
 
-.refill-med-name-pill {
-  background-color: #5189d4;
-  color: #fff;
-  border-radius: 8px;
-  padding: 2px 10px;
-  display: inline-block;
-}
-
-.refill-med-dose {
-  font-size: 0.90rem;
-  color: var(--rx-text-muted);
-  margin-left: 0.4rem;
-}
-
 .refill-form-actions {
   display: flex;
   gap: 0.6rem;
-  margin-top: 0.25rem;
+  margin-top: 0.8rem;
 }
 
 /* ── Refill history modal ────────────────────────────────────────────────────── */
@@ -5285,7 +5325,8 @@ details.med-detail-section[open] .med-detail-section-title::after {
 .auth-card button[type="submit"] {
   width: 100%;
   margin-top: 0.5rem;
-  padding: 0.9rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
 }
 
 .auth-forgot-link {
@@ -6310,7 +6351,12 @@ a.nav-user-btn.is-active {
 
 .pain-log-panel,
 .mood-log-panel {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md);
+  box-shadow: var(--rx-shadow);
   margin-bottom: 1.25rem;
+  padding: 1.35rem;
 }
 
 .pain-log-intro-text {
@@ -6320,19 +6366,21 @@ a.nav-user-btn.is-active {
 }
 
 .pain-log-cta {
-  background: var(--rx-bg);
-  border: 1.5px solid var(--rx-border);
-  border-radius: var(--rx-radius-sm, 0.5rem);
-  color: var(--rx-deep-blue);
+  background: var(--rx-gradient);
+  border: 0;
+  border-radius: var(--rx-radius-sm);
+  color: #fff;
   cursor: pointer;
   font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0.55rem 1rem;
-  transition: background 0.15s, border-color 0.15s;
+  font-weight: 700;
+  padding: 0.65rem 1.2rem;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 
 .pain-log-cta:hover {
-  background: var(--rx-border);
+  background: var(--rx-gradient-dark);
+  box-shadow: 0 12px 24px rgba(7, 84, 168, 0.28);
+  transform: translateY(-1px);
 }
 
 .pain-log-form-wrap,
@@ -6518,12 +6566,14 @@ a.nav-user-btn.is-active {
 }
 
 .history-entry-edit-btn:hover {
-  border-color: var(--rx-blue, #2563eb);
-  color: var(--rx-blue, #2563eb);
+  background: none;
+  box-shadow: none;
+  transform: none;
 }
 
 /* Inline edit form within a history entry */
 .history-entry-edit-form {
+  grid-column: 1 / -1;
   width: 100%;
 }
 
@@ -6622,10 +6672,8 @@ a.nav-user-btn.is-active {
   border-radius: var(--rx-radius-sm);
   box-shadow: 0 6px 20px rgba(3,18,42,.2);
   min-width: 130px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 200;
+  position: fixed;
+  z-index: 1200;
 }
 
 .note-action-item {
@@ -6660,7 +6708,10 @@ a.nav-user-btn.is-active {
 }
 
 .add-note-link:hover {
+  background: none;
+  box-shadow: none;
   opacity: 0.8;
+  transform: none;
 }
 
 /* ── Dose-change history inside notes modal ──────────────────────────────── */
