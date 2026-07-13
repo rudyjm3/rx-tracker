@@ -1266,17 +1266,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <input type="hidden" name="report_start" data-report-start-mirror value="<?= e($reportStart) ?>">
       <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
 
-      <label style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1.25rem;font-size:0.92rem;">
-        <input type="checkbox" name="include_mood" id="include-mood-toggle" checked>
-        Include Mood &amp; Wellbeing tracking
-      </label>
+      <div class="notification-toggle-row" style="margin-bottom:1.25rem;">
+        <label class="toggle-control" for="include-mood-toggle">
+          <input type="checkbox" name="include_mood" id="include-mood-toggle">
+          <span class="toggle-slider" aria-hidden="true"></span>
+          <span class="toggle-label">Include Mood &amp; Wellbeing tracking</span>
+        </label>
+      </div>
 
       <?php if ($trackedMedications !== []): ?>
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
         <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Pain-tracked medications</legend>
-        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
-          Each chart uses whatever time window is available based on days on medication.
-        </p>
         <?php foreach ($trackedMedications as $m): ?>
           <?php
             $mId   = (int) $m['id'];
@@ -1291,8 +1291,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
                 Pain tracking started <?= e(date('F j', strtotime($info['start_date']))) ?> — check back after a few more days of logged doses.
               </p>
-            <?php else: ?>
-              <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $defR ?>-day chart window</span>
             <?php endif; ?>
             <input type="hidden" name="chart_days[<?= $mId ?>]" value="<?= $defR ?>">
           </div>
@@ -1308,9 +1306,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php if ($moodTrackedMedicationsExport !== []): ?>
         <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
           <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood-tracked medications</legend>
-          <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
-            Each chart uses whatever time window is available based on days on medication.
-          </p>
           <?php foreach ($moodTrackedMedicationsExport as $m): ?>
             <?php
               $mmId   = (int) $m['id'];
@@ -1325,8 +1320,6 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
                 <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
                   Mood tracking started <?= e(date('F j', strtotime($minfo['start_date']))) ?> — check back after a few more days of logged doses.
                 </p>
-              <?php else: ?>
-                <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $mDefR ?>-day chart window</span>
               <?php endif; ?>
               <input type="hidden" name="mood_chart_days[<?= $mmId ?>]" value="<?= $mDefR ?>">
             </div>
