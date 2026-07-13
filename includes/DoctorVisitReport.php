@@ -16,34 +16,29 @@ final class DoctorVisitReport
     ) {}
 
     /**
-     * Build and return the Pain Level Tracking (Doctor Visit Report) PDF binary string.
+     * Build and return the combined Doctor Visit Report PDF binary string.
      *
-     * @param array<int,int> $perMedChartDays medication_id => pain chart window in days (0 = no chart)
+     * @param array<int,int> $perMedChartDays     medication_id => pain chart window in days (0 = no chart)
+     * @param array<int,int> $perMedMoodChartDays medication_id => mood chart window in days (0 = no chart)
      */
-    public function generatePainReport(string $startDate, string $endDate, array $perMedChartDays): string
-    {
+    public function generateReport(
+        string $startDate,
+        string $endDate,
+        array $perMedChartDays,
+        bool $includeMood,
+        array $perMedMoodChartDays = []
+    ): string {
         $html = $this->buildHtml(
             'Doctor Visit Report',
             $startDate,
             $endDate,
-            fn(array $meds, string $s, string $e): string => $this->sectionPainCharts($meds, $s, $e, $perMedChartDays)
-        );
-
-        return $this->renderPdfFromHtml($html);
-    }
-
-    /**
-     * Build and return the Mood & Wellbeing Tracking PDF binary string.
-     *
-     * @param array<int,int> $perMedMoodChartDays medication_id => mood chart window in days (0 = no chart)
-     */
-    public function generateMoodReport(string $startDate, string $endDate, array $perMedMoodChartDays): string
-    {
-        $html = $this->buildHtml(
-            'Mood & Wellbeing Report',
-            $startDate,
-            $endDate,
-            fn(array $meds, string $s, string $e): string => $this->sectionMoodCharts($meds, $s, $e, $perMedMoodChartDays)
+            function (array $meds, string $s, string $e) use ($perMedChartDays, $includeMood, $perMedMoodChartDays): string {
+                $out = $this->sectionPainCharts($meds, $s, $e, $perMedChartDays);
+                if ($includeMood) {
+                    $out .= $this->sectionMoodCharts($meds, $s, $e, $perMedMoodChartDays);
+                }
+                return $out;
+            }
         );
 
         return $this->renderPdfFromHtml($html);
@@ -84,7 +79,7 @@ final class DoctorVisitReport
         $html .= '<body>';
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
-        $html .= $this->sectionAdherence($adherence);
+        $html .= $this->sectionAdherence($adherence, $medications);
         $html .= $this->sectionMedications($medications);
         $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses);
@@ -228,7 +223,7 @@ HTML;
     // Section 2: Adherence Summary
     // -------------------------------------------------------------------------
 
-    private function sectionAdherence(array $adherence): string
+    private function sectionAdherence(array $adherence, array $medications): string
     {
         $pct     = (int) ($adherence['overall_pct'] ?? 0);
         $taken   = (int) ($adherence['total_taken'] ?? 0);
@@ -237,14 +232,21 @@ HTML;
         $total   = (int) ($adherence['total_scheduled'] ?? 0);
         $perMed  = (array) ($adherence['per_medication'] ?? []);
 
+        $medsById = [];
+        foreach ($medications as $m) {
+            $medsById[(int) $m['id']] = $m;
+        }
+
         $rows = '';
         foreach ($perMed as $med) {
             $mp      = (int) $med['pct'];
             $mColor  = $this->adherenceColor($mp);
+            $trackingMed = $medsById[(int) $med['id']] ?? $med;
             $rows .= sprintf(
-                '<tr><td>%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
+                '<tr><td>%s%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
+                $this->medTrackingBadgeHtml($trackingMed),
                 $mColor,
                 $mp,
                 (int) $med['missed'],
@@ -300,9 +302,10 @@ HTML;
             }
             $dose = $this->h($this->formattedDose($med));
             $rows .= sprintf(
-                '<tr><td>%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+                '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
+                $this->medTrackingBadgeHtml($med),
                 $dose,
                 $startDate,
                 $this->h($schedule),
@@ -839,6 +842,23 @@ HTML;
         $label = $labels[$type] ?? 'Rx';
         $style = $styles[$type] ?? $styles['prescription'];
         return '<span style="' . $style . 'font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;">' . $label . '</span>';
+    }
+
+    /** Small outlined badge(s) showing whether a medication tracks pain and/or mood. */
+    private function medTrackingBadgeHtml(array $med): string
+    {
+        $tracksPain = $this->repository->medicationTracksPain($med);
+        $tracksMood = $this->repository->medicationTracksMood($med);
+
+        $style = 'display:inline-block;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;border:1pt solid;background:#fff;';
+        $html  = '';
+        if ($tracksPain) {
+            $html .= '<span style="' . $style . 'color:#B45309;border-color:#F5A524;">Pain</span>';
+        }
+        if ($tracksMood) {
+            $html .= '<span style="' . $style . 'color:#5B21B6;border-color:#8B5CF6;">Mood</span>';
+        }
+        return $html;
     }
 
     /** HTML-escape a value for safe embedding in HTML output */
