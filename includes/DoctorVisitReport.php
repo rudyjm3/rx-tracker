@@ -32,6 +32,7 @@ final class DoctorVisitReport
             'Doctor Visit Report',
             $startDate,
             $endDate,
+            $includeMood,
             function (array $meds, string $s, string $e) use ($perMedChartDays, $includeMood, $perMedMoodChartDays): string {
                 $out = $this->sectionPainCharts($meds, $s, $e, $perMedChartDays);
                 if ($includeMood) {
@@ -62,7 +63,7 @@ final class DoctorVisitReport
     /**
      * @param callable(array,string,string):string $chartSection Renders the report-specific chart section.
      */
-    private function buildHtml(string $title, string $startDate, string $endDate, callable $chartSection): string
+    private function buildHtml(string $title, string $startDate, string $endDate, bool $includeMood, callable $chartSection): string
     {
         $periodLabel = date('M j, Y', (int) strtotime($startDate))
             . ' – '
@@ -79,8 +80,8 @@ final class DoctorVisitReport
         $html .= '<body>';
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
-        $html .= $this->sectionAdherence($adherence, $medications);
-        $html .= $this->sectionMedications($medications);
+        $html .= $this->sectionAdherence($adherence, $medications, $includeMood);
+        $html .= $this->sectionMedications($medications, $includeMood);
         $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses);
         $html .= $chartSection($medications, $startDate, $endDate);
@@ -167,14 +168,16 @@ tbody tr:nth-child(even) { background: #f8fbff; }
 .chart-medname   { font-size: 10pt; font-weight: bold; color: #102B57; margin-bottom: 4pt; }
 .chart-summary   { font-size: 8.5pt; color: #60708A; margin-top: 4pt; margin-bottom: 4pt; }
 .chart-notes     { font-size: 8.5pt; color: #172033; margin-top: 4pt; }
-.chart-note-item { margin-bottom: 2pt; }
+.chart-note-item { margin-bottom: 2pt; margin-left: 6pt; }
+.note-date-heading { font-size: 8.5pt; font-weight: bold; color: #102B57; margin: 6pt 0 2pt; }
 .no-chart-note   { font-size: 8.5pt; color: #60708A; font-style: italic; margin-bottom: 10pt; }
 
 /* Empty states */
 .empty-state { color: #60708A; font-style: italic; font-size: 9pt; padding: 6pt 0; }
 
-/* Standalone log / edited annotations in patient notes */
+/* Standalone / dose-linked / edited annotations in patient notes */
 .note-standalone { color: #2563eb; font-size: 8pt; }
+.note-dose       { color: #0e7a68; font-size: 8pt; }
 .note-edited     { color: #60708A; font-size: 7.5pt; font-style: italic; }
 
 /* Footer */
@@ -223,7 +226,7 @@ HTML;
     // Section 2: Adherence Summary
     // -------------------------------------------------------------------------
 
-    private function sectionAdherence(array $adherence, array $medications): string
+    private function sectionAdherence(array $adherence, array $medications, bool $includeMood): string
     {
         $pct     = (int) ($adherence['overall_pct'] ?? 0);
         $taken   = (int) ($adherence['total_taken'] ?? 0);
@@ -246,7 +249,7 @@ HTML;
                 '<tr><td>%s%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($trackingMed),
+                $this->medTrackingBadgeHtml($trackingMed, $includeMood),
                 $mColor,
                 $mp,
                 (int) $med['missed'],
@@ -288,7 +291,7 @@ HTML;
     // Section 3: Current Medications
     // -------------------------------------------------------------------------
 
-    private function sectionMedications(array $medications): string
+    private function sectionMedications(array $medications, bool $includeMood): string
     {
         $rows = '';
         foreach ($medications as $med) {
@@ -305,7 +308,7 @@ HTML;
                 '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($med),
+                $this->medTrackingBadgeHtml($med, $includeMood),
                 $dose,
                 $startDate,
                 $this->h($schedule),
@@ -473,31 +476,7 @@ HTML;
                     $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
                         . '" width="500" height="200" style="display:block;">';
 
-                    // Patient notes from dose_logs and standalone logs in this range
-                    $noteRows = array_filter(
-                        $rawData,
-                        static fn(array $r): bool => !empty($r['note'])
-                    );
-                    if ($noteRows !== []) {
-                        $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
-                        foreach ($noteRows as $r) {
-                            $date      = date('M j', (int) strtotime((string) $r['date']));
-                            $sourceTag = ($r['source'] ?? 'dose') === 'standalone'
-                                ? ' <span class="note-standalone">(standalone)</span>'
-                                : '';
-                            $editedTag = !empty($r['edited_at'])
-                                ? ' <span class="note-edited">[edited ' . date('M j, Y', (int) strtotime((string) $r['edited_at'])) . ']</span>'
-                                : '';
-                            $html .= sprintf(
-                                '<div class="chart-note-item">%s%s: %s%s</div>',
-                                $this->h($date),
-                                $sourceTag,
-                                $this->h((string) $r['note']),
-                                $editedTag
-                            );
-                        }
-                        $html .= '</div>';
-                    }
+                    $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
                 }
             }
 
@@ -569,36 +548,62 @@ HTML;
                     $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
                         . '" width="500" height="200" style="display:block;">';
 
-                    // Patient notes from dose_logs and standalone logs in this range
-                    $noteRows = array_filter(
-                        $rawData,
-                        static fn(array $r): bool => !empty($r['note'])
-                    );
-                    if ($noteRows !== []) {
-                        $html .= '<div class="chart-notes"><strong>Patient notes:</strong>';
-                        foreach ($noteRows as $r) {
-                            $date      = date('M j', (int) strtotime((string) $r['date']));
-                            $sourceTag = ($r['source'] ?? 'dose') === 'standalone'
-                                ? ' <span class="note-standalone">(standalone)</span>'
-                                : '';
-                            $editedTag = !empty($r['edited_at'])
-                                ? ' <span class="note-edited">[edited ' . date('M j, Y', (int) strtotime((string) $r['edited_at'])) . ']</span>'
-                                : '';
-                            $html .= sprintf(
-                                '<div class="chart-note-item">%s%s: %s%s</div>',
-                                $this->h($date),
-                                $sourceTag,
-                                $this->h((string) $r['note']),
-                                $editedTag
-                            );
-                        }
-                        $html .= '</div>';
-                    }
+                    $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
                 }
             }
 
             $html .= '</div>'; // .chart-section
         }
+
+        return $html;
+    }
+
+    /**
+     * Render patient notes grouped under a date sub-heading per day, most recent
+     * day last (matches the chronological chart data). Each note shows its time,
+     * whether it was logged with a scheduled dose (and which medication) or as a
+     * standalone entry, and any edited-at annotation.
+     *
+     * @param array<int,array<string,mixed>> $rawData Chart rows for one medication (as returned
+     *                                                 by painLevelTrendForRange()/moodLevelTrendForRange())
+     */
+    private function renderPatientNotes(array $rawData, string $medName): string
+    {
+        $noteRows = array_filter(
+            $rawData,
+            static fn(array $r): bool => !empty($r['note'])
+        );
+        if ($noteRows === []) {
+            return '';
+        }
+
+        $byDate = [];
+        foreach ($noteRows as $r) {
+            $byDate[(string) $r['date']][] = $r;
+        }
+
+        $html = '<div class="chart-notes"><strong>Patient notes:</strong>';
+        foreach ($byDate as $date => $rows) {
+            $html .= '<div class="note-date-heading">' . $this->h(date('M j, Y', (int) strtotime($date))) . '</div>';
+            foreach ($rows as $r) {
+                $time      = !empty($r['time']) ? $this->to12h((string) $r['time']) : '';
+                $isDose    = ($r['source'] ?? 'dose') === 'dose';
+                $sourceTag = $isDose
+                    ? ' <span class="note-dose">(dose &mdash; ' . $this->h($medName) . ')</span>'
+                    : ' <span class="note-standalone">(standalone)</span>';
+                $editedTag = !empty($r['edited_at'])
+                    ? ' <span class="note-edited">[edited ' . $this->h(date('M j, Y', (int) strtotime((string) $r['edited_at']))) . ']</span>'
+                    : '';
+                $html .= sprintf(
+                    '<div class="chart-note-item">%s%s: %s%s</div>',
+                    $this->h($time),
+                    $sourceTag,
+                    $this->h((string) $r['note']),
+                    $editedTag
+                );
+            }
+        }
+        $html .= '</div>';
 
         return $html;
     }
@@ -844,11 +849,15 @@ HTML;
         return '<span style="' . $style . 'font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;">' . $label . '</span>';
     }
 
-    /** Small outlined badge(s) showing whether a medication tracks pain and/or mood. */
-    private function medTrackingBadgeHtml(array $med): string
+    /**
+     * Small outlined badge(s) showing whether a medication tracks pain and/or mood.
+     * The Mood badge is suppressed when the report excludes the mood section, so the
+     * tables don't advertise mood data that isn't included in this PDF.
+     */
+    private function medTrackingBadgeHtml(array $med, bool $includeMood): string
     {
         $tracksPain = $this->repository->medicationTracksPain($med);
-        $tracksMood = $this->repository->medicationTracksMood($med);
+        $tracksMood = $includeMood && $this->repository->medicationTracksMood($med);
 
         $style = 'display:inline-block;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;border:1pt solid;background:#fff;';
         $html  = '';

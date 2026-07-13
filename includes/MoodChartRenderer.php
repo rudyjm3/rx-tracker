@@ -112,7 +112,7 @@ final class MoodChartRenderer
         // Y-axis title, rotated to run up the left edge (matches the in-app chart)
         $axisTitleCY = round($y0 + $chartH / 2, 2);
         $svg .= sprintf(
-            '<text x="11" y="%s" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" transform="rotate(-90 11 %s)">Mood Level</text>',
+            '<text x="11" y="%s" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" transform="rotate(-90 11 %s)">Mood lvl score</text>',
             $axisTitleCY, $axisTitleCY
         );
 
