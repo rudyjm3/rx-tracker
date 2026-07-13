@@ -659,51 +659,14 @@ try {
                     $chartDays[(int) $medId] = (int) $days;
                 }
             }
-            $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
-            $chart  = new PainChartRenderer();
-            $moodChart = new MoodChartRenderer();
-            $currentUser = $auth->currentUser();
-            $patientName = $activeProfile !== null
-                ? (string) ($activeProfile['display_name'] ?? $currentUser['display_name'] ?? 'Patient')
-                : (string) ($currentUser['display_name'] ?? 'Patient');
-            $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName);
-            $pdf    = $report->generatePainReport($reportStart, $reportEnd, $chartDays);
-
-            $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));
-            if ($dlToken !== '') {
-                setcookie('rx_dl_' . $dlToken, '1', time() + 60, '/');
-            }
-            header('Content-Type: application/pdf');
-            $fileStart = date('n-j-Y', (int) strtotime($reportStart));
-            $fileEnd   = date('n-j-Y', (int) strtotime($reportEnd));
-            header('Content-Disposition: attachment; filename="doctor-visit-report-' . $fileStart . '-thru-' . $fileEnd . '.pdf"');
-            header('Cache-Control: private, no-cache');
-            header('Content-Length: ' . strlen($pdf));
-            echo $pdf;
-            exit;
-        } catch (Throwable $e) {
-            $error = 'Could not generate report: ' . $e->getMessage();
-            // fall through so pages.php renders the export page with the error
-        }
-    }
-
-    if ($action === 'generate_mood_report') {
-        ini_set('memory_limit', '256M');
-        set_time_limit(60);
-        try {
-            $reportStart = post_string('report_start');
-            $reportEnd   = post_string('report_end');
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportStart) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $reportEnd)) {
-                throw new RuntimeException('Invalid date range.');
-            }
-            if ($reportStart > $reportEnd) {
-                throw new RuntimeException('Start date must be before end date.');
-            }
-            $moodChartDaysRaw = $_POST['mood_chart_days'] ?? [];
+            $includeMood = isset($_POST['include_mood']);
             $moodChartDays = [];
-            if (is_array($moodChartDaysRaw)) {
-                foreach ($moodChartDaysRaw as $medId => $days) {
-                    $moodChartDays[(int) $medId] = (int) $days;
+            if ($includeMood) {
+                $moodChartDaysRaw = $_POST['mood_chart_days'] ?? [];
+                if (is_array($moodChartDaysRaw)) {
+                    foreach ($moodChartDaysRaw as $medId => $days) {
+                        $moodChartDays[(int) $medId] = (int) $days;
+                    }
                 }
             }
             $seRepo = new SideEffectRepository(db(), $auth->currentUserId(), $auth->activeProfileId());
@@ -714,7 +677,7 @@ try {
                 ? (string) ($activeProfile['display_name'] ?? $currentUser['display_name'] ?? 'Patient')
                 : (string) ($currentUser['display_name'] ?? 'Patient');
             $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName);
-            $pdf    = $report->generateMoodReport($reportStart, $reportEnd, $moodChartDays);
+            $pdf    = $report->generateReport($reportStart, $reportEnd, $chartDays, $includeMood, $moodChartDays);
 
             $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));
             if ($dlToken !== '') {
@@ -723,7 +686,7 @@ try {
             header('Content-Type: application/pdf');
             $fileStart = date('n-j-Y', (int) strtotime($reportStart));
             $fileEnd   = date('n-j-Y', (int) strtotime($reportEnd));
-            header('Content-Disposition: attachment; filename="mood-wellbeing-report-' . $fileStart . '-thru-' . $fileEnd . '.pdf"');
+            header('Content-Disposition: attachment; filename="doctor-visit-report-' . $fileStart . '-thru-' . $fileEnd . '.pdf"');
             header('Cache-Control: private, no-cache');
             header('Content-Length: ' . strlen($pdf));
             echo $pdf;

@@ -6070,6 +6070,18 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
   });
 })();
 
+// ── Export PDF: toggle mood fieldset visibility ───────────────────────────────
+
+(function () {
+  const toggle = document.getElementById('include-mood-toggle');
+  const moodFieldset = document.querySelector('[data-mood-fieldset]');
+  if (!toggle || !moodFieldset) return;
+
+  const sync = () => { moodFieldset.style.display = toggle.checked ? '' : 'none'; };
+  toggle.addEventListener('change', sync);
+  sync();
+})();
+
 // ── Export PDF: sync shared reporting-period inputs into each report form ────
 
 (function () {

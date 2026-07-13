@@ -1240,7 +1240,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <h2>Reporting Period</h2>
     </div>
     <p style="color:var(--rx-text-muted);margin-bottom:1rem;font-size:0.9rem;">
-      Shared by both reports below.
+      Used for the report below.
     </p>
     <div style="display:flex;gap:1rem;flex-wrap:wrap;">
       <label style="flex:1;min-width:140px;">From
@@ -1254,24 +1254,29 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
 
   <section class="panel export-section" style="max-width:700px;margin:1.25rem auto;">
     <div class="panel-heading">
-      <h2>Pain Level Tracking (Doctor Visit Report)</h2>
+      <h2>Doctor Visit Report</h2>
     </div>
     <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
-      Generate a branded PDF summary of your medication history, adherence, pain trends, and side effects — ready to share with your doctor.
+      Generate a branded PDF summary of your medication history, adherence, pain trends, side effects, and (optionally) mood trends — ready to share with your doctor.
     </p>
-    <form method="post" action="index.php" class="stacked-form" data-export-form="pain">
+    <form method="post" action="index.php" class="stacked-form" data-export-form="doctor-visit">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="generate_doctor_visit_report">
       <input type="hidden" name="download_token" data-download-token value="">
       <input type="hidden" name="report_start" data-report-start-mirror value="<?= e($reportStart) ?>">
       <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
 
+      <div class="notification-toggle-row" style="margin-bottom:1.25rem;">
+        <label class="toggle-control" for="include-mood-toggle">
+          <input type="checkbox" name="include_mood" id="include-mood-toggle">
+          <span class="toggle-slider" aria-hidden="true"></span>
+          <span class="toggle-label">Include Mood &amp; Wellbeing tracking</span>
+        </label>
+      </div>
+
       <?php if ($trackedMedications !== []): ?>
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
-        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Pain chart range per medication</legend>
-        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
-          Charts are based on days on medication. The default range is pre-selected; you can choose a different window if you prefer.
-        </p>
+        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Pain-tracked medications</legend>
         <?php foreach ($trackedMedications as $m): ?>
           <?php
             $mId   = (int) $m['id'];
@@ -1286,24 +1291,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
                 Pain tracking started <?= e(date('F j', strtotime($info['start_date']))) ?> — check back after a few more days of logged doses.
               </p>
-              <input type="hidden" name="chart_days[<?= $mId ?>]" value="0">
-            <?php else: ?>
-              <div style="margin-top:0.4rem;">
-                <label style="font-size:0.88rem;">Chart window
-                  <select name="chart_days[<?= $mId ?>]" style="margin-left:0.5rem;">
-                    <?php if (in_array(7, $info['extra_opts'], true) || $defR === 7): ?>
-                      <option value="7" <?= $defR === 7 ? 'selected' : '' ?>>7 days</option>
-                    <?php endif; ?>
-                    <?php if (in_array(30, $info['extra_opts'], true) || $defR === 30): ?>
-                      <option value="30" <?= $defR === 30 ? 'selected' : '' ?>>30 days</option>
-                    <?php endif; ?>
-                    <?php if ($defR === 90 || $daysOn >= 90): ?>
-                      <option value="90" <?= $defR === 90 ? 'selected' : '' ?>>90 days</option>
-                    <?php endif; ?>
-                  </select>
-                </label>
-              </div>
             <?php endif; ?>
+            <input type="hidden" name="chart_days[<?= $mId ?>]" value="<?= $defR ?>">
           </div>
         <?php endforeach; ?>
       </fieldset>
@@ -1313,79 +1302,35 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </p>
       <?php endif; ?>
 
-      <button type="submit" style="width:100%;" data-export-btn>
-        <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
-      </button>
-      <div data-export-notice style="display:none;align-items:center;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
-        <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-        Your PDF is downloading — check your Downloads folder.
-        <a data-view-pdf-link href="#" hidden style="margin-left:auto;font-weight:600;color:#166534;text-decoration:underline;white-space:nowrap;">
-          <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open PDF
-        </a>
-      </div>
-    </form>
-  </section>
-
-  <section class="panel export-section" style="max-width:700px;margin:1.25rem auto;">
-    <div class="panel-heading">
-      <h2>Mood and Wellbeing Tracking</h2>
-    </div>
-    <p style="color:var(--rx-text-muted);margin-bottom:1.25rem;font-size:0.9rem;">
-      Generate a branded PDF summary of your medication history, adherence, mood trends, and side effects — ready to share with your doctor.
-    </p>
-    <form method="post" action="index.php" class="stacked-form" data-export-form="mood">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="generate_mood_report">
-      <input type="hidden" name="download_token" data-download-token value="">
-      <input type="hidden" name="report_start" data-report-start-mirror value="<?= e($reportStart) ?>">
-      <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
-
-      <?php if ($moodTrackedMedicationsExport !== []): ?>
-      <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
-        <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood chart range per medication</legend>
-        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-top:0.5rem;margin-bottom:0.75rem;">
-          Charts are based on days on medication. The default range is pre-selected; you can choose a different window if you prefer.
+      <div data-mood-fieldset>
+        <?php if ($moodTrackedMedicationsExport !== []): ?>
+        <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
+          <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Mood-tracked medications</legend>
+          <?php foreach ($moodTrackedMedicationsExport as $m): ?>
+            <?php
+              $mmId   = (int) $m['id'];
+              $minfo  = $moodChartInfo[$mmId];
+              $mDaysOn = $minfo['days_on'];
+              $mDefR   = $minfo['default_range'];
+            ?>
+            <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--rx-bg);border-radius:8px;">
+              <strong><?= e((string) $m['name']) ?></strong>
+              <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $mDaysOn ?> days on medication</span>
+              <?php if ($mDefR === 0): ?>
+                <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
+                  Mood tracking started <?= e(date('F j', strtotime($minfo['start_date']))) ?> — check back after a few more days of logged doses.
+                </p>
+              <?php endif; ?>
+              <input type="hidden" name="mood_chart_days[<?= $mmId ?>]" value="<?= $mDefR ?>">
+            </div>
+          <?php endforeach; ?>
+        </fieldset>
+        <?php else: ?>
+        <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-bottom:1.25rem;font-style:italic;">
+          No medications are currently tracking mood levels.
         </p>
-        <?php foreach ($moodTrackedMedicationsExport as $m): ?>
-          <?php
-            $mmId   = (int) $m['id'];
-            $minfo  = $moodChartInfo[$mmId];
-            $mDaysOn = $minfo['days_on'];
-            $mDefR   = $minfo['default_range'];
-          ?>
-          <div style="margin-bottom:0.75rem;padding:0.6rem 0.75rem;background:var(--rx-bg);border-radius:8px;">
-            <strong><?= e((string) $m['name']) ?></strong>
-            <span style="font-size:0.8rem;color:var(--rx-text-muted);margin-left:0.5rem;"><?= $mDaysOn ?> days on medication</span>
-            <?php if ($mDefR === 0): ?>
-              <p style="font-size:0.82rem;color:var(--rx-text-muted);margin-top:4px;font-style:italic;">
-                Mood tracking started <?= e(date('F j', strtotime($minfo['start_date']))) ?> — check back after a few more days of logged doses.
-              </p>
-              <input type="hidden" name="mood_chart_days[<?= $mmId ?>]" value="0">
-            <?php else: ?>
-              <div style="margin-top:0.4rem;">
-                <label style="font-size:0.88rem;">Chart window
-                  <select name="mood_chart_days[<?= $mmId ?>]" style="margin-left:0.5rem;">
-                    <?php if (in_array(7, $minfo['extra_opts'], true) || $mDefR === 7): ?>
-                      <option value="7" <?= $mDefR === 7 ? 'selected' : '' ?>>7 days</option>
-                    <?php endif; ?>
-                    <?php if (in_array(30, $minfo['extra_opts'], true) || $mDefR === 30): ?>
-                      <option value="30" <?= $mDefR === 30 ? 'selected' : '' ?>>30 days</option>
-                    <?php endif; ?>
-                    <?php if ($mDefR === 90 || $mDaysOn >= 90): ?>
-                      <option value="90" <?= $mDefR === 90 ? 'selected' : '' ?>>90 days</option>
-                    <?php endif; ?>
-                  </select>
-                </label>
-              </div>
-            <?php endif; ?>
-          </div>
-        <?php endforeach; ?>
-      </fieldset>
-      <?php else: ?>
-      <p style="font-size:0.85rem;color:var(--rx-text-muted);margin-bottom:1.25rem;font-style:italic;">
-        No medications are currently tracking mood levels.
-      </p>
-      <?php endif; ?>
+        <?php endif; ?>
+      </div>
 
       <button type="submit" style="width:100%;" data-export-btn>
         <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF

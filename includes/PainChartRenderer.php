@@ -7,7 +7,7 @@ final class PainChartRenderer
     // Canvas dimensions matching the in-app chart (app.js renderPainChart)
     private const WIDTH         = 500;
     private const HEIGHT        = 200;
-    private const PAD_LEFT      = 32;
+    private const PAD_LEFT      = 44;
     private const PAD_RIGHT     = 12;
     private const PAD_TOP       = 12;
     private const PAD_BOTTOM    = 36;
@@ -102,6 +102,13 @@ final class PainChartRenderer
                 $x0 - 4, $y, $level
             );
         }
+
+        // Y-axis title, rotated to run up the left edge (matches the mood chart)
+        $axisTitleCY = round($y0 + $chartH / 2, 2);
+        $svg .= sprintf(
+            '<text x="11" y="%s" font-size="9" fill="#94a3b8" text-anchor="middle" font-family="DejaVu Sans, sans-serif" transform="rotate(-90 11 %s)">Pain lvl score</text>',
+            $axisTitleCY, $axisTitleCY
+        );
 
         // Axis lines
         $svg .= sprintf(
