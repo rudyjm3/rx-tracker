@@ -1183,9 +1183,11 @@ final class MedicationRepository
             }
 
             // Skip interval check when retroactively updating a missed record; only
-            // enforce it for fresh insertions.
+            // enforce it for fresh insertions. Validate against the actual taken
+            // time (not $now) so a backdated late dose is checked against when it
+            // was really taken, not the moment it was logged.
             if ($row === false) {
-                $this->assertIntervalAllowed($medicationId, $now);
+                $this->assertIntervalAllowed($medicationId, $takenAt);
             }
 
             $deducted = $this->deductInventory($medicationId);
