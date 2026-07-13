@@ -77,6 +77,7 @@ const feedbackForm = document.querySelector('[data-feedback-form]');
 const feedbackMedicationIdEl = document.querySelector('[data-feedback-medication-id]');
 const feedbackScheduledDateEl = document.querySelector('[data-feedback-scheduled-date]');
 const feedbackScheduledTimeEl = document.querySelector('[data-feedback-scheduled-time]');
+const feedbackActualTimeEl = document.querySelector('[data-feedback-actual-time]');
 const feedbackPainLevelEl = document.querySelector('[data-feedback-pain-level]');
 const feedbackMoodLevelEl = document.querySelector('[data-feedback-mood-level]');
 const feedbackNoteEl = document.querySelector('[data-feedback-note]');
@@ -210,6 +211,8 @@ const missedDoseNoteHidden   = document.querySelector('[data-missed-dose-note-hi
 const missedDoseNoteText     = document.querySelector('[data-missed-dose-note-text]');
 let   missedDosePainMode     = false;
 const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
+const slotLateTime      = document.querySelector('[data-slot-late-time]');
+const slotLateTimeInput = document.querySelector('[data-slot-late-time-input]');
 const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
 
 let slotPickerState = { medicationId: null, selectedSlot: null, graceMinutes: 30, trackFeedback: false, feedbackType: 'none', sourceForm: null, today: '' };
@@ -232,6 +235,8 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
   if (slotPickerTitle) slotPickerTitle.textContent = `Log dose for ${medName}`;
   if (slotPickerConfirm) slotPickerConfirm.disabled = true;
   if (slotLateQuestion) slotLateQuestion.hidden = true;
+  if (slotLateTime) slotLateTime.hidden = true;
+  if (slotLateTimeInput) slotLateTimeInput.value = '';
 
   if (slotPickerList) {
     slotPickerList.innerHTML = '';
@@ -255,10 +260,11 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
         slotPickerState.selectedSlot = slot.time;
         if (slotPickerConfirm) slotPickerConfirm.disabled = false;
         if (slotLateQuestion) {
-          slotLateQuestion.hidden = !isOverdue || trackFeedback;
+          slotLateQuestion.hidden = !isOverdue;
           const onTimeRadio = slotLateQuestion.querySelector('input[value="on_time"]');
           if (onTimeRadio) onTimeRadio.checked = true;
         }
+        if (slotLateTime) slotLateTime.hidden = true;
       });
 
       let badgeClass, badgeText;
@@ -310,6 +316,17 @@ slotPickerModal?.addEventListener('click', (e) => {
   if (e.target === slotPickerModal) closeSlotPickerModal();
 });
 
+slotLateQuestion?.addEventListener('change', (e) => {
+  if (e.target.name !== 'slot_timing') return;
+  const isLate = e.target.value === 'late';
+  if (!slotLateTime) return;
+  slotLateTime.hidden = !isLate;
+  if (isLate && slotLateTimeInput && !slotLateTimeInput.value) {
+    const now = new Date();
+    slotLateTimeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+});
+
 slotPickerConfirm?.addEventListener('click', async () => {
   const { medicationId, selectedSlot, trackFeedback, feedbackType, sourceForm, today, graceMinutes } = slotPickerState;
 
@@ -351,16 +368,24 @@ slotPickerConfirm?.addEventListener('click', async () => {
     return;
   }
 
+  const isOverdueSlot = slotLateQuestion && !slotLateQuestion.hidden;
+  const takenLate     = isOverdueSlot
+    && slotLateQuestion.querySelector('input[name="slot_timing"]:checked')?.value === 'late';
+
+  if (takenLate && !slotLateTimeInput?.value) {
+    alert('Please enter the time you actually took this dose.');
+    slotLateTimeInput?.focus();
+    return;
+  }
+  const lateTime = takenLate ? slotLateTimeInput.value : '';
+
   if (trackFeedback) {
     closeSlotPickerModal();
-    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', feedbackType ?? 'pain', false);
+    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', feedbackType ?? 'pain', false, lateTime);
     return;
   }
 
-  const isOverdueSlot = slotLateQuestion && !slotLateQuestion.hidden;
-  const takenOnTime   = isOverdueSlot
-    ? (slotLateQuestion.querySelector('input[name="slot_timing"]:checked')?.value === 'on_time')
-    : true;
+  const takenOnTime = isOverdueSlot ? !takenLate : true;
 
   if (slotPickerConfirm) { slotPickerConfirm.disabled = true; slotPickerConfirm.textContent = 'Logging…'; }
 
@@ -368,6 +393,7 @@ slotPickerConfirm?.addEventListener('click', async () => {
     const fd = new FormData(sourceForm);
     fd.set('scheduled_time', selectedSlot);
     fd.set('taken_on_time', takenOnTime ? '1' : '0');
+    if (takenLate) fd.set('actual_taken_time', lateTime);
     const res  = await fetch('index.php', { method: 'POST', body: fd });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
@@ -689,13 +715,14 @@ let feedbackAlarmContext = false;
 // the callback to call after the user submits (or skips) the feedback modal.
 let manageEachFeedbackMeta = null;
 
-const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, feedbackType = 'pain', fromAlarm = false) => {
+const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, feedbackType = 'pain', fromAlarm = false, actualTakenTime = '') => {
   if (!doseFeedbackModal) return;
   feedbackAlarmContext = fromAlarm;
   const { pain: showPain, mood: showMood } = feedbackSectionsFor(feedbackType);
   if (feedbackMedicationIdEl) feedbackMedicationIdEl.value = medicationId;
   if (feedbackScheduledDateEl) feedbackScheduledDateEl.value = scheduledDate;
   if (feedbackScheduledTimeEl) feedbackScheduledTimeEl.value = scheduledTime;
+  if (feedbackActualTimeEl) feedbackActualTimeEl.value = actualTakenTime;
   if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
   if (feedbackMoodLevelEl) feedbackMoodLevelEl.value = '';
   if (feedbackNoteEl) feedbackNoteEl.value = '';
@@ -1195,8 +1222,10 @@ const openPainGraphModal = (medicationId, medicationName, medicationDose = '') =
   painGraphDays = 0;
   painGraphDate = null;
   painGraphPrevDays = 7;
-  const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
-  if (painGraphTitle) painGraphTitle.textContent = titleBase + ' — Pain Trend';
+  if (painGraphTitle) {
+    const doseHtml = medicationDose ? ` <span class="dose-inline">${escHtml(medicationDose)}</span>` : '';
+    painGraphTitle.innerHTML = `${escHtml(medicationName)}${doseHtml} — Pain Trend`;
+  }
   painGraphModal.querySelectorAll('.range-tab').forEach((t) => {
     t.classList.toggle('is-active', t.dataset.range === '0');
   });
@@ -1659,8 +1688,10 @@ const openMoodGraphModal = (medicationId, medicationName, medicationDose = '') =
   moodGraphDays = 0;
   moodGraphDate = null;
   moodGraphPrevDays = 7;
-  const titleBase = medicationDose ? `${medicationName} ${medicationDose}` : medicationName;
-  if (moodGraphTitle) moodGraphTitle.textContent = titleBase + ' — Mood Trend';
+  if (moodGraphTitle) {
+    const doseHtml = medicationDose ? ` <span class="dose-inline">${escHtml(medicationDose)}</span>` : '';
+    moodGraphTitle.innerHTML = `${escHtml(medicationName)}${doseHtml} — Mood Trend`;
+  }
   moodGraphModal.querySelectorAll('.range-tab').forEach((t) => {
     t.classList.toggle('is-active', t.dataset.range === '0');
   });
@@ -1930,7 +1961,7 @@ if (painPageBody) {
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
     const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
-    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose log entry';
     const medHtml = source === 'dose' && painPageMedName?.textContent
       ? `<strong>${escSvg(painPageMedName.textContent)}</strong>${painPageMedDose ? ` <span class="dose-inline">${escSvg(painPageMedDose)}</span>` : ''}`
       : '';
@@ -2311,7 +2342,7 @@ if (moodPageBody) {
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
     const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
-    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose';
+    const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose log entry';
     const medHtml = source === 'dose' && moodPageMedName?.textContent
       ? `<strong>${escSvg(moodPageMedName.textContent)}</strong>${moodPageMedDose ? ` <span class="dose-inline">${escSvg(moodPageMedDose)}</span>` : ''}`
       : '';
@@ -4945,6 +4976,16 @@ const fmtNoteDate = (ts) => {
     + ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
+const closeAllNoteMenus = () => {
+  document.querySelectorAll('.note-actions-dropdown').forEach((d) => {
+    d.hidden = true;
+    d.style.top = '';
+    d.style.bottom = '';
+    d.style.right = '';
+    d.style.left = '';
+  });
+};
+
 const buildNoteCard = (note) => {
   const card = document.createElement('div');
   card.className = 'note-card';
@@ -4984,9 +5025,11 @@ const buildNoteCard = (note) => {
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
     const isOpen = !dropdown.hidden;
-    document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
-    dropdown.hidden = isOpen;
-    trigger.setAttribute('aria-expanded', String(!isOpen));
+    closeAllNoteMenus();
+    if (isOpen) return;
+    positionDropdownFixed(trigger, dropdown);
+    dropdown.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
   });
 
   card.querySelector('.note-edit-btn').addEventListener('click', () => {
@@ -5121,7 +5164,7 @@ const closeInstructionsModal = () => {
   if (!instructionsModal.classList.contains('is-open')) return;
   instructionsModal.classList.remove('is-open');
   unlockBodyScroll();
-  document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
+  closeAllNoteMenus();
 };
 
 document.querySelectorAll('[data-view-instructions]').forEach((btn) => {
@@ -5185,7 +5228,7 @@ document.querySelector('[data-save-add-note]')?.addEventListener('click', async 
 });
 
 document.addEventListener('click', () => {
-  document.querySelectorAll('.note-actions-dropdown').forEach((d) => { d.hidden = true; });
+  closeAllNoteMenus();
 });
 
 // ── Update Prescribed Dose modal ──────────────────────────────────────────────
@@ -5700,7 +5743,7 @@ document.querySelectorAll('[data-med-type-filter]').forEach((filterWrap) => {
 // Opens downward by default; flips upward when there isn't enough space below.
 function positionDropdownFixed(trigger, dropdown) {
   const rect = trigger.getBoundingClientRect();
-  const estimatedHeight = dropdown.querySelectorAll('.med-actions-item').length * 44 + 8;
+  const estimatedHeight = dropdown.children.length * 44 + 8;
   const spaceBelow = window.innerHeight - rect.bottom;
 
   // Clamp right so the dropdown never overflows the left viewport edge

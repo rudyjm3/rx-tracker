@@ -487,7 +487,9 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
           <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="family-edit-title-<?= (int)$fp['id'] ?>">
             <div class="modal-header">
               <h2 id="family-edit-title-<?= (int)$fp['id'] ?>">Edit <?= e((string)$fp['display_name']) ?></h2>
-              <button type="button" class="icon-button" data-close-family-edit-modal aria-label="Close">&#10005;</button>
+              <button type="button" class="modal-close-btn" data-close-family-edit-modal aria-label="Close">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              </button>
             </div>
             <div class="modal-scroll">
               <form method="post" action="index.php?page=profile" class="stacked-form">
@@ -533,7 +535,7 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
                   </div>
                   <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final_<?= (int)$fp['id'] ?>" value="<?= e($currentColor) ?>">
                 </div>
-                <div style="display:flex;gap:.5rem">
+                <div class="modal-footer">
                   <button type="submit" class="secondary">Save Changes</button>
                   <button type="button" class="secondary" data-close-family-edit-modal>Cancel</button>
                 </div>
