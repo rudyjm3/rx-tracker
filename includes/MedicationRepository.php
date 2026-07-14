@@ -1273,6 +1273,7 @@ final class MedicationRepository
                     'pill_count' => (int) $medication['pill_count'],
                     'low_supply_threshold' => (int) $medication['low_supply_threshold'],
                     'as_needed' => (int) $medication['as_needed'] === 1,
+                    'adherence_enabled' => (bool) ($medication['adherence_enabled'] ?? true),
                     'track_dose_feedback' => (int) $medication['track_dose_feedback'] === 1,
                     'feedback_type' => (string) ($medication['feedback_type'] ?? 'none'),
                     'reminder_time' => $time,

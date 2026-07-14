@@ -14,7 +14,8 @@ if ($auth->currentUserId() > 0) {
     exit;
 }
 
-$error = null;
+$error            = null;
+$verificationSent = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token((string) ($_POST['csrf_token'] ?? ''))) {
@@ -33,10 +34,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Passwords do not match.';
         } else {
             try {
-                $userId = $auth->register($email, $password, $name);
-                $auth->login($email, $password);
-                header('Location: index.php');
-                exit;
+                $auth->register($email, $password, $name);
+                if ($auth->isEmailVerified($email)) {
+                    // Mail not configured — auto-verify and log in immediately
+                    $auth->login($email, $password);
+                    header('Location: index.php');
+                    exit;
+                }
+                // Verification email sent — show "check your inbox" message
+                $verificationSent = true;
             } catch (RuntimeException $e) {
                 $error = $e->getMessage();
             }
@@ -104,6 +110,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <img src="assets/icons/icon-192.png" alt="" class="auth-logo" aria-hidden="true">
         <span class="auth-brand-name" style="color: var(--rx-navy);">RxTracker</span>
       </div>
+
+      <?php if ($verificationSent): ?>
+      <h1>Check your inbox</h1>
+      <p class="auth-subtitle">We sent a verification link to your email address. Click it to activate your account.</p>
+      <p style="text-align:center;margin-top:2rem;">
+        <a href="index.php?page=login" class="button" style="display:inline-block;padding:0.75rem 2rem;background:var(--rx-blue,#0754A8);color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Go to sign in</a>
+      </p>
+      <p class="auth-footer-link" style="margin-top:1.5rem;">Didn't receive it? <a href="index.php?page=login">Sign in</a> to request a new link.</p>
+      <?php else: ?>
 
       <h1>Create your account</h1>
       <p class="auth-subtitle">Start tracking your medications today</p>
@@ -191,6 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <p class="auth-footer-link" style="margin-top:0.5rem;font-size:0.8rem;">
         <a href="index.php?page=terms">Terms of Use</a> &middot; <a href="index.php?page=privacy">Privacy Policy</a>
       </p>
+
+      <?php endif; ?>
 
     </div>
   </div>

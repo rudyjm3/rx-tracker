@@ -418,3 +418,32 @@ CREATE TABLE IF NOT EXISTS inventory_transactions (
 ALTER TABLE medication_refills
     ADD COLUMN IF NOT EXISTS started_using_at DATETIME NULL,
     ADD COLUMN IF NOT EXISTS carryover_quantity DECIMAL(10,3) NOT NULL DEFAULT 0;
+
+-- Migration 010: Security hardening for closed-beta readiness
+
+-- Per-IP and per-email login rate limiting (5 failures → 15-min lockout)
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    identifier   VARCHAR(255) NOT NULL,
+    attempt_type ENUM('email','ip') NOT NULL,
+    attempted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_login_attempts (identifier, attempt_type, attempted_at)
+) ENGINE=InnoDB;
+
+-- Per-user per-minute bucket counter for api-proxy.php rate limiting
+CREATE TABLE IF NOT EXISTS api_proxy_rate_limit (
+    user_id      INT UNSIGNED NOT NULL,
+    window_start INT UNSIGNED NOT NULL,
+    hits         SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, window_start)
+) ENGINE=InnoDB;
+
+-- Email verification tokens for password-based accounts
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS verification_token            VARCHAR(64)  NULL,
+    ADD COLUMN IF NOT EXISTS verification_token_expires_at DATETIME     NULL;
+
+-- FK ensuring user_notifications rows are removed when the owning user is deleted
+ALTER TABLE user_notifications
+    ADD CONSTRAINT IF NOT EXISTS fk_notif_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;

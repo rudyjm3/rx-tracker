@@ -14,8 +14,10 @@ if ($auth->currentUserId() > 0) {
     exit;
 }
 
-$error    = null;
-$redirect = trim((string) ($_GET['redirect'] ?? ''));
+$error        = null;
+$showResend   = false;
+$resendEmail  = '';
+$redirect     = trim((string) ($_GET['redirect'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token((string) ($_POST['csrf_token'] ?? ''))) {
@@ -28,7 +30,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($email === '' || $password === '') {
             $error = 'Email and password are required.';
         } elseif (!$auth->login($email, $password, $remember)) {
-            $error = 'Invalid email or password.';
+            if (!empty($_SESSION['login_locked'])) {
+                unset($_SESSION['login_locked']);
+                $error = 'Too many failed attempts — please try again in 15 minutes.';
+            } elseif (!empty($_SESSION['login_unverified'])) {
+                $resendEmail = (string) ($_SESSION['pending_verification_email'] ?? $email);
+                unset($_SESSION['login_unverified'], $_SESSION['pending_verification_email']);
+                $showResend = true;
+                $error      = 'Please verify your email address before signing in.';
+            } else {
+                $error = 'Invalid email or password.';
+            }
         } else {
             $destination = 'index.php';
             if ($redirect !== '' && str_starts_with($redirect, '/') && !str_starts_with($redirect, '//')) {
@@ -106,6 +118,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <?php if ($error !== null): ?>
         <div class="auth-error" role="alert"><?= e($error) ?></div>
+      <?php endif; ?>
+
+      <?php if ($showResend): ?>
+        <div style="margin-bottom:1rem;">
+          <form method="post" action="index.php?page=resend-verification">
+            <?= csrf_field() ?>
+            <input type="hidden" name="email" value="<?= e($resendEmail) ?>">
+            <button type="submit" class="auth-link-btn">Resend verification email</button>
+          </form>
+        </div>
+      <?php endif; ?>
+
+      <?php if (isset($_GET['verified']) && $_GET['verified'] === '1'): ?>
+        <div class="auth-success">Email verified! You can now sign in.</div>
+      <?php endif; ?>
+
+      <?php if (isset($_GET['resent']) && $_GET['resent'] === '1'): ?>
+        <div class="auth-success">Verification email resent — please check your inbox.</div>
       <?php endif; ?>
 
       <?php if (isset($_GET['reset']) && $_GET['reset'] === 'success'): ?>
