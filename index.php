@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/config/database.php';
+require __DIR__ . '/includes/security_headers.php';
 require __DIR__ . '/includes/helpers.php';
 require __DIR__ . '/includes/SessionManager.php';
 require __DIR__ . '/includes/AuthService.php';
@@ -21,14 +22,17 @@ if (is_file(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
 }
 
+send_security_headers();
+
 $page = (string) ($_GET['page'] ?? 'dashboard');
 
 $sessionManager = new SessionManager(db());
-$auth = new AuthService(db(), $sessionManager);
-$googleAuth = new GoogleAuthService(db(), $sessionManager, env_value('GOOGLE_CLIENT_ID', ''));
+$mail           = new MailService();
+$auth           = new AuthService(db(), $sessionManager, $mail);
+$googleAuth     = new GoogleAuthService(db(), $sessionManager, env_value('GOOGLE_CLIENT_ID', ''));
 
 // Public auth routes — served before login check
-$authPages = ['login', 'register', 'forgot-password', 'reset-password', 'terms', 'privacy', 'google-login'];
+$authPages = ['login', 'register', 'forgot-password', 'reset-password', 'terms', 'privacy', 'google-login', 'verify-email', 'resend-verification'];
 if (in_array($page, $authPages, true)) {
     $routeFile = __DIR__ . '/routes/' . str_replace('-', '_', $page) . '.php';
     require $routeFile;

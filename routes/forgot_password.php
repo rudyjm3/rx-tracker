@@ -15,15 +15,20 @@ if ($auth->currentUserId() > 0) {
 
 $sent  = false;
 $error = null;
+$ip    = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!verify_csrf_token((string) ($_POST['csrf_token'] ?? ''))) {
         $error = 'Invalid form submission. Please try again.';
+    } elseif ($auth->isIpRateLimited($ip)) {
+        $error = 'Too many requests — please try again in 15 minutes.';
     } else {
         $email = strtolower(post_string('email'));
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
         } else {
+            $auth->recordIpAttempt($ip);
+
             // Always show the same message to prevent email enumeration
             $sent = true;
 

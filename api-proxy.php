@@ -1,5 +1,56 @@
 <?php
+
 declare(strict_types=1);
+
+require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/includes/security_headers.php';
+
+send_security_headers();
+
+// Require an authenticated session to prevent unauthenticated upstream hammering.
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+if (empty($_SESSION['user_id'])) {
+    http_response_code(401);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Authentication required']);
+    exit;
+}
+
+$userId = (int) $_SESSION['user_id'];
+
+// Per-user, per-minute rate limit: max 60 requests/minute.
+$window = (int) (time() / 60);
+try {
+    db()->prepare(
+        'INSERT INTO api_proxy_rate_limit (user_id, window_start, hits)
+         VALUES (:uid, :win, 1)
+         ON DUPLICATE KEY UPDATE hits = hits + 1'
+    )->execute(['uid' => $userId, 'win' => $window]);
+
+    $hitStmt = db()->prepare(
+        'SELECT hits FROM api_proxy_rate_limit WHERE user_id = :uid AND window_start = :win'
+    );
+    $hitStmt->execute(['uid' => $userId, 'win' => $window]);
+    $hits = (int) $hitStmt->fetchColumn();
+
+    if ($hits > 60) {
+        http_response_code(429);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Rate limit exceeded — max 60 requests per minute']);
+        exit;
+    }
+
+    // Probabilistic cleanup of old rows (~1% of requests)
+    if (random_int(0, 99) === 0) {
+        db()->prepare(
+            'DELETE FROM api_proxy_rate_limit WHERE window_start < :cutoff'
+        )->execute(['cutoff' => $window - 5]);
+    }
+} catch (Throwable) {
+    // Non-fatal — allow the request if the rate-limit table is unavailable
+}
 
 $allowedPrefixes = [
     'https://dailymed.nlm.nih.gov/dailymed/services/v2/',
