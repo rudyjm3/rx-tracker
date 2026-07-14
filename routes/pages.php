@@ -10,6 +10,11 @@ declare(strict_types=1);
 /** @var string|null $error */
 /** @var string|null $notice */
 
+if ($page === 'onboarding') {
+    require __DIR__ . '/onboarding.php';
+    exit;
+}
+
 $graceMinutes = $repository->getMissedGraceMinutes();
 $snoozeMinutes = $repository->getSnoozeMinutes();
 $moodChartScheme = $repository->getMoodChartScheme();

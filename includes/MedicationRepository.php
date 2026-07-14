@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 final class MedicationRepository
 {
-    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose';
+    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose, setup_status, dashboard_enabled, reminders_enabled, adherence_enabled, inventory_enabled, tracking_started_at, inventory_count_method, inventory_as_of';
 
     public function __construct(
         private readonly PDO $db,
@@ -39,6 +39,7 @@ final class MedicationRepository
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
         $this->ensureMedicationNotesTable();
+        $this->ensureOnboardingColumns();
     }
 
     private function profileSql(string $alias = 'm'): string
@@ -57,7 +58,7 @@ final class MedicationRepository
     public function activeMedications(): array
     {
         $statement = $this->db->prepare(
-            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.active = 1 AND m.user_id = :user_id ' . $this->profileSql() . ' ORDER BY m.sort_order ASC, m.name ASC'
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.active = 1 AND m.setup_status = \'active\' AND m.user_id = :user_id ' . $this->profileSql() . ' ORDER BY m.sort_order ASC, m.name ASC'
         );
         $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
         $medications = $statement->fetchAll();
@@ -1245,7 +1246,17 @@ final class MedicationRepository
             $times = $this->timesForDate($medication);
             $medGroupsByTime = $groupMap[(int) $medication['id']] ?? [];
             $timeDoses = $medication['time_doses'] ?? [];
+            $trackingStartedAt = isset($medication['tracking_started_at']) && $medication['tracking_started_at'] !== null
+                ? new DateTimeImmutable((string) $medication['tracking_started_at'])
+                : null;
             foreach ($times as $time) {
+                // Skip slots that occurred before tracking was activated for this medication
+                if ($trackingStartedAt !== null) {
+                    $slotDt = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . $time);
+                    if ($slotDt instanceof DateTimeImmutable && $slotDt < $trackingStartedAt) {
+                        continue;
+                    }
+                }
                 $key = (int) $medication['id'] . '|' . $time;
                 $log = $logs[$key] ?? null;
                 $medGroup = $medGroupsByTime[$time] ?? null;
@@ -4088,5 +4099,281 @@ final class MedicationRepository
         } catch (Throwable) {
             // Keep app booting even if table setup fails.
         }
+    }
+
+    private function ensureOnboardingColumns(): void
+    {
+        try {
+            $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "ALTER TABLE medications
+                        ADD COLUMN IF NOT EXISTS setup_status ENUM('draft','ready','active') NOT NULL DEFAULT 'active',
+                        ADD COLUMN IF NOT EXISTS dashboard_enabled TINYINT(1) NOT NULL DEFAULT 1,
+                        ADD COLUMN IF NOT EXISTS reminders_enabled TINYINT(1) NOT NULL DEFAULT 1,
+                        ADD COLUMN IF NOT EXISTS adherence_enabled TINYINT(1) NOT NULL DEFAULT 1,
+                        ADD COLUMN IF NOT EXISTS inventory_enabled TINYINT(1) NOT NULL DEFAULT 0,
+                        ADD COLUMN IF NOT EXISTS tracking_started_at DATETIME NULL,
+                        ADD COLUMN IF NOT EXISTS inventory_count_method ENUM('counted','estimated','unknown') NOT NULL DEFAULT 'unknown',
+                        ADD COLUMN IF NOT EXISTS inventory_as_of DATETIME NULL"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS profile_onboarding (
+                        id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        user_id      INT UNSIGNED NOT NULL,
+                        profile_id   INT UNSIGNED NULL,
+                        status       ENUM('not_started','in_progress','completed') NOT NULL DEFAULT 'not_started',
+                        current_step VARCHAR(40) NOT NULL DEFAULT 'medications',
+                        started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        completed_at DATETIME NULL,
+                        UNIQUE KEY uq_onboarding (user_id, profile_id),
+                        CONSTRAINT fk_onboarding_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS inventory_transactions (
+                        id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        medication_id    INT UNSIGNED NOT NULL,
+                        dose_log_id      INT UNSIGNED NULL,
+                        refill_id        INT UNSIGNED NULL,
+                        transaction_type VARCHAR(30) NOT NULL,
+                        quantity_delta   DECIMAL(10,3) NOT NULL,
+                        balance_after    DECIMAL(10,3) NOT NULL,
+                        effective_at     DATETIME NOT NULL,
+                        count_method     VARCHAR(20) NULL,
+                        note             VARCHAR(255) NOT NULL DEFAULT '',
+                        created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_inv_tx_med_effective (medication_id, effective_at),
+                        CONSTRAINT fk_inv_tx_medication FOREIGN KEY (medication_id) REFERENCES medications(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+                $this->db->exec(
+                    "ALTER TABLE medication_refills
+                        ADD COLUMN IF NOT EXISTS started_using_at DATETIME NULL,
+                        ADD COLUMN IF NOT EXISTS carryover_quantity DECIMAL(10,3) NOT NULL DEFAULT 0"
+                );
+            }
+        } catch (Throwable) {
+            // Non-fatal: new columns/tables added progressively.
+        }
+    }
+
+    // ── Onboarding helpers ────────────────────────────────────────────────────
+
+    public function activeMedicationCount(): int
+    {
+        $statement = $this->db->prepare(
+            'SELECT COUNT(*) FROM medications WHERE active = 1 AND setup_status = \'active\' AND user_id = :user_id ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
+        return (int) $statement->fetchColumn();
+    }
+
+    public function draftMedications(): array
+    {
+        $statement = $this->db->prepare(
+            'SELECT ' . self::MEDICATION_COLUMNS . ' FROM medications m WHERE m.setup_status = \'draft\' AND m.user_id = :user_id ' . $this->profileSql() . ' ORDER BY m.sort_order ASC, m.name ASC'
+        );
+        $statement->execute(array_merge(['user_id' => $this->userId], $this->profileParam()));
+        $medications = $statement->fetchAll();
+        $ids = array_column($medications, 'id');
+        $allTimes     = $this->scheduleTimesByMedicationIds($ids);
+        $allTimeDoses = $this->scheduleTimeDosesByMedicationIds($ids);
+        foreach ($medications as &$medication) {
+            $medication['times']      = $allTimes[(int) $medication['id']] ?? [];
+            $medication['time_doses'] = $allTimeDoses[(int) $medication['id']] ?? [];
+        }
+        unset($medication);
+        return $medications;
+    }
+
+    public function createDraftMedication(
+        string $name,
+        ?float $doseAmount,
+        ?string $doseUnit,
+        ?string $doseForm,
+        string $medicationType = 'prescription',
+        string $setId = '',
+        bool $asNeeded = false
+    ): int {
+        $statement = $this->db->prepare(
+            'INSERT INTO medications (user_id, profile_id, name, dose, start_date, instructions,
+                schedule_mode, time_format, as_needed, starting_pill_count, pill_count,
+                low_supply_threshold, track_dose_feedback, feedback_type,
+                medication_type, dose_amount, dose_unit, dose_form,
+                inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose,
+                set_id, setup_status, adherence_enabled)
+             VALUES (:user_id, :profile_id, :name, \'\', :start_date, \'\',
+                \'fixed_times\', \'12h\', :as_needed, 0, 0,
+                5, 0, \'none\',
+                :medication_type, :dose_amount, :dose_unit, :dose_form,
+                \'pills\', \'tablets\', 0, 0, 1,
+                :set_id, \'draft\', :adherence_enabled)'
+        );
+        $statement->execute([
+            'user_id'           => $this->userId,
+            'profile_id'        => $this->profileId,
+            'name'              => $name,
+            'start_date'        => date('Y-m-d'),
+            'medication_type'   => $medicationType,
+            'dose_amount'       => $doseAmount,
+            'dose_unit'         => $doseUnit,
+            'dose_form'         => $doseForm,
+            'set_id'            => $setId,
+            'as_needed'         => $asNeeded ? 1 : 0,
+            'adherence_enabled' => $asNeeded ? 0 : 1,
+        ]);
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function updateDraftMedication(
+        int $id,
+        string $name,
+        ?float $doseAmount,
+        ?string $doseUnit,
+        ?string $doseForm,
+        string $medicationType = 'prescription',
+        string $setId = '',
+        bool $asNeeded = false
+    ): void {
+        $statement = $this->db->prepare(
+            'UPDATE medications SET name = :name, dose_amount = :dose_amount, dose_unit = :dose_unit,
+             dose_form = :dose_form, medication_type = :medication_type, set_id = :set_id,
+             as_needed = :as_needed, adherence_enabled = :adherence_enabled
+             WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge([
+            'id'                => $id,
+            'user_id'           => $this->userId,
+            'name'              => $name,
+            'dose_amount'       => $doseAmount,
+            'dose_unit'         => $doseUnit,
+            'dose_form'         => $doseForm,
+            'medication_type'   => $medicationType,
+            'set_id'            => $setId,
+            'as_needed'         => $asNeeded ? 1 : 0,
+            'adherence_enabled' => $asNeeded ? 0 : 1,
+        ], $this->profileParam()));
+    }
+
+    public function deleteDraftMedication(int $id): void
+    {
+        $statement = $this->db->prepare(
+            'DELETE FROM medications WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
+    }
+
+    public function updateTrackingPreferences(int $id, array $prefs): void
+    {
+        $feedbackType = 'none';
+        if (!empty($prefs['track_pain']) && !empty($prefs['track_mood'])) {
+            $feedbackType = 'both';
+        } elseif (!empty($prefs['track_pain'])) {
+            $feedbackType = 'pain';
+        } elseif (!empty($prefs['track_mood'])) {
+            $feedbackType = 'mood';
+        }
+        $statement = $this->db->prepare(
+            'UPDATE medications SET
+                dashboard_enabled   = :dashboard_enabled,
+                reminders_enabled   = :reminders_enabled,
+                adherence_enabled   = :adherence_enabled,
+                inventory_enabled   = :inventory_enabled,
+                feedback_type       = :feedback_type,
+                track_dose_feedback = :track_dose_feedback
+             WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge([
+            'id'                  => $id,
+            'user_id'             => $this->userId,
+            'dashboard_enabled'   => (int) !empty($prefs['dashboard_enabled']),
+            'reminders_enabled'   => (int) !empty($prefs['reminders_enabled']),
+            'adherence_enabled'   => (int) !empty($prefs['adherence_enabled']),
+            'inventory_enabled'   => (int) !empty($prefs['inventory_enabled']),
+            'feedback_type'       => $feedbackType,
+            'track_dose_feedback' => $feedbackType !== 'none' ? 1 : 0,
+        ], $this->profileParam()));
+    }
+
+    public function setDraftSchedule(int $medicationId, array $doseTimes, array $doseQtys): void
+    {
+        $ownerCheck = $this->db->prepare(
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        if (!$ownerCheck->fetchColumn()) {
+            throw new RuntimeException('Draft medication not found.');
+        }
+        $this->replaceScheduleTimes($medicationId, $doseTimes, $doseQtys);
+    }
+
+    public function setDraftInventory(int $id, float $currentQty, string $countMethod, ?string $asOf): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medications SET
+                current_quantity       = :qty,
+                starting_quantity      = :qty,
+                inventory_count_method = :method,
+                inventory_as_of        = :as_of
+             WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge([
+            'id'      => $id,
+            'user_id' => $this->userId,
+            'qty'     => $currentQty,
+            'method'  => $countMethod,
+            'as_of'   => $asOf,
+        ], $this->profileParam()));
+    }
+
+    public function activateOnboardingMedications(string $trackingStartedAt): int
+    {
+        $statement = $this->db->prepare(
+            'UPDATE medications SET setup_status = \'active\', tracking_started_at = :started_at
+             WHERE user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
+        );
+        $statement->execute(array_merge(
+            ['user_id' => $this->userId, 'started_at' => $trackingStartedAt],
+            $this->profileParam()
+        ));
+        return $statement->rowCount();
+    }
+
+    public function getOnboardingProgress(): ?array
+    {
+        $statement = $this->db->prepare(
+            'SELECT id, status, current_step, started_at, completed_at
+             FROM profile_onboarding
+             WHERE user_id = :user_id AND ' . ($this->profileId === null ? 'profile_id IS NULL' : 'profile_id = :profile_id') . '
+             LIMIT 1'
+        );
+        $params = ['user_id' => $this->userId];
+        if ($this->profileId !== null) {
+            $params['profile_id'] = $this->profileId;
+        }
+        $statement->execute($params);
+        $row = $statement->fetch();
+        return $row !== false ? $row : null;
+    }
+
+    public function upsertOnboardingProgress(string $status, string $currentStep): void
+    {
+        $params = ['user_id' => $this->userId, 'profile_id' => $this->profileId, 'status' => $status, 'step' => $currentStep];
+        $statement = $this->db->prepare(
+            'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
+             VALUES (:user_id, :profile_id, :status, :step)
+             ON DUPLICATE KEY UPDATE status = :status2, current_step = :step2,
+             completed_at = CASE WHEN :status3 = \'completed\' THEN NOW() ELSE NULL END'
+        );
+        $statement->execute([
+            'user_id'    => $this->userId,
+            'profile_id' => $this->profileId,
+            'status'     => $status,
+            'step'       => $currentStep,
+            'status2'    => $status,
+            'step2'      => $currentStep,
+            'status3'    => $status,
+        ]);
     }
 }
