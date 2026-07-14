@@ -1749,6 +1749,9 @@ final class MedicationRepository
             if ((bool) $row['as_needed']) {
                 continue;
             }
+            if (!(bool) ($row['adherence_enabled'] ?? true)) {
+                continue;
+            }
             if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
                 continue;
             }
@@ -4121,7 +4124,7 @@ final class MedicationRepository
                     "CREATE TABLE IF NOT EXISTS profile_onboarding (
                         id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                         user_id      INT UNSIGNED NOT NULL,
-                        profile_id   INT UNSIGNED NULL,
+                        profile_id   INT UNSIGNED NOT NULL DEFAULT 0,
                         status       ENUM('not_started','in_progress','completed') NOT NULL DEFAULT 'not_started',
                         current_step VARCHAR(40) NOT NULL DEFAULT 'medications',
                         started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -4152,6 +4155,58 @@ final class MedicationRepository
                         ADD COLUMN IF NOT EXISTS started_using_at DATETIME NULL,
                         ADD COLUMN IF NOT EXISTS carryover_quantity DECIMAL(10,3) NOT NULL DEFAULT 0"
                 );
+            } elseif ($driver === 'sqlite') {
+                // Add onboarding columns to medications if missing (SQLite has no IF NOT EXISTS on ALTER TABLE)
+                $existing = $this->db->query("SELECT name FROM pragma_table_info('medications')")->fetchAll(PDO::FETCH_COLUMN);
+                $toAdd = [
+                    'setup_status'           => "TEXT NOT NULL DEFAULT 'active'",
+                    'dashboard_enabled'      => 'INTEGER NOT NULL DEFAULT 1',
+                    'reminders_enabled'      => 'INTEGER NOT NULL DEFAULT 1',
+                    'adherence_enabled'      => 'INTEGER NOT NULL DEFAULT 1',
+                    'inventory_enabled'      => 'INTEGER NOT NULL DEFAULT 0',
+                    'tracking_started_at'    => 'TEXT NULL',
+                    'inventory_count_method' => "TEXT NOT NULL DEFAULT 'unknown'",
+                    'inventory_as_of'        => 'TEXT NULL',
+                ];
+                foreach ($toAdd as $col => $def) {
+                    if (!in_array($col, $existing, true)) {
+                        $this->db->exec("ALTER TABLE medications ADD COLUMN {$col} {$def}");
+                    }
+                }
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS profile_onboarding (
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id      INTEGER NOT NULL,
+                        profile_id   INTEGER NOT NULL DEFAULT 0,
+                        status       TEXT NOT NULL DEFAULT 'not_started',
+                        current_step TEXT NOT NULL DEFAULT 'medications',
+                        started_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TEXT NULL,
+                        UNIQUE (user_id, profile_id)
+                    )"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS inventory_transactions (
+                        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id    INTEGER NOT NULL,
+                        dose_log_id      INTEGER NULL,
+                        refill_id        INTEGER NULL,
+                        transaction_type TEXT NOT NULL,
+                        quantity_delta   REAL NOT NULL,
+                        balance_after    REAL NOT NULL,
+                        effective_at     TEXT NOT NULL,
+                        count_method     TEXT NULL,
+                        note             TEXT NOT NULL DEFAULT '',
+                        created_at       TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                $existingRefill = $this->db->query("SELECT name FROM pragma_table_info('medication_refills')")->fetchAll(PDO::FETCH_COLUMN);
+                if (!in_array('started_using_at', $existingRefill, true)) {
+                    $this->db->exec('ALTER TABLE medication_refills ADD COLUMN started_using_at TEXT NULL');
+                }
+                if (!in_array('carryover_quantity', $existingRefill, true)) {
+                    $this->db->exec('ALTER TABLE medication_refills ADD COLUMN carryover_quantity REAL NOT NULL DEFAULT 0');
+                }
             }
         } catch (Throwable) {
             // Non-fatal: new columns/tables added progressively.
@@ -4342,24 +4397,21 @@ final class MedicationRepository
 
     public function getOnboardingProgress(): ?array
     {
+        $profileId = $this->profileId ?? 0;
         $statement = $this->db->prepare(
             'SELECT id, status, current_step, started_at, completed_at
              FROM profile_onboarding
-             WHERE user_id = :user_id AND ' . ($this->profileId === null ? 'profile_id IS NULL' : 'profile_id = :profile_id') . '
+             WHERE user_id = :user_id AND profile_id = :profile_id
              LIMIT 1'
         );
-        $params = ['user_id' => $this->userId];
-        if ($this->profileId !== null) {
-            $params['profile_id'] = $this->profileId;
-        }
-        $statement->execute($params);
+        $statement->execute(['user_id' => $this->userId, 'profile_id' => $profileId]);
         $row = $statement->fetch();
         return $row !== false ? $row : null;
     }
 
     public function upsertOnboardingProgress(string $status, string $currentStep): void
     {
-        $params = ['user_id' => $this->userId, 'profile_id' => $this->profileId, 'status' => $status, 'step' => $currentStep];
+        $profileId = $this->profileId ?? 0;
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
              VALUES (:user_id, :profile_id, :status, :step)
@@ -4368,7 +4420,7 @@ final class MedicationRepository
         );
         $statement->execute([
             'user_id'    => $this->userId,
-            'profile_id' => $this->profileId,
+            'profile_id' => $profileId,
             'status'     => $status,
             'step'       => $currentStep,
             'status2'    => $status,

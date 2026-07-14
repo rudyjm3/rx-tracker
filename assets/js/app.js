@@ -6144,9 +6144,12 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
     }
 
     currentStep = n;
-    // Refresh step-4 inventory visibility if needed
-    if (n === 4 && !ob.hasInventoryEnabled) {
-      if (nextBtn) nextBtn.disabled = false;
+    // Re-derive inventory enabled from live tracking checkboxes
+    if (n === 4) {
+      ob.hasInventoryEnabled = Array.from(
+        trackingTbody?.querySelectorAll('[data-col="inventory_enabled"]:checked') || []
+      ).length > 0;
+      if (!ob.hasInventoryEnabled && nextBtn) nextBtn.disabled = false;
     }
     // Step 5: if no past slots just allow continuing
     if (n === 5 && ob.pastSlots.length === 0) {
@@ -6311,6 +6314,7 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
           medList?.appendChild(buildMedRow(data));
           addScheduleCard(data);
           addTrackingRow(data);
+          addInventoryCard(data);
         }
         resetForm();
         updateDraftCount();
@@ -6565,7 +6569,7 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
 
   // ── Step 4: Inventory ─────────────────────────────────────────────────────
 
-  document.querySelectorAll('.ob-inventory-card').forEach((card) => {
+  const wireInventoryCard = (card) => {
     const tabs   = card.querySelectorAll('.ob-method-tab');
     const panels = card.querySelectorAll('.ob-method-panel');
 
@@ -6613,7 +6617,6 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
             const warnings = card.querySelector('[data-estimate-warnings]');
             warnings.textContent = (data.warnings || []).join(' ');
             resultEl.hidden = false;
-            // Store estimate for save
             card.dataset.estimatedQty = String(data.estimated_remaining);
           } else {
             alert(data.error || 'Could not calculate.');
@@ -6660,7 +6663,86 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
         }
       });
     }
-  });
+  };
+
+  const addInventoryCard = (med) => {
+    const list = document.getElementById('ob-inventory-list');
+    if (!list) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const card = document.createElement('div');
+    card.className = 'ob-inventory-card';
+    card.dataset.inventoryMedId = med.id;
+    card.innerHTML = `
+      <div class="ob-inventory-card-header">
+        <strong>${escHtml(med.name)}</strong>
+        ${med.dose ? `<span class="ob-med-item-dose">${escHtml(med.dose)}</span>` : ''}
+      </div>
+      <div class="ob-inventory-method-tabs">
+        <button type="button" class="ob-method-tab is-active" data-method-tab="counted">
+          <i class="fa-solid fa-calculator" aria-hidden="true"></i> Count now
+        </button>
+        <button type="button" class="ob-method-tab" data-method-tab="estimated">
+          <i class="fa-solid fa-vial" aria-hidden="true"></i> Estimate from fill
+        </button>
+        <button type="button" class="ob-method-tab" data-method-tab="skip">
+          <i class="fa-solid fa-forward" aria-hidden="true"></i> Skip
+        </button>
+      </div>
+      <div class="ob-method-panel" data-method-panel="counted">
+        <label class="ob-field-label">How many do you have right now?</label>
+        <div class="ob-qty-row">
+          <input type="number" step="any" min="0" class="ob-inv-count-input"
+                 placeholder="e.g. 30" data-counted-qty>
+          <span>tablets</span>
+        </div>
+      </div>
+      <div class="ob-method-panel" data-method-panel="estimated" hidden>
+        <div class="ob-form-row ob-form-row--2col">
+          <div class="ob-field">
+            <label>Fill date</label>
+            <input type="date" class="ob-fill-date" max="${escHtml(today)}" data-fill-date value="${escHtml(today)}">
+          </div>
+          <div class="ob-field">
+            <label>Quantity dispensed</label>
+            <input type="number" step="any" min="1" class="ob-fill-qty" placeholder="e.g. 90" data-fill-qty>
+          </div>
+        </div>
+        <div class="ob-form-row">
+          <div class="ob-field">
+            <label>Carryover from previous fill (optional)</label>
+            <input type="number" step="any" min="0" value="0" class="ob-carryover-qty" data-carryover-qty>
+          </div>
+        </div>
+        <div class="ob-estimate-result" data-estimate-result hidden>
+          <div class="ob-estimate-value" data-estimate-value></div>
+          <div class="ob-estimate-confidence" data-estimate-confidence></div>
+          <div class="ob-estimate-warnings" data-estimate-warnings></div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline ob-calc-btn" data-calc-estimate
+                data-med-id="${escHtml(String(med.id))}"
+                data-schedule-mode="fixed_times"
+                data-times="[]"
+                data-qty-per-dose="1">
+          Calculate estimate
+        </button>
+      </div>
+      <div class="ob-method-panel" data-method-panel="skip" hidden>
+        <p class="ob-notice">Inventory tracking will be disabled for this medication. You can set it up later from the medication settings.</p>
+      </div>
+      <div class="ob-inventory-save-row">
+        <button type="button" class="btn btn-sm btn-primary ob-save-inventory-btn"
+                data-med-id="${escHtml(String(med.id))}">
+          Save
+        </button>
+        <span class="ob-schedule-saved-indicator" data-inventory-saved hidden>
+          <i class="fa-solid fa-check" aria-hidden="true"></i> Saved
+        </span>
+      </div>`;
+    list.appendChild(card);
+    wireInventoryCard(card);
+  };
+
+  document.querySelectorAll('.ob-inventory-card').forEach(wireInventoryCard);
 
   // ── Step 5: Reconcile today ───────────────────────────────────────────────
 
