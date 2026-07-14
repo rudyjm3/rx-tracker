@@ -224,21 +224,38 @@ function render_inactive_medication_row(array $medication): string
 function daysUntilRunout(array $medication): ?int
 {
     $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
-    $qtyPerDose = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
     if ($qty <= 0) {
         return 0;
     }
-    $dosesPerDay = 0;
+
     if ((string) $medication['schedule_mode'] === 'fixed_times') {
-        $dosesPerDay = count($medication['times'] ?? []);
-    } elseif ((string) $medication['schedule_mode'] === 'interval') {
-        $intervalHours = (int) ($medication['interval_hours'] ?? 0);
-        if ($intervalHours > 0) {
-            $dosesPerDay = (int) max(1, round(24 / $intervalHours));
+        // Use per-slot quantities when available (time_doses map) to get accurate daily use.
+        $times     = $medication['times'] ?? [];
+        $timeDoses = $medication['time_doses'] ?? [];
+        $fallback  = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
+
+        if (count($times) === 0) {
+            return null;
         }
+        $dailyUse = 0.0;
+        foreach ($times as $t) {
+            $slotQty = isset($timeDoses[$t]) && $timeDoses[$t] !== null
+                ? (float) $timeDoses[$t]
+                : $fallback;
+            $dailyUse += max(0.001, $slotQty);
+        }
+        return (int) floor($qty / $dailyUse);
     }
-    if ($dosesPerDay <= 0) {
-        return null;
+
+    if ((string) $medication['schedule_mode'] === 'interval') {
+        $intervalHours = (int) ($medication['interval_hours'] ?? 0);
+        if ($intervalHours <= 0) {
+            return null;
+        }
+        $dosesPerDay = max(1, round(24 / $intervalHours));
+        $qtyPerDose  = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
+        return (int) floor($qty / ($dosesPerDay * $qtyPerDose));
     }
-    return (int) floor($qty / ($dosesPerDay * $qtyPerDose));
+
+    return null;
 }

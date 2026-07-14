@@ -15,6 +15,8 @@ require __DIR__ . '/includes/SideEffectRepository.php';
 require __DIR__ . '/includes/PainChartRenderer.php';
 require __DIR__ . '/includes/MoodChartRenderer.php';
 require __DIR__ . '/includes/DoctorVisitReport.php';
+require_once __DIR__ . '/includes/OnboardingService.php';
+require_once __DIR__ . '/includes/InventoryEstimator.php';
 if (is_file(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
 }
@@ -74,6 +76,22 @@ $activeProfile   = $activeProfileId !== null ? ($activeProfile ?? null) : null;
 $familyProfiles  = $familyRepo->profilesForUser($auth->currentUserId());
 
 $repository    = new MedicationRepository(db(), $auth->currentUserId(), $activeProfileId);
+
+// Redirect new users (no active medications + onboarding not completed) to the setup wizard
+$bypassPages = ['onboarding', 'onboarding-actions', 'settings', 'profile', 'logout'];
+if ($page === 'onboarding' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require __DIR__ . '/routes/onboarding_actions.php';
+    exit;
+}
+if (!in_array($page, $bypassPages, true)) {
+    $obService = new OnboardingService($repository);
+    if (!$obService->isCompleted() && $repository->activeMedicationCount() === 0) {
+        $obService->getOrCreateProgress();
+        header('Location: index.php?page=onboarding');
+        exit;
+    }
+}
+
 $error         = null;
 $notice        = null;
 $today         = today();
