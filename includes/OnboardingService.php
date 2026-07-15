@@ -22,6 +22,17 @@ final class OnboardingService
         return $progress !== null && (string) $progress['status'] === 'completed';
     }
 
+    public function isSkipped(): bool
+    {
+        $progress = $this->repository->getOnboardingProgress();
+        return $progress !== null && (string) $progress['status'] === 'skipped';
+    }
+
+    public function skip(): void
+    {
+        $this->repository->upsertOnboardingProgress('skipped', 'done');
+    }
+
     public function activateAll(string $trackingStartedAt): int
     {
         $count = $this->repository->activateOnboardingMedications($trackingStartedAt);

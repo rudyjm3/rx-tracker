@@ -230,6 +230,13 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   </div>
   <?php endif; ?>
 
+  <?php if (!empty($showResumeBanner)): ?>
+  <div class="notice notice--info" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1.25rem;margin:.75rem 1rem 0;">
+    <span><strong>No medications added yet.</strong> Complete setup to start tracking your doses.</span>
+    <a href="index.php?page=onboarding" class="btn btn-sm btn-primary" style="white-space:nowrap">Resume setup</a>
+  </div>
+  <?php endif; ?>
+
   <?php if (!in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'mood-wellbeing'], true)): ?>
   <section class="hero">
     <div class="hero-left">

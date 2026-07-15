@@ -87,12 +87,16 @@ if ($page === 'onboarding' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     require __DIR__ . '/routes/onboarding_actions.php';
     exit;
 }
+$showResumeBanner = false;
 if (!in_array($page, $bypassPages, true)) {
     $obService = new OnboardingService($repository);
-    if (!$obService->isCompleted() && $repository->activeMedicationCount() === 0) {
+    if (!$obService->isCompleted() && !$obService->isSkipped() && $repository->activeMedicationCount() === 0) {
         $obService->getOrCreateProgress();
         header('Location: index.php?page=onboarding');
         exit;
+    }
+    if ($obService->isSkipped() && $repository->activeMedicationCount() === 0) {
+        $showResumeBanner = true;
     }
 }
 

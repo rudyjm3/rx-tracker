@@ -276,6 +276,14 @@ try {
         exit;
     }
 
+    // ── Skip setup entirely ───────────────────────────────────────────────────
+
+    if ($action === 'skip_setup') {
+        $service->skip();
+        echo json_encode(['ok' => true, 'redirect' => 'index.php'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     // ── Step 6: Activate all draft medications ────────────────────────────────
 
     if ($action === 'activate_onboarding') {
