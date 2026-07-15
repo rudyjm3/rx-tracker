@@ -6776,6 +6776,7 @@ a.nav-user-btn.is-active {
   color: #fff;
   background: none;
   box-shadow: none;
+  transform: none;
 }
 
 /* Progress indicator */
