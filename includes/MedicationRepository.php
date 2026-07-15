@@ -4135,6 +4135,14 @@ final class MedicationRepository
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
                 );
                 $this->db->exec(
+                    "ALTER TABLE profile_onboarding
+                        MODIFY COLUMN status ENUM('not_started','in_progress','completed','skipped')
+                        NOT NULL DEFAULT 'not_started'"
+                );
+                $this->db->exec(
+                    "UPDATE profile_onboarding SET status = 'skipped' WHERE status = ''"
+                );
+                $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS inventory_transactions (
                         id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                         medication_id    INT UNSIGNED NOT NULL,
