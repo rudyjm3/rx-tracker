@@ -4126,7 +4126,7 @@ final class MedicationRepository
                         id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
                         user_id      INT UNSIGNED NOT NULL,
                         profile_id   INT UNSIGNED NOT NULL DEFAULT 0,
-                        status       ENUM('not_started','in_progress','completed') NOT NULL DEFAULT 'not_started',
+                        status       ENUM('not_started','in_progress','completed','skipped') NOT NULL DEFAULT 'not_started',
                         current_step VARCHAR(40) NOT NULL DEFAULT 'medications',
                         started_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         completed_at DATETIME NULL,
