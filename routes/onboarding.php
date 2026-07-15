@@ -109,7 +109,7 @@ $csrfToken = csrf_token();
       <img src="assets/icons/icon-192.png" alt="" class="onboarding-logo" width="36" height="36">
       <span>RxTracker</span>
     </div>
-    <button type="button" class="onboarding-skip-link" id="ob-skip-btn">Skip setup &rarr;</button>
+    <a href="index.php" class="onboarding-skip-link">Skip setup &rarr;</a>
   </div>
 
   <!-- Progress indicator -->
@@ -635,18 +635,6 @@ $csrfToken = csrf_token();
 </div><!-- /.onboarding-shell -->
 
 <script>
-document.getElementById('ob-skip-btn')?.addEventListener('click', async () => {
-  const fd = new FormData();
-  fd.append('action', 'skip_setup');
-  fd.append('csrf_token', <?= json_encode($csrfToken) ?>);
-  try {
-    const res = await fetch('index.php?page=onboarding', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (data.ok) window.location.href = data.redirect;
-  } catch {
-    window.location.href = 'index.php';
-  }
-});
 // Onboarding state passed from PHP
 window.rxOnboarding = {
   csrfToken: <?= json_encode($csrfToken) ?>,
