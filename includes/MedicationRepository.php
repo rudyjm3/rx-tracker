@@ -543,8 +543,8 @@ final class MedicationRepository
     ): int {
         $stmt = $this->db->prepare(
             'INSERT INTO standalone_pain_mood_logs
-                 (user_id, medication_id, log_type, pain_level, mood_level, note)
-             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note)'
+                 (user_id, medication_id, log_type, pain_level, mood_level, note, logged_at)
+             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note, :logged_at)'
         );
         $stmt->execute([
             'user_id'       => $this->userId,
@@ -553,6 +553,7 @@ final class MedicationRepository
             'pain_level'    => $painLevel,
             'mood_level'    => $moodLevel,
             'note'          => $note,
+            'logged_at'     => date('Y-m-d H:i:s'),
         ]);
         return (int) $this->db->lastInsertId();
     }
@@ -568,7 +569,7 @@ final class MedicationRepository
              SET dl.pain_level = COALESCE(:pain_level, dl.pain_level),
                  dl.mood_level = COALESCE(:mood_level, dl.mood_level),
                  dl.note = :note,
-                 dl.feedback_edited_at = NOW()
+                 dl.feedback_edited_at = :edited_at
              WHERE dl.id = :id
                AND m.user_id = :user_id'
         );
@@ -578,6 +579,7 @@ final class MedicationRepository
             'pain_level' => $painLevel,
             'mood_level' => $moodLevel,
             'note'       => $note,
+            'edited_at'  => date('Y-m-d H:i:s'),
         ]);
         return $stmt->rowCount() > 0;
     }
@@ -592,7 +594,7 @@ final class MedicationRepository
              SET pain_level = COALESCE(:pain_level, pain_level),
                  mood_level = COALESCE(:mood_level, mood_level),
                  note = :note,
-                 updated_at = NOW()
+                 updated_at = :updated_at
              WHERE id = :id
                AND user_id = :user_id'
         );
@@ -602,6 +604,7 @@ final class MedicationRepository
             'pain_level' => $painLevel,
             'mood_level' => $moodLevel,
             'note'       => $note,
+            'updated_at' => date('Y-m-d H:i:s'),
         ]);
         return $stmt->rowCount() > 0;
     }
