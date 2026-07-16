@@ -913,11 +913,36 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           && class_exists(\Minishlink\WebPush\WebPush::class);
       $lastPushSentAt = $repository->lastPushSentAt();
     ?>
+    <?php
+      $tzGroups = [];
+      foreach (DateTimeZone::listIdentifiers() as $tzId) {
+          $slash = strpos($tzId, '/');
+          $group = $slash !== false ? substr($tzId, 0, $slash) : 'Other';
+          $label = $slash !== false ? str_replace('_', ' ', substr($tzId, $slash + 1)) : $tzId;
+          $tzGroups[$group][] = ['value' => $tzId, 'label' => $label];
+      }
+      ksort($tzGroups);
+    ?>
     <section class="panel settings-panel">
-      <div class="panel-heading"><h2>Reminder Settings</h2></div>
+      <div class="panel-heading"><h2>General Settings</h2></div>
       <form method="post" action="index.php?page=settings" class="stacked-form">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_settings">
+        <label>Time zone
+          <div class="timezone-select-row">
+            <select name="timezone" id="timezone-select">
+              <?php foreach ($tzGroups as $group => $tzList): ?>
+                <optgroup label="<?= e($group) ?>">
+                  <?php foreach ($tzList as $tz): ?>
+                    <option value="<?= e($tz['value']) ?>"<?= $userTimezone === $tz['value'] ? ' selected' : '' ?>><?= e($tz['label']) ?></option>
+                  <?php endforeach; ?>
+                </optgroup>
+              <?php endforeach; ?>
+            </select>
+            <button type="button" class="button secondary small" id="detect-timezone-btn">Use device timezone</button>
+          </div>
+          <span class="field-hint" id="timezone-detect-hint"></span>
+        </label>
         <label>Missed-dose grace period
           <select name="missed_grace_minutes">
             <option value="30"<?= $graceMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
