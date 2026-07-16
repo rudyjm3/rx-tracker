@@ -377,7 +377,7 @@ $csrfToken = csrf_token();
       <p class="onboarding-step-desc">Tell us how many pills/doses you have now so RxTracker can warn you before you run out.</p>
 
       <?php if (!$hasInventoryEnabled): ?>
-      <div class="ob-notice">
+      <div class="ob-notice ob-no-inventory-notice">
         <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
         No medications have inventory tracking enabled. You can enable it in Step 2 or skip this step.
       </div>
@@ -668,6 +668,8 @@ window.rxOnboarding = {
     'adherence_enabled' => (bool) ($m['adherence_enabled'] ?? true),
     'inventory_enabled' => (bool) ($m['inventory_enabled'] ?? false),
     'times'             => $m['times'] ?? [],
+    'schedule_mode'     => $m['schedule_mode'] ?? 'fixed_times',
+    'qty_per_dose'      => max(0.001, (float) ($m['quantity_per_dose'] ?? 1)),
   ], $drafts), JSON_HEX_TAG) ?>,
 };
 </script>

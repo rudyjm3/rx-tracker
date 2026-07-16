@@ -4413,18 +4413,19 @@ final class MedicationRepository
     {
         $statement = $this->db->prepare(
             'UPDATE medications SET
-                current_quantity       = :qty,
-                starting_quantity      = :qty,
+                current_quantity       = :current_qty,
+                starting_quantity      = :starting_qty,
                 inventory_count_method = :method,
                 inventory_as_of        = :as_of
              WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
         );
         $statement->execute(array_merge([
-            'id'      => $id,
-            'user_id' => $this->userId,
-            'qty'     => $currentQty,
-            'method'  => $countMethod,
-            'as_of'   => $asOf,
+            'id'          => $id,
+            'user_id'     => $this->userId,
+            'current_qty' => $currentQty,
+            'starting_qty' => $currentQty,
+            'method'      => $countMethod,
+            'as_of'       => $asOf,
         ], $this->profileParam()));
     }
 
@@ -4460,18 +4461,18 @@ final class MedicationRepository
         $profileId = $this->profileId ?? 0;
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
-             VALUES (:user_id, :profile_id, :status, :step)
-             ON DUPLICATE KEY UPDATE status = :status2, current_step = :step2,
-             completed_at = CASE WHEN :status3 = \'completed\' THEN NOW() ELSE NULL END'
+             VALUES (:user_id, :profile_id, :ins_status, :ins_step)
+             ON DUPLICATE KEY UPDATE status = :upd_status, current_step = :upd_step,
+             completed_at = CASE WHEN :chk_status = \'completed\' THEN NOW() ELSE NULL END'
         );
         $statement->execute([
             'user_id'    => $this->userId,
             'profile_id' => $profileId,
-            'status'     => $status,
-            'step'       => $currentStep,
-            'status2'    => $status,
-            'step2'      => $currentStep,
-            'status3'    => $status,
+            'ins_status' => $status,
+            'ins_step'   => $currentStep,
+            'upd_status' => $status,
+            'upd_step'   => $currentStep,
+            'chk_status' => $status,
         ]);
     }
 }
