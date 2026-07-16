@@ -4461,18 +4461,18 @@ final class MedicationRepository
         $profileId = $this->profileId ?? 0;
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
-             VALUES (:user_id, :profile_id, :status, :step)
-             ON DUPLICATE KEY UPDATE status = :status2, current_step = :step2,
-             completed_at = CASE WHEN :status3 = \'completed\' THEN NOW() ELSE NULL END'
+             VALUES (:user_id, :profile_id, :ins_status, :ins_step)
+             ON DUPLICATE KEY UPDATE status = :upd_status, current_step = :upd_step,
+             completed_at = CASE WHEN :chk_status = \'completed\' THEN NOW() ELSE NULL END'
         );
         $statement->execute([
             'user_id'    => $this->userId,
             'profile_id' => $profileId,
-            'status'     => $status,
-            'step'       => $currentStep,
-            'status2'    => $status,
-            'step2'      => $currentStep,
-            'status3'    => $status,
+            'ins_status' => $status,
+            'ins_step'   => $currentStep,
+            'upd_status' => $status,
+            'upd_step'   => $currentStep,
+            'chk_status' => $status,
         ]);
     }
 }
