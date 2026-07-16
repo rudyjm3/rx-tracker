@@ -6146,10 +6146,55 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
     currentStep = n;
     // Re-derive inventory enabled from live tracking checkboxes
     if (n === 4) {
-      ob.hasInventoryEnabled = Array.from(
+      const enabledChecks = Array.from(
         trackingTbody?.querySelectorAll('[data-col="inventory_enabled"]:checked') || []
-      ).length > 0;
+      );
+      ob.hasInventoryEnabled = enabledChecks.length > 0;
       if (!ob.hasInventoryEnabled && nextBtn) nextBtn.disabled = false;
+
+      // Sync step-4 DOM to reflect the current checkbox state
+      const step4 = document.querySelector('[data-onboarding-step="4"]');
+      if (step4) {
+        const notice = step4.querySelector('.ob-notice');
+        let invList = document.getElementById('ob-inventory-list');
+
+        if (ob.hasInventoryEnabled) {
+          if (notice) notice.hidden = true;
+
+          if (!invList) {
+            invList = document.createElement('div');
+            invList.className = 'ob-inventory-list';
+            invList.id = 'ob-inventory-list';
+            step4.appendChild(invList);
+          }
+          invList.hidden = false;
+
+          const enabledIds = new Set(
+            enabledChecks
+              .map((chk) => chk.closest('tr')?.dataset.trackingMedId)
+              .filter(Boolean)
+          );
+
+          // Remove cards for meds no longer inventory-enabled
+          invList.querySelectorAll('[data-inventory-med-id]').forEach((card) => {
+            if (!enabledIds.has(card.dataset.inventoryMedId)) card.remove();
+          });
+
+          // Add cards for newly enabled meds
+          enabledIds.forEach((medId) => {
+            if (!invList.querySelector(`[data-inventory-med-id="${medId}"]`)) {
+              const draft = ob.drafts.find((m) => String(m.id) === String(medId));
+              if (draft) {
+                const dose = [draft.dose_amount, draft.dose_unit].filter(Boolean).join(' ');
+                addInventoryCard({ id: draft.id, name: draft.name, dose });
+              }
+            }
+          });
+        } else {
+          if (notice) notice.hidden = false;
+          if (invList) invList.hidden = true;
+        }
+      }
     }
     // Step 5: if no past slots just allow continuing
     if (n === 5 && ob.pastSlots.length === 0) {
