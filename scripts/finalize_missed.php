@@ -20,8 +20,6 @@ require __DIR__ . '/../includes/MedicationRepository.php';
 require __DIR__ . '/../includes/FamilyProfileRepository.php';
 
 try {
-    $now = new DateTimeImmutable('now');
-
     // Collect every user_id that has at least one active, adherence-enabled medication.
     $stmt = db()->query(
         "SELECT DISTINCT user_id FROM medications WHERE active = 1 AND adherence_enabled = 1"
@@ -42,10 +40,16 @@ try {
         // Primary user (no family profile)
         $repo         = new MedicationRepository(db(), $userId, null);
         $graceMinutes = $repo->getMissedGraceMinutes();
+
+        // Use the per-user timezone so wall-clock schedule comparisons are correct
+        // for users whose saved timezone differs from the server APP_TIMEZONE.
+        $userTzName = $repo->getUserTimezone() ?: date_default_timezone_get();
+        $now        = new DateTimeImmutable('now', new DateTimeZone($userTzName));
+
         $repo->finalizeMissedDoses($now, $graceMinutes);
         $totalFinalized++;
 
-        // Each family profile under this user
+        // Each family profile under this user (same timezone as the owning account).
         foreach ($familyRepo->profilesForUser($userId) as $profile) {
             $profileRepo = new MedicationRepository(db(), $userId, (int) $profile['id']);
             $profileRepo->finalizeMissedDoses($now, $graceMinutes);

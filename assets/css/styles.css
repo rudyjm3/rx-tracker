@@ -3836,6 +3836,18 @@ button.danger:hover {
   margin-top: 0.2rem;
 }
 
+.timezone-select-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.timezone-select-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .pain-level-selector {
   display: flex;
   flex-wrap: wrap;

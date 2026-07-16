@@ -574,6 +574,11 @@ try {
         $graceMinutes = (int) post_string('missed_grace_minutes');
         $repository->setMissedGraceMinutes($graceMinutes);
         $repository->setSnoozeMinutes((int) post_string('snooze_minutes'));
+        $tz = post_string('timezone');
+        if ($tz !== '') {
+            $repository->setUserTimezone($tz);
+            date_default_timezone_set($tz);
+        }
         header('Location: index.php?page=settings&notice=Settings saved');
         exit;
     }

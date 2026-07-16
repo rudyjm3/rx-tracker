@@ -81,6 +81,12 @@ $familyProfiles  = $familyRepo->profilesForUser($auth->currentUserId());
 
 $repository    = new MedicationRepository(db(), $auth->currentUserId(), $activeProfileId);
 
+// Override the environment-level APP_TIMEZONE with the per-user setting when present.
+$userTimezone = $repository->getUserTimezone();
+if ($userTimezone !== '') {
+    date_default_timezone_set($userTimezone);
+}
+
 // Redirect new users (no active medications + onboarding not completed) to the setup wizard
 $bypassPages = ['onboarding', 'onboarding-actions', 'settings', 'profile', 'logout'];
 if ($page === 'onboarding' && $_SERVER['REQUEST_METHOD'] === 'POST') {

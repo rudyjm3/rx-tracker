@@ -913,11 +913,41 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           && class_exists(\Minishlink\WebPush\WebPush::class);
       $lastPushSentAt = $repository->lastPushSentAt();
     ?>
+    <?php
+      $tzGroups = [];
+      foreach (DateTimeZone::listIdentifiers() as $tzId) {
+          $slash = strpos($tzId, '/');
+          $group = $slash !== false ? substr($tzId, 0, $slash) : 'Other';
+          $label = $slash !== false ? str_replace('_', ' ', substr($tzId, $slash + 1)) : $tzId;
+          $tzGroups[$group][] = ['value' => $tzId, 'label' => $label];
+      }
+      ksort($tzGroups);
+      // When no timezone has been explicitly saved, default the selector to the
+      // environment APP_TIMEZONE so saving other settings doesn't silently change
+      // the timezone to whatever PHP's list happens to render first.
+      $tzSaved    = $userTimezone !== '';
+      $selectedTz = $tzSaved ? $userTimezone : date_default_timezone_get();
+    ?>
     <section class="panel settings-panel">
-      <div class="panel-heading"><h2>Reminder Settings</h2></div>
+      <div class="panel-heading"><h2>General Settings</h2></div>
       <form method="post" action="index.php?page=settings" class="stacked-form">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_settings">
+        <label>Time zone
+          <div class="timezone-select-row">
+            <select name="timezone" id="timezone-select" data-tz-saved="<?= $tzSaved ? '1' : '0' ?>">
+              <?php foreach ($tzGroups as $group => $tzList): ?>
+                <optgroup label="<?= e($group) ?>">
+                  <?php foreach ($tzList as $tz): ?>
+                    <option value="<?= e($tz['value']) ?>"<?= $selectedTz === $tz['value'] ? ' selected' : '' ?>><?= e($tz['label']) ?></option>
+                  <?php endforeach; ?>
+                </optgroup>
+              <?php endforeach; ?>
+            </select>
+            <button type="button" class="button secondary small" id="detect-timezone-btn">Use device timezone</button>
+          </div>
+          <span class="field-hint" id="timezone-detect-hint"></span>
+        </label>
         <label>Missed-dose grace period
           <select name="missed_grace_minutes">
             <option value="30"<?= $graceMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
