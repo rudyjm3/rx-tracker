@@ -6155,7 +6155,7 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
       // Sync step-4 DOM to reflect the current checkbox state
       const step4 = document.querySelector('[data-onboarding-step="4"]');
       if (step4) {
-        const notice = step4.querySelector('.ob-notice');
+        const notice = step4.querySelector('.ob-no-inventory-notice');
         let invList = document.getElementById('ob-inventory-list');
 
         if (ob.hasInventoryEnabled) {
@@ -6186,7 +6186,14 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
               const draft = ob.drafts.find((m) => String(m.id) === String(medId));
               if (draft) {
                 const dose = [draft.dose_amount, draft.dose_unit].filter(Boolean).join(' ');
-                addInventoryCard({ id: draft.id, name: draft.name, dose });
+                addInventoryCard({
+                  id: draft.id,
+                  name: draft.name,
+                  dose,
+                  times: draft.times ?? [],
+                  schedule_mode: draft.schedule_mode ?? 'fixed_times',
+                  qty_per_dose: draft.qty_per_dose ?? 1,
+                });
               }
             }
           });
@@ -6354,12 +6361,37 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
         if (editingMedId) {
           const existing = medList?.querySelector(`[data-ob-med-id="${editingMedId}"]`);
           if (existing) existing.replaceWith(buildMedRow(data));
+          const draftIdx = ob.drafts.findIndex((m) => m.id === editingMedId);
+          if (draftIdx !== -1) {
+            ob.drafts[draftIdx] = Object.assign(ob.drafts[draftIdx], {
+              name: data.name,
+              dose_amount: data.dose ?? null,
+              dose_unit: null,
+              as_needed: !!data.as_needed,
+            });
+          }
         } else {
           if (emptyState) emptyState.hidden = true;
           medList?.appendChild(buildMedRow(data));
           addScheduleCard(data);
           addTrackingRow(data);
           addInventoryCard(data);
+          ob.drafts.push({
+            id: data.id,
+            name: data.name,
+            dose_amount: data.dose ?? null,
+            dose_unit: null,
+            dose_form: data.form ?? null,
+            medication_type: data.type ?? 'prescription',
+            set_id: '',
+            as_needed: !!data.as_needed,
+            reminders_enabled: true,
+            adherence_enabled: true,
+            inventory_enabled: false,
+            times: [],
+            schedule_mode: 'fixed_times',
+            qty_per_dose: 1,
+          });
         }
         resetForm();
         updateDraftCount();
@@ -6410,6 +6442,8 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
         document.querySelector(`[data-schedule-med-id="${id}"]`)?.remove();
         document.querySelector(`[data-tracking-med-id="${id}"]`)?.remove();
         document.querySelector(`[data-inventory-med-id="${id}"]`)?.remove();
+        const delIdx = ob.drafts.findIndex((m) => m.id === id);
+        if (delIdx !== -1) ob.drafts.splice(delIdx, 1);
         updateDraftCount();
       } catch (err) {
         alert(err.message);
@@ -6765,9 +6799,9 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
         </div>
         <button type="button" class="btn btn-sm btn-outline ob-calc-btn" data-calc-estimate
                 data-med-id="${escHtml(String(med.id))}"
-                data-schedule-mode="fixed_times"
-                data-times="[]"
-                data-qty-per-dose="1">
+                data-schedule-mode="${escHtml(String(med.schedule_mode ?? 'fixed_times'))}"
+                data-times="${escHtml(JSON.stringify(med.times ?? []))}"
+                data-qty-per-dose="${escHtml(String(med.qty_per_dose ?? 1))}">
           Calculate estimate
         </button>
       </div>
