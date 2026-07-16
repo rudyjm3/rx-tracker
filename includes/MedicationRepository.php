@@ -3689,8 +3689,21 @@ final class MedicationRepository
         try {
             if ($driver === 'mysql') {
                 $check = $this->db->query("SHOW COLUMNS FROM medication_schedule_times LIKE 'quantity_per_dose'");
-                if ($check !== false && $check->fetchColumn() === false) {
-                    $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN quantity_per_dose DECIMAL(10,2) NULL DEFAULT NULL');
+                if ($check !== false) {
+                    $col = $check->fetch(PDO::FETCH_ASSOC);
+                    if ($col === false) {
+                        $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN quantity_per_dose DECIMAL(10,3) NULL DEFAULT NULL');
+                    } elseif (stripos((string) ($col['Type'] ?? ''), 'decimal(10,3)') === false) {
+                        // Widen from DECIMAL(10,2) to DECIMAL(10,3) to preserve three-decimal precision.
+                        $this->db->exec('ALTER TABLE medication_schedule_times MODIFY COLUMN quantity_per_dose DECIMAL(10,3) NULL DEFAULT NULL');
+                    }
+                }
+                $checkGroup = $this->db->query("SHOW COLUMNS FROM medication_group_members LIKE 'quantity_per_dose'");
+                if ($checkGroup !== false) {
+                    $col = $checkGroup->fetch(PDO::FETCH_ASSOC);
+                    if ($col !== false && stripos((string) ($col['Type'] ?? ''), 'decimal(10,3)') === false) {
+                        $this->db->exec('ALTER TABLE medication_group_members MODIFY COLUMN quantity_per_dose DECIMAL(10,3) NULL DEFAULT NULL');
+                    }
                 }
                 return;
             }

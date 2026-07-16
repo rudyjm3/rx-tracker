@@ -392,7 +392,7 @@
               <?php endforeach; ?>
             </select>
             <label class="group-dose-override-label">Dose qty for this group
-              <input type="number" name="quantity_per_dose" min="0.25" step="0.25" placeholder="e.g. 2" class="group-dose-override-input">
+              <input type="number" name="quantity_per_dose" min="0.001" step="any" placeholder="e.g. 2" class="group-dose-override-input">
               <span class="field-optional">(optional — leave blank to use default)</span>
             </label>
             <button type="submit" class="secondary group-add-btn">Add</button>
