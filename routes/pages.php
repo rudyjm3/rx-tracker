@@ -922,6 +922,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           $tzGroups[$group][] = ['value' => $tzId, 'label' => $label];
       }
       ksort($tzGroups);
+      // When no timezone has been explicitly saved, default the selector to the
+      // environment APP_TIMEZONE so saving other settings doesn't silently change
+      // the timezone to whatever PHP's list happens to render first.
+      $tzSaved    = $userTimezone !== '';
+      $selectedTz = $tzSaved ? $userTimezone : date_default_timezone_get();
     ?>
     <section class="panel settings-panel">
       <div class="panel-heading"><h2>General Settings</h2></div>
@@ -930,11 +935,11 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <input type="hidden" name="action" value="save_settings">
         <label>Time zone
           <div class="timezone-select-row">
-            <select name="timezone" id="timezone-select">
+            <select name="timezone" id="timezone-select" data-tz-saved="<?= $tzSaved ? '1' : '0' ?>">
               <?php foreach ($tzGroups as $group => $tzList): ?>
                 <optgroup label="<?= e($group) ?>">
                   <?php foreach ($tzList as $tz): ?>
-                    <option value="<?= e($tz['value']) ?>"<?= $userTimezone === $tz['value'] ? ' selected' : '' ?>><?= e($tz['label']) ?></option>
+                    <option value="<?= e($tz['value']) ?>"<?= $selectedTz === $tz['value'] ? ' selected' : '' ?>><?= e($tz['label']) ?></option>
                   <?php endforeach; ?>
                 </optgroup>
               <?php endforeach; ?>

@@ -6861,8 +6861,10 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
 
   detectBtn.addEventListener('click', applyBrowserTz);
 
-  // Auto-set on first visit when no timezone has been saved yet (select is on the UTC option).
-  if (tzSelect.value === 'UTC' && browserTz && browserTz !== 'UTC') {
+  // Auto-set when no timezone has been explicitly saved yet. Uses data-tz-saved
+  // rather than the selected value so users who intentionally pick UTC are not
+  // overridden on the next page load.
+  if (tzSelect.dataset.tzSaved !== '1' && browserTz && browserTz !== tzSelect.value) {
     applyBrowserTz();
   }
 }());

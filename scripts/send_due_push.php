@@ -12,8 +12,6 @@ if (is_file(__DIR__ . '/../vendor/autoload.php')) {
 }
 
 try {
-    $now = new DateTimeImmutable('now');
-
     // Get all users who have push subscriptions
     $systemRepo = new MedicationRepository(db());
     $userIds    = $systemRepo->userIdsWithPushSubscriptions();
@@ -32,11 +30,17 @@ try {
         // Primary user (no family profile).
         $repository   = new MedicationRepository(db(), $userId, null);
         $graceMinutes = $repository->getMissedGraceMinutes();
+
+        // Use the per-user timezone so wall-clock schedule comparisons are correct
+        // for users whose saved timezone differs from the server APP_TIMEZONE.
+        $userTzName = $repository->getUserTimezone() ?: date_default_timezone_get();
+        $now        = new DateTimeImmutable('now', new DateTimeZone($userTzName));
+
         $repository->finalizeMissedDoses($now, $graceMinutes);
         $service    = PushNotificationService::fromEnv($repository);
         $totalSent += $service->sendDueReminders($now);
 
-        // Each family profile under this user.
+        // Each family profile under this user (same timezone as the owning account).
         foreach ($familyRepo->profilesForUser($userId) as $profile) {
             $profileRepo = new MedicationRepository(db(), $userId, (int) $profile['id']);
             $profileRepo->finalizeMissedDoses($now, $graceMinutes);
