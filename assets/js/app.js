@@ -3629,7 +3629,7 @@ if (medicationForm) {
     row.className = 'dose-time-row';
     row.innerHTML = `
       <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off">
-      <input type="number" name="dose_qtys[]" min="0.25" step="0.25" placeholder="Qty (default)" class="dose-qty-field">
+      <input type="number" name="dose_qtys[]" min="0.001" step="any" placeholder="Qty (default)" class="dose-qty-field">
       <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
     `;
     const timeInput = row.querySelector('.dose-time-field');
@@ -4475,7 +4475,7 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
           ${buildMedOptions(ungrouped)}
         </select>
         <label class="group-dose-override-label">Dose qty for this group
-          <input type="number" name="quantity_per_dose" min="0.25" step="0.25" placeholder="e.g. 2" class="group-dose-override-input">
+          <input type="number" name="quantity_per_dose" min="0.001" step="any" placeholder="e.g. 2" class="group-dose-override-input">
           <span class="field-optional">(optional)</span>
         </label>
         <button type="submit" class="secondary group-add-btn">Add</button>
