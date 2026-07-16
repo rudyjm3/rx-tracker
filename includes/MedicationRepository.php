@@ -4413,18 +4413,19 @@ final class MedicationRepository
     {
         $statement = $this->db->prepare(
             'UPDATE medications SET
-                current_quantity       = :qty,
-                starting_quantity      = :qty,
+                current_quantity       = :current_qty,
+                starting_quantity      = :starting_qty,
                 inventory_count_method = :method,
                 inventory_as_of        = :as_of
              WHERE id = :id AND user_id = :user_id AND setup_status = \'draft\' ' . $this->profileSql('')
         );
         $statement->execute(array_merge([
-            'id'      => $id,
-            'user_id' => $this->userId,
-            'qty'     => $currentQty,
-            'method'  => $countMethod,
-            'as_of'   => $asOf,
+            'id'          => $id,
+            'user_id'     => $this->userId,
+            'current_qty' => $currentQty,
+            'starting_qty' => $currentQty,
+            'method'      => $countMethod,
+            'as_of'       => $asOf,
         ], $this->profileParam()));
     }
 
