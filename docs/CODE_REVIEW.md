@@ -30,6 +30,28 @@ significant maintainability drag from three god-files (`MedicationRepository.php
 schema-migration methods running on every request, `assets/js/app.js` 6,949 lines, `routes/pages.php`
 2,234 lines).
 
+### Remediation status (this branch)
+
+The security and correctness findings have been fixed on this branch; the large
+architectural refactors are deferred (tracked below).
+
+| # | Finding | Status |
+|---|---------|--------|
+| 1 | Medication-group IDOR | **Fixed** — all group methods scoped to `user_id`/profile; added `groupBelongsToUser`/`medicationBelongsToUser` guards |
+| 2 | `updateMedication` schedule rewrite | **Fixed** — ownership gate added before the schedule rewrite |
+| 3 | API-proxy SSRF via redirects | **Fixed** — `CURLOPT_FOLLOWLOCATION` disabled, restricted to HTTPS |
+| 4 | Rate-limiter IP spoofing | **Fixed** — `X-Forwarded-For` honored only when `TRUST_PROXY` is set |
+| 5 | Missing `medications.user_id` index | **Fixed** — added to `schema.sql`, migration `011`, and runtime `ensure*` |
+| 7 | Google token `nbf`/`iat` | **Fixed** — added not-before / issued-at validation with clock-skew leeway |
+| 8 | Cross-tenant day-scoped reads | **Fixed** — `doseLogMapForDate`/`activePostponesForDate` scoped to the user |
+| 6 | Constructor runs migrations per request | **Deferred** — needs the migration-runner refactor (out of scope for a surgical fix) |
+| 9 | God-files / triple JS escaper | **Deferred** — large refactor |
+| 10 | Interval run-out estimate vs schedule | **Deferred** — low-impact estimate discrepancy |
+| — | Google JWKS not cached | **Deferred** — perf-only; skipped to avoid cache-staleness complexity |
+
+Regression coverage for findings #1 and #2 was added in `tests/OwnershipTest.php`
+(multi-tenant group + schedule-rewrite authorization). All four test scripts pass.
+
 ### Priority remediation list
 
 | # | Severity | Area | Finding |

@@ -257,6 +257,9 @@ ALTER TABLE medications
     ADD CONSTRAINT fk_medications_profile
         FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL;
 
+-- Nearly every query filters medications by user_id (+ profile_id); index the tenant lookup.
+CREATE INDEX IF NOT EXISTS idx_medications_user ON medications (user_id, profile_id, active);
+
 ALTER TABLE medication_groups
     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id,
     ADD INDEX IF NOT EXISTS idx_medication_groups_profile (profile_id),

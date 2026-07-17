@@ -78,7 +78,11 @@ if (!$allowed || $url === '') {
 $ch = curl_init($url);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_FOLLOWLOCATION => true,
+    // Do NOT follow redirects: the allowlist is only checked against the initial
+    // URL, so an upstream 3xx to an internal host (e.g. link-local metadata) would
+    // otherwise be an SSRF. Restrict the scheme to HTTPS as defense in depth.
+    CURLOPT_FOLLOWLOCATION => false,
+    CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
     CURLOPT_TIMEOUT        => 10,
     CURLOPT_USERAGENT      => 'rx-tracker/1.0',
     CURLOPT_SSL_VERIFYPEER => true,
