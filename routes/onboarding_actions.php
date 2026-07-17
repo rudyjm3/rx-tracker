@@ -266,7 +266,10 @@ try {
                 $time .= ':00';
             }
             try {
-                $repository->recordDoseStatus($medId, $today, $time, 'taken', 'Reconciled at setup');
+                // Onboarding only asks whether the dose was taken today, not when,
+                // so record it as taken at its scheduled slot time — otherwise
+                // taken_at defaults to "now" and the calendar flags it as late.
+                $repository->recordDoseStatus($medId, $today, $time, 'taken', 'Reconciled at setup', customTakenAt: $today . ' ' . $time);
                 $logged++;
             } catch (Throwable) {
                 // Non-fatal: if a slot fails just skip it
