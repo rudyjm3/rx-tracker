@@ -50,7 +50,7 @@ try {
             // Back-compat: derive from the legacy checkbox when the new field is absent.
             $feedbackType = $trackDoseFeedback ? 'pain' : 'none';
         }
-        $setId = substr(trim(post_string('set_id')), 0, 64);
+        $setId = mb_substr(trim(post_string('set_id')), 0, 64);
         $groupIdRaw = (int) post_string('group_id');
 
         $medicationType = post_string('medication_type');
@@ -119,7 +119,7 @@ try {
                 $amountChanged = ($oldAmount === null) !== ($doseAmount === null)
                     || ($oldAmount !== null && $doseAmount !== null && abs($oldAmount - $doseAmount) > 0.0001);
                 if ($amountChanged || ($oldUnit !== $newUnit && ($oldAmount !== null || $doseAmount !== null))) {
-                    $doseChangeComment = substr(trim(post_string('dose_change_comment')), 0, 500);
+                    $doseChangeComment = mb_substr(trim(post_string('dose_change_comment')), 0, 500);
                     $repository->recordDoseChange($id, $oldAmount, $oldUnit, $doseAmount, $newUnit, $doseChangeComment);
                 }
             }
@@ -208,8 +208,8 @@ try {
         }
         $newAmountRaw = post_string('dose_amount');
         $newAmount    = ($newAmountRaw !== '' && $newAmountRaw !== null) ? (float) $newAmountRaw : null;
-        $newUnit      = substr(trim(post_string('dose_unit')), 0, 20);
-        $comment      = substr(trim(post_string('comment')), 0, 500);
+        $newUnit      = mb_substr(trim(post_string('dose_unit')), 0, 20);
+        $comment      = mb_substr(trim(post_string('comment')), 0, 500);
         $oldAmountRaw = $existingMed['dose_amount'] ?? null;
         $oldAmount    = ($oldAmountRaw !== null && $oldAmountRaw !== '') ? (float) $oldAmountRaw : null;
         $oldUnit      = (string) ($existingMed['dose_unit'] ?? '');
@@ -247,7 +247,7 @@ try {
             echo json_encode(['ok' => false, 'error' => 'Medication not found.'], JSON_THROW_ON_ERROR);
             exit;
         }
-        $noteText = substr(trim(post_string('note')), 0, 5000);
+        $noteText = mb_substr(trim(post_string('note')), 0, 5000);
         if ($noteText === '') {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => false, 'error' => 'Note cannot be empty.'], JSON_THROW_ON_ERROR);
@@ -262,7 +262,7 @@ try {
     if ($action === 'update_note') {
         $noteId   = (int) post_string('note_id');
         $medId    = (int) post_string('medication_id');
-        $noteText = substr(trim(post_string('note')), 0, 5000);
+        $noteText = mb_substr(trim(post_string('note')), 0, 5000);
         if ($noteText === '') {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => false, 'error' => 'Note cannot be empty.'], JSON_THROW_ON_ERROR);
@@ -425,7 +425,7 @@ try {
         if (!in_array($reason, $allowedReasons, true)) {
             $reason = '';
         }
-        $comment = substr(trim(post_string('comment')), 0, 500);
+        $comment = mb_substr(trim(post_string('comment')), 0, 500);
         $repository->deactivateMedication($medId, $reason, $comment);
         if ($jsonResponse) {
             $inactiveRowHtml = '';
@@ -461,7 +461,7 @@ try {
         if (!in_array($reason, $allowedResumeReasons, true)) {
             $reason = '';
         }
-        $comment = substr(trim(post_string('comment')), 0, 500);
+        $comment = mb_substr(trim(post_string('comment')), 0, 500);
         $repository->activateMedication($medId, $reason, $comment);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
@@ -475,7 +475,7 @@ try {
         $medicationId = (int) post_string('medication_id');
         $refillDate = post_string('refill_date');
         $amount = (int) post_string('amount');
-        $note = substr(trim(post_string('note')), 0, 255);
+        $note = mb_substr(trim(post_string('note')), 0, 255);
         if ($medicationId <= 0) {
             throw new RuntimeException('Invalid medication.');
         }
@@ -503,7 +503,7 @@ try {
     if ($action === 'adjust_quantity') {
         $medicationId = (int) post_string('medication_id');
         $newCountRaw = post_string('new_count');
-        $note = substr(trim(post_string('note')), 0, 255);
+        $note = mb_substr(trim(post_string('note')), 0, 255);
         if ($medicationId <= 0) {
             throw new RuntimeException('Invalid medication.');
         }
@@ -637,7 +637,7 @@ try {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $seDate)) {
             $seDate = date('Y-m-d');
         }
-        $seDesc = substr(trim(post_string('description')), 0, 255);
+        $seDesc = mb_substr(trim(post_string('description')), 0, 255);
         if ($seDesc === '') {
             throw new RuntimeException('Description is required.');
         }
@@ -645,7 +645,7 @@ try {
         if (!in_array($seSeverity, ['mild', 'moderate', 'severe'], true)) {
             $seSeverity = 'mild';
         }
-        $seNote = substr(trim(post_string('note')), 0, 500);
+        $seNote = mb_substr(trim(post_string('note')), 0, 500);
         $seRepo->logSideEffect($medId, $seDate, $seDesc, $seSeverity, $seNote);
         header('Location: index.php?page=medications&notice=' . urlencode('Side effect logged'));
         exit;
@@ -736,7 +736,7 @@ try {
             }
             $moodLevel = max(1, min(10, (int) $rawMood));
         }
-        $note  = substr(trim(post_string('note')), 0, 255);
+        $note  = mb_substr(trim(post_string('note')), 0, 255);
         $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
@@ -756,7 +756,7 @@ try {
         $rawMood = post_string('mood_level');
         $painLevel = $rawPain !== '' ? max(1, min(10, (int) $rawPain)) : null;
         $moodLevel = $rawMood !== '' ? max(1, min(10, (int) $rawMood)) : null;
-        $note = substr(trim(post_string('note')), 0, 255);
+        $note = mb_substr(trim(post_string('note')), 0, 255);
         if ($source === 'dose') {
             $repository->updateDoseLogFeedback($logId, $painLevel, $moodLevel, $note);
         } else {

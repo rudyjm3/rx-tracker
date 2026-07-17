@@ -86,6 +86,14 @@ final class DoctorVisitReport
             static fn(array $m): int => (int) $m['id'],
             (array) ($adherence['per_medication'] ?? [])
         );
+        // Dose-change history per medication, used to label historical rows with
+        // the dose that was in effect at the time rather than the current dose.
+        $doseHistoryIds = array_values(array_unique(array_merge(
+            $adherenceIds ?? [],
+            array_map(static fn(array $r): int => (int) $r['medication_id'], $missedDoses)
+        )));
+        $doseChangesByMed = $this->repository->doseChangesByMedicationIds($doseHistoryIds);
+
         if ($adherenceIds !== []) {
             foreach ($this->repository->statusEventsByMedicationIds($adherenceIds) as $medId => $events) {
                 foreach ($events as $event) {
@@ -105,11 +113,11 @@ final class DoctorVisitReport
         $html .= '<body>';
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
-        $html .= $this->sectionAdherence($adherence, $medications, $includeMood, $discontinuedDates, $startDate, $endDate);
+        $html .= $this->sectionAdherence($adherence, $medications, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
         $html .= $this->sectionMedications($medications, $includeMood);
         $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includeMood);
         $html .= $this->sectionDoseChanges($doseChanges);
-        $html .= $this->sectionMissedDoseDetail($missedDoses);
+        $html .= $this->sectionMissedDoseDetail($missedDoses, $doseChangesByMed);
         $html .= $chartSection($medications, $startDate, $endDate);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
@@ -261,7 +269,8 @@ HTML;
         bool $includeMood,
         array $discontinuedDates = [],
         string $startDate = '',
-        string $endDate = ''
+        string $endDate = '',
+        array $doseChangesByMed = []
     ): string {
         $pct     = (int) ($adherence['overall_pct'] ?? 0);
         $taken   = (int) ($adherence['total_taken'] ?? 0);
@@ -281,7 +290,7 @@ HTML;
             $mColor  = $this->adherenceColor($mp);
             $trackingMed = $medsById[(int) $med['id']] ?? $med;
 
-            $dose     = $this->formattedDose($med);
+            $dose     = $this->effectiveDoseOnDate($med, $endDate !== '' ? $endDate : date('Y-m-d'), $doseChangesByMed[(int) $med['id']] ?? []);
             $doseHtml = $dose !== '—' ? ' &ndash; ' . $this->h($dose) : '';
 
             $discontinuedHtml = '';
@@ -473,7 +482,7 @@ HTML;
     // Section 4: Missed Dose Detail
     // -------------------------------------------------------------------------
 
-    private function sectionMissedDoseDetail(array $rows): string
+    private function sectionMissedDoseDetail(array $rows, array $doseChangesByMed = []): string
     {
         $maxRows   = 25;
         $totalRows = count($rows);
@@ -482,7 +491,7 @@ HTML;
         $tableRows = '';
         foreach ($shown as $row) {
             $date    = $this->h(date('M j, Y', (int) strtotime((string) $row['scheduled_for_date'])));
-            $dose    = $this->formattedDose($row);
+            $dose    = $this->effectiveDoseOnDate($row, (string) $row['scheduled_for_date'], $doseChangesByMed[(int) $row['medication_id']] ?? []);
             $medCell = $this->h((string) $row['name'])
                 . ($dose !== '—' ? ' &ndash; ' . $this->h($dose) : '')
                 . $this->medTypeBadgeHtml($row);
@@ -917,6 +926,33 @@ HTML;
             return 'As needed';
         }
         return implode(', ', array_map([$this, 'to12h'], $times));
+    }
+
+    /**
+     * Dose in effect on a given date, reconstructed by rewinding the
+     * medication's dose-change history (newest first) from its current dose.
+     * Falls back to the freeform dose text when no structured dose exists.
+     *
+     * @param array<int,array<string,mixed>> $changes Dose changes for this medication, newest first
+     */
+    private function effectiveDoseOnDate(array $med, string $onDate, array $changes): string
+    {
+        $amount = $med['dose_amount'] ?? null;
+        $unit   = (string) ($med['dose_unit'] ?? '');
+        foreach ($changes as $c) {
+            $changeDate = date('Y-m-d', (int) strtotime((string) $c['changed_at']));
+            if ($changeDate > $onDate) {
+                $amount = $c['old_dose_amount'];
+                $unit   = (string) ($c['old_dose_unit'] ?? '');
+            } else {
+                break;
+            }
+        }
+        return $this->formattedDose([
+            'dose_amount' => $amount,
+            'dose_unit'   => $unit,
+            'dose'        => $med['dose'] ?? '',
+        ]);
     }
 
     private function formattedDose(array $med): string

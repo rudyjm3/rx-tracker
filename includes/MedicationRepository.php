@@ -269,7 +269,7 @@ final class MedicationRepository
     public function missedAndSkippedForDateRange(string $startDate, string $endDate): array
     {
         $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date, dl.scheduled_time, dl.status,
+            'SELECT dl.medication_id, dl.scheduled_for_date, dl.scheduled_time, dl.status,
                     m.name, m.medication_type, m.dose_amount, m.dose_unit, m.dose
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
@@ -1503,6 +1503,35 @@ final class MedicationRepository
             'dose_amount' => $doseAmount,
             'dose_unit'   => $doseUnit,
         ], $this->profileParam()));
+    }
+
+    /**
+     * All dose changes for the given medications, newest first, keyed by
+     * medication id. Used to reconstruct the dose that was in effect on a
+     * historical date. Callers must pass ids already scoped to the user.
+     *
+     * @param array<int,int> $ids
+     * @return array<int,array<int,array<string,mixed>>>
+     */
+    public function doseChangesByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT dc.medication_id, dc.changed_at, dc.old_dose_amount, dc.old_dose_unit,
+                    dc.new_dose_amount, dc.new_dose_unit
+             FROM medication_dose_changes dc
+             WHERE dc.medication_id IN ({$placeholders})
+             ORDER BY dc.changed_at DESC, dc.id DESC"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $result[(int) $row['medication_id']][] = $row;
+        }
+        return $result;
     }
 
     public function doseChangesForDateRange(string $startDate, string $endDate): array
