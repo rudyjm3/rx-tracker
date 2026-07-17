@@ -1099,11 +1099,13 @@ document.addEventListener('submit', async (e) => {
     return;
   }
 
-  // ── Activate ────────────────────────────────────────────────────────────────
+  // ── Activate (resume) ───────────────────────────────────────────────────────
   if (action === 'activate_medication') {
     e.preventDefault();
     const medId = form.querySelector('input[name="medication_id"]')?.value ?? '';
-    const inactiveRow = form.closest('.medication-row');
+    const reason = form.querySelector('input[name="reason"]:checked')?.value ?? '';
+    const comment = form.querySelector('textarea[name="comment"]')?.value ?? '';
+    const inactiveRow = document.querySelector(`.medication-row[data-inactive-med-id="${CSS.escape(medId)}"]`);
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
 
@@ -1113,6 +1115,8 @@ document.addEventListener('submit', async (e) => {
       params.set('csrf_token', getCsrfToken());
       params.set('json_response', '1');
       params.set('medication_id', medId);
+      params.set('reason', reason);
+      params.set('comment', comment);
 
       const res = await fetch('index.php', {
         method: 'POST',
@@ -1129,6 +1133,9 @@ document.addEventListener('submit', async (e) => {
       if (ni2 === 0) {
         document.querySelector('.inactive-list')?.insertAdjacentHTML('afterbegin', '<div class="empty-state"><p>No inactive medications.</p></div>');
       }
+
+      closeResumeModal();
+      form.reset();
 
       // On the medications page just reload; in the modal reopen on the active tab
       if (!document.querySelector('.medications-page')) {
@@ -1156,6 +1163,8 @@ document.addEventListener('keydown', (event) => {
     closeAdjustQtyModal();
   } else if (discontinueModal?.classList.contains('is-open')) {
     closeDiscontinueModal();
+  } else if (resumeModal?.classList.contains('is-open')) {
+    closeResumeModal();
   } else if (medDetailModal?.classList.contains('is-open')) {
     closeMedDetailModal();
   } else if (medPlanModal && !medPlanModal.hidden) {
@@ -2972,7 +2981,7 @@ const hideAlarmOverlay = () => {
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal,
-   discontinueModal, adjustQtyModal]
+   discontinueModal, resumeModal, adjustQtyModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
@@ -4898,6 +4907,46 @@ document.querySelectorAll('[data-close-discontinue-modal]').forEach((btn) => {
 
 discontinueModal?.addEventListener('click', (event) => {
   if (event.target === discontinueModal) closeDiscontinueModal();
+});
+
+// ── Resume Use modal ──────────────────────────────────────────────────────────
+
+const resumeModal = document.querySelector('[data-resume-modal]');
+const resumeMedNameEl = document.querySelector('[data-resume-med-name]');
+const resumeMedicationIdEl = document.querySelector('[data-resume-medication-id]');
+const resumeForm = document.querySelector('[data-resume-form]');
+
+const openResumeModal = (medicationId, medicationName) => {
+  if (!resumeModal) return;
+  if (resumeForm) resumeForm.reset();
+  if (resumeMedNameEl) resumeMedNameEl.textContent = medicationName;
+  if (resumeMedicationIdEl) resumeMedicationIdEl.value = medicationId;
+  closeMedPlanModal();
+  resumeModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeResumeModal = () => {
+  if (!resumeModal) return;
+  if (!resumeModal.classList.contains('is-open')) return;
+  resumeModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.addEventListener('click', (event) => {
+  const trigger = event.target.closest('[data-open-resume-modal]');
+  if (!trigger) return;
+  const { medicationId = '', medicationName = '' } = trigger.dataset;
+  if (!medicationId) return;
+  openResumeModal(medicationId, medicationName);
+});
+
+document.querySelectorAll('[data-close-resume-modal]').forEach((btn) => {
+  btn.addEventListener('click', closeResumeModal);
+});
+
+resumeModal?.addEventListener('click', (event) => {
+  if (event.target === resumeModal) closeResumeModal();
 });
 
 // ── Mood chart color scheme toggle (saved to account) ────────────────────────

@@ -196,11 +196,11 @@ function render_inactive_medication_row(array $medication): string
         foreach ($events as $event) {
             $isDiscontinued = (string) $event['event'] === 'discontinued';
             $entry = ($isDiscontinued ? 'Discontinued ' : 'Resumed ') . $formatEventDate((string) $event['event_at']);
-            if ($isDiscontinued && (string) $event['reason'] !== '') {
+            if ((string) $event['reason'] !== '') {
                 $entry .= ' (' . (string) $event['reason'] . ')';
             }
             $html .= '<li>' . e($entry);
-            if ($isDiscontinued && (string) $event['comment'] !== '') {
+            if ((string) $event['comment'] !== '') {
                 $html .= '<br><span class="inactive-history-comment">' . e((string) $event['comment']) . '</span>';
             }
             $html .= '</li>';
@@ -209,12 +209,7 @@ function render_inactive_medication_row(array $medication): string
     }
     $html .= '</div>';
     $html .= '<div class="row-actions">';
-    $html .= '<form method="post" action="index.php">';
-    $html .= csrf_field();
-    $html .= '<input type="hidden" name="action" value="activate_medication">';
-    $html .= '<input type="hidden" name="medication_id" value="' . e((string) $medication['id']) . '">';
-    $html .= '<button type="submit">Activate</button>';
-    $html .= '</form>';
+    $html .= '<button type="button" data-open-resume-modal data-medication-id="' . e((string) $medication['id']) . '" data-medication-name="' . e((string) $medication['name']) . '">Activate</button>';
     $html .= '</div>';
     $html .= '</div>';
 

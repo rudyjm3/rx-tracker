@@ -1432,7 +1432,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <li><strong>Inventory</strong> (optional) &mdash; starting quantity, quantity per dose, and a low-supply alert threshold. The supply bar turns yellow below 50% and red below 25%.</li>
       <li><strong>Track dose feedback</strong> (optional) &mdash; choose <em>Pain level</em>, <em>Mood level</em>, or <em>Both</em> to prompt for a 1&ndash;10 rating and optional note after each dose.</li>
     </ul>
-    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>discontinue</strong>: click <em>Discontinue Use</em> on the card and choose a reason &mdash; <em>End of regimen</em>, <em>Side effects (moderate to severe)</em>, <em>Doctor&rsquo;s orders</em>, or <em>Other</em> (with a required comment) &mdash; plus an optional comment. The medication moves to the <em>Inactive</em> tab; reactivate it from there.</p>
+    <p>To <strong>edit</strong> a medication: Medications page &rarr; click the edit icon on the card. To <strong>discontinue</strong>: click <em>Discontinue Use</em> on the card and choose a reason &mdash; <em>End of regimen</em>, <em>Side effects (moderate to severe)</em>, <em>Doctor&rsquo;s orders</em>, or <em>Other</em> (with a required comment) &mdash; plus an optional comment. The medication moves to the <em>Inactive</em> tab. To <strong>resume</strong> a discontinued medication: click <em>Activate</em> on its card in the Inactive tab and choose a reason &mdash; <em>Doctor&rsquo;s orders</em>, <em>Symptoms returned</em>, <em>Retrying after side effects subsided</em>, <em>Restarting regimen</em>, or <em>Other</em> &mdash; plus an optional comment. Both are saved to the medication&rsquo;s stop / resume history.</p>
     <p>To review past changes to a medication&rsquo;s dose or schedule, open its detail view and expand the <strong>Dose Change History</strong> section.</p>
 
     <h3 id="help-doses">Marking Doses</h3>
@@ -1864,6 +1864,57 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <div class="refill-form-actions modal-footer">
         <button type="submit" class="danger">Discontinue Use</button>
         <button type="button" class="secondary" data-close-discontinue-modal>Cancel</button>
+      </div>
+    </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" data-resume-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="resume-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="resume-modal-title">Resume Use</h2>
+        <p class="refill-modal-subtitle"><strong data-resume-med-name></strong></p>
+      </div>
+      <button type="button" class="modal-close-btn" data-close-resume-modal aria-label="Close resume modal">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="modal-scroll">
+    <form class="stacked-form" method="post" action="index.php" data-resume-form>
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="activate_medication">
+      <input type="hidden" name="medication_id" data-resume-medication-id value="">
+      <fieldset class="form-section discontinue-reasons">
+        <legend>Why are you resuming this medication?</legend>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Doctor's orders" required>
+          Doctor's orders
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Symptoms returned">
+          Symptoms returned
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Retrying after side effects subsided">
+          Retrying after side effects subsided
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Restarting regimen">
+          Restarting regimen
+        </label>
+        <label class="discontinue-reason-option">
+          <input type="radio" name="reason" value="Other">
+          Other
+        </label>
+      </fieldset>
+      <label>Comment <span class="field-optional">(optional)</span>
+        <textarea name="comment" rows="3" maxlength="500" placeholder="Add more detail about why you're restarting this medication"></textarea>
+      </label>
+      <div class="refill-form-actions modal-footer">
+        <button type="submit">Resume Use</button>
+        <button type="button" class="secondary" data-close-resume-modal>Cancel</button>
       </div>
     </form>
     </div>

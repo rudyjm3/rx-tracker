@@ -149,14 +149,14 @@ final class MedicationRepository
     public function adherenceForDateRange(string $startDate, string $endDate): array
     {
         $statement = $this->db->prepare(
-            'SELECT dl.medication_id, m.name, m.medication_type, dl.status, COUNT(*) AS n
+            'SELECT dl.medication_id, m.name, m.medication_type, m.dose_amount, m.dose_unit, m.dose, m.active, dl.status, COUNT(*) AS n
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE m.user_id = :user_id
                ' . $this->profileSql('m') . '
                AND m.as_needed = 0
                AND dl.scheduled_for_date BETWEEN :start_date AND :end_date
-             GROUP BY dl.medication_id, m.name, m.medication_type, dl.status'
+             GROUP BY dl.medication_id, m.name, m.medication_type, m.dose_amount, m.dose_unit, m.dose, m.active, dl.status'
         );
         $statement->execute(array_merge(
             ['user_id' => $this->userId, 'start_date' => $startDate, 'end_date' => $endDate],
@@ -168,7 +168,17 @@ final class MedicationRepository
         foreach ($rows as $row) {
             $id = (int) $row['medication_id'];
             if (!isset($perMed[$id])) {
-                $perMed[$id] = ['name' => $row['name'], 'medication_type' => $row['medication_type'] ?? 'prescription', 'taken' => 0, 'missed' => 0, 'skipped' => 0];
+                $perMed[$id] = [
+                    'name'            => $row['name'],
+                    'medication_type' => $row['medication_type'] ?? 'prescription',
+                    'dose_amount'     => $row['dose_amount'] ?? null,
+                    'dose_unit'       => $row['dose_unit'] ?? '',
+                    'dose'            => $row['dose'] ?? '',
+                    'active'          => (int) ($row['active'] ?? 1),
+                    'taken'           => 0,
+                    'missed'          => 0,
+                    'skipped'         => 0,
+                ];
             }
             $perMed[$id][(string) $row['status']] += (int) $row['n'];
         }
@@ -188,6 +198,10 @@ final class MedicationRepository
                 'id'              => $id,
                 'name'            => $data['name'],
                 'medication_type' => $data['medication_type'] ?? 'prescription',
+                'dose_amount'     => $data['dose_amount'],
+                'dose_unit'       => $data['dose_unit'],
+                'dose'            => $data['dose'],
+                'active'          => $data['active'],
                 'taken'           => $data['taken'],
                 'missed'          => $data['missed'],
                 'skipped'         => $data['skipped'],
@@ -255,8 +269,8 @@ final class MedicationRepository
     public function missedAndSkippedForDateRange(string $startDate, string $endDate): array
     {
         $statement = $this->db->prepare(
-            'SELECT dl.scheduled_for_date, dl.scheduled_time, dl.status,
-                    m.name, m.medication_type
+            'SELECT dl.medication_id, dl.scheduled_for_date, dl.scheduled_time, dl.status,
+                    m.name, m.medication_type, m.dose_amount, m.dose_unit, m.dose
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE m.user_id = :user_id
@@ -1372,12 +1386,12 @@ final class MedicationRepository
         }
     }
 
-    public function activateMedication(int $medicationId): void
+    public function activateMedication(int $medicationId, string $reason = '', string $comment = ''): void
     {
         $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         if ($statement->rowCount() > 0) {
-            $this->recordStatusEvent($medicationId, 'resumed');
+            $this->recordStatusEvent($medicationId, 'resumed', $reason, $comment);
         }
     }
 
@@ -1489,6 +1503,35 @@ final class MedicationRepository
             'dose_amount' => $doseAmount,
             'dose_unit'   => $doseUnit,
         ], $this->profileParam()));
+    }
+
+    /**
+     * All dose changes for the given medications, newest first, keyed by
+     * medication id. Used to reconstruct the dose that was in effect on a
+     * historical date. Callers must pass ids already scoped to the user.
+     *
+     * @param array<int,int> $ids
+     * @return array<int,array<int,array<string,mixed>>>
+     */
+    public function doseChangesByMedicationIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $statement = $this->db->prepare(
+            "SELECT dc.medication_id, dc.changed_at, dc.old_dose_amount, dc.old_dose_unit,
+                    dc.new_dose_amount, dc.new_dose_unit
+             FROM medication_dose_changes dc
+             WHERE dc.medication_id IN ({$placeholders})
+             ORDER BY dc.changed_at DESC, dc.id DESC"
+        );
+        $statement->execute(array_values($ids));
+        $result = [];
+        foreach ($statement->fetchAll() as $row) {
+            $result[(int) $row['medication_id']][] = $row;
+        }
+        return $result;
     }
 
     public function doseChangesForDateRange(string $startDate, string $endDate): array
