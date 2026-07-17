@@ -456,7 +456,13 @@ try {
 
     if ($action === 'activate_medication') {
         $medId = (int) post_string('medication_id');
-        $repository->activateMedication($medId);
+        $reason = post_string('reason');
+        $allowedResumeReasons = ["Doctor's orders", 'Symptoms returned', 'Retrying after side effects subsided', 'Restarting regimen', 'Other'];
+        if (!in_array($reason, $allowedResumeReasons, true)) {
+            $reason = '';
+        }
+        $comment = substr(trim(post_string('comment')), 0, 500);
+        $repository->activateMedication($medId, $reason, $comment);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true, 'medication_id' => $medId], JSON_THROW_ON_ERROR);

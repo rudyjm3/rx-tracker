@@ -1386,12 +1386,12 @@ final class MedicationRepository
         }
     }
 
-    public function activateMedication(int $medicationId): void
+    public function activateMedication(int $medicationId, string $reason = '', string $comment = ''): void
     {
         $statement = $this->db->prepare('UPDATE medications SET active = 1 WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         if ($statement->rowCount() > 0) {
-            $this->recordStatusEvent($medicationId, 'resumed');
+            $this->recordStatusEvent($medicationId, 'resumed', $reason, $comment);
         }
     }
 
