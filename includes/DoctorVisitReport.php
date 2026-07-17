@@ -77,10 +77,27 @@ final class DoctorVisitReport
         $sideEffects  = $this->sideEffectRepo->sideEffectsForDateRange($startDate, $endDate);
         $doseChanges  = $this->repository->doseChangesForDateRange($startDate, $endDate);
 
+        // Most recent in-range discontinuation per adherence medication. Sourced
+        // from status events for every med in the adherence data (not just
+        // currently inactive meds), so meds resumed since — or re-discontinued
+        // after the period — still get their in-period annotation.
         $discontinuedDates = [];
-        foreach ($inactiveMeds as $im) {
-            if (!empty($im['last_discontinued']['event_at'])) {
-                $discontinuedDates[(int) $im['id']] = (string) $im['last_discontinued']['event_at'];
+        $adherenceIds = array_map(
+            static fn(array $m): int => (int) $m['id'],
+            (array) ($adherence['per_medication'] ?? [])
+        );
+        if ($adherenceIds !== []) {
+            foreach ($this->repository->statusEventsByMedicationIds($adherenceIds) as $medId => $events) {
+                foreach ($events as $event) {
+                    if ((string) $event['event'] !== 'discontinued') {
+                        continue;
+                    }
+                    $eventDate = date('Y-m-d', (int) strtotime((string) $event['event_at']));
+                    if ($eventDate >= $startDate && $eventDate <= $endDate) {
+                        $discontinuedDates[(int) $medId] = (string) $event['event_at'];
+                        break;
+                    }
+                }
             }
         }
 
