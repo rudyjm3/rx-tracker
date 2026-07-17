@@ -3799,18 +3799,20 @@ final class MedicationRepository
     private function ensureMedicationUserIndex(): void
     {
         // Nearly every query filters medications by user_id (+ profile_id). The base
-        // schema only indexes (active, name), so add a covering tenant index.
+        // schema only indexes (active, name), and migration 002 created a single-column
+        // idx_medications_user (user_id), so use a NEW name for the composite index —
+        // reusing the old name would leave the intended index uninstalled on upgrades.
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         try {
             if ($driver === 'mysql') {
-                $check = $this->db->query("SHOW INDEX FROM medications WHERE Key_name = 'idx_medications_user'");
+                $check = $this->db->query("SHOW INDEX FROM medications WHERE Key_name = 'idx_medications_tenant'");
                 if ($check !== false && $check->fetchColumn() === false) {
-                    $this->db->exec('CREATE INDEX idx_medications_user ON medications (user_id, profile_id, active)');
+                    $this->db->exec('CREATE INDEX idx_medications_tenant ON medications (user_id, profile_id, active)');
                 }
                 return;
             }
             if ($driver === 'sqlite') {
-                $this->db->exec('CREATE INDEX IF NOT EXISTS idx_medications_user ON medications (user_id, profile_id, active)');
+                $this->db->exec('CREATE INDEX IF NOT EXISTS idx_medications_tenant ON medications (user_id, profile_id, active)');
             }
         } catch (Throwable) {
             // Non-fatal: the index is a performance optimization only.
