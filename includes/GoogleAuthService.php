@@ -163,8 +163,18 @@ final class GoogleAuthService
         if ((string) ($payload['aud'] ?? '') !== $this->clientId) {
             throw new RuntimeException('Invalid Google token audience.');
         }
-        if ((int) ($payload['exp'] ?? 0) < time()) {
+        $now = time();
+        if ((int) ($payload['exp'] ?? 0) < $now) {
             throw new RuntimeException('Your Google sign-in expired. Please try again.');
+        }
+        // Reject tokens that are not yet valid / issued in the future (small clock
+        // skew leeway), so a token minted for later use can't be replayed early.
+        $leeway = 60;
+        if (isset($payload['nbf']) && (int) $payload['nbf'] > $now + $leeway) {
+            throw new RuntimeException('Google token is not yet valid.');
+        }
+        if (isset($payload['iat']) && (int) $payload['iat'] > $now + $leeway) {
+            throw new RuntimeException('Invalid Google token issue time.');
         }
         return $payload;
     }

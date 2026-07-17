@@ -33,6 +33,7 @@ final class MedicationRepository
         $this->ensureInventoryColumns();
         $this->ensureScheduleTimeDoseColumn();
         $this->ensureSortOrderColumns();
+        $this->ensureMedicationUserIndex();
         $this->ensureUserNotificationsTable();
         $this->ensureFamilyProfilesTable();
         $this->ensureStartDateColumn();
@@ -905,6 +906,13 @@ final class MedicationRepository
         // so the two columns never disagree.
         $effectiveFeedbackType = $feedbackType !== 'none' ? $feedbackType : ($trackDoseFeedback ? 'pain' : 'none');
         $trackDoseFeedbackFlag = $effectiveFeedbackType !== 'none' ? 1 : 0;
+
+        // Ownership gate: the medications UPDATE below is scoped by user_id, but
+        // replaceScheduleTimes() keys only on medication_id. Without this guard a
+        // non-owner could wipe/rewrite another user's schedule times.
+        if (!$this->medicationBelongsToUser($id)) {
+            throw new RuntimeException('Medication not found.');
+        }
 
         $this->db->beginTransaction();
         try {
@@ -2331,8 +2339,13 @@ final class MedicationRepository
 
     private function doseLogMapForDate(string $date): array
     {
-        $statement = $this->db->prepare('SELECT medication_id, scheduled_time, status, note, pain_level, taken_at FROM dose_logs WHERE scheduled_for_date = :date');
-        $statement->execute(['date' => $date]);
+        $statement = $this->db->prepare(
+            'SELECT dl.medication_id, dl.scheduled_time, dl.status, dl.note, dl.pain_level, dl.taken_at
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.scheduled_for_date = :date AND m.user_id = :user_id ' . $this->profileSql('m')
+        );
+        $statement->execute(array_merge(['date' => $date, 'user_id' => $this->userId], $this->profileParam()));
         $map = [];
         foreach ($statement->fetchAll() as $row) {
             $map[(int) $row['medication_id'] . '|' . substr((string) $row['scheduled_time'], 0, 5)] = [
@@ -2349,12 +2362,14 @@ final class MedicationRepository
     private function activePostponesForDate(string $date): array
     {
         $statement = $this->db->prepare(
-            'SELECT medication_id, scheduled_time, postponed_until
-             FROM dose_postpones
-             WHERE scheduled_for_date = :date
-               AND resolved_at IS NULL'
+            'SELECT dp.medication_id, dp.scheduled_time, dp.postponed_until
+             FROM dose_postpones dp
+             INNER JOIN medications m ON m.id = dp.medication_id
+             WHERE dp.scheduled_for_date = :date
+               AND dp.resolved_at IS NULL
+               AND m.user_id = :user_id ' . $this->profileSql('m')
         );
-        $statement->execute(['date' => $date]);
+        $statement->execute(array_merge(['date' => $date, 'user_id' => $this->userId], $this->profileParam()));
         $map = [];
         foreach ($statement->fetchAll() as $row) {
             $key = (int) $row['medication_id'] . '|' . substr((string) $row['scheduled_time'], 0, 5);
@@ -2597,9 +2612,9 @@ final class MedicationRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE id = :id LIMIT 1'
+                'SELECT id, name, scheduled_time, active FROM medication_groups WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' LIMIT 1'
             );
-            $statement->execute(['id' => $id]);
+            $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
             $row = $statement->fetch();
         } catch (Throwable) {
             return null;
@@ -2648,19 +2663,23 @@ final class MedicationRepository
     public function updateGroup(int $id, string $name, string $scheduledTime): void
     {
         $statement = $this->db->prepare(
-            'UPDATE medication_groups SET name = :name, scheduled_time = :scheduled_time WHERE id = :id'
+            'UPDATE medication_groups SET name = :name, scheduled_time = :scheduled_time WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
         );
-        $statement->execute(['id' => $id, 'name' => $name, 'scheduled_time' => $scheduledTime]);
+        $statement->execute(array_merge(['id' => $id, 'name' => $name, 'scheduled_time' => $scheduledTime, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function deleteGroup(int $id): void
     {
-        $statement = $this->db->prepare('DELETE FROM medication_groups WHERE id = :id');
-        $statement->execute(['id' => $id]);
+        $statement = $this->db->prepare('DELETE FROM medication_groups WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+        $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
     }
 
     public function addMedicationToGroup(int $groupId, int $medicationId, ?float $quantityPerDose = null): void
     {
+        // Ownership gate: never link a group or medication the caller does not own.
+        if (!$this->groupBelongsToUser($groupId) || !$this->medicationBelongsToUser($medicationId)) {
+            return;
+        }
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
             ? 'INSERT OR IGNORE INTO medication_group_members (group_id, medication_id, quantity_per_dose)
@@ -2673,6 +2692,10 @@ final class MedicationRepository
 
     public function removeMedicationFromGroup(int $medicationId, ?int $groupId = null): void
     {
+        // Ownership gate: only touch memberships for a medication the caller owns.
+        if (!$this->medicationBelongsToUser($medicationId)) {
+            return;
+        }
         if ($groupId !== null) {
             $statement = $this->db->prepare(
                 'DELETE FROM medication_group_members WHERE medication_id = :medication_id AND group_id = :group_id'
@@ -2693,10 +2716,10 @@ final class MedicationRepository
                 'SELECT g.id, g.name, g.scheduled_time
                  FROM medication_groups g
                  INNER JOIN medication_group_members mgm ON mgm.group_id = g.id
-                 WHERE mgm.medication_id = :medication_id
+                 WHERE mgm.medication_id = :medication_id AND g.user_id = :user_id ' . $this->profileSql('g') . '
                  LIMIT 1'
             );
-            $statement->execute(['medication_id' => $medicationId]);
+            $statement->execute(array_merge(['medication_id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
             $row = $statement->fetch();
         } catch (Throwable) {
             return null;
@@ -2745,15 +2768,35 @@ final class MedicationRepository
                         mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
-                 WHERE mgm.group_id = :group_id AND m.active = 1
+                 WHERE mgm.group_id = :group_id AND m.active = 1 AND m.user_id = :user_id
                  ORDER BY mgm.sort_order ASC, m.name ASC'
             );
-            $statement->execute(['group_id' => $groupId]);
+            $statement->execute(['group_id' => $groupId, 'user_id' => $this->userId]);
 
             return $statement->fetchAll();
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /** Ownership check: does this group belong to the active user (and profile)? */
+    private function groupBelongsToUser(int $groupId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT 1 FROM medication_groups WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' LIMIT 1'
+        );
+        $stmt->execute(array_merge(['id' => $groupId, 'user_id' => $this->userId], $this->profileParam()));
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /** Ownership check: does this medication belong to the active user (and profile)? */
+    private function medicationBelongsToUser(int $medicationId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT 1 FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' LIMIT 1'
+        );
+        $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
+        return $stmt->fetchColumn() !== false;
     }
 
     private function allGroupMembersByGroupId(): array
@@ -2843,6 +2886,7 @@ final class MedicationRepository
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS medication_groups (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL DEFAULT 0,
                         name TEXT NOT NULL,
                         scheduled_time TEXT NOT NULL,
                         active INTEGER NOT NULL DEFAULT 1,
@@ -3749,6 +3793,29 @@ final class MedicationRepository
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureMedicationUserIndex(): void
+    {
+        // Nearly every query filters medications by user_id (+ profile_id). The base
+        // schema only indexes (active, name), and migration 002 created a single-column
+        // idx_medications_user (user_id), so use a NEW name for the composite index —
+        // reusing the old name would leave the intended index uninstalled on upgrades.
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW INDEX FROM medications WHERE Key_name = 'idx_medications_tenant'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('CREATE INDEX idx_medications_tenant ON medications (user_id, profile_id, active)');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $this->db->exec('CREATE INDEX IF NOT EXISTS idx_medications_tenant ON medications (user_id, profile_id, active)');
+            }
+        } catch (Throwable) {
+            // Non-fatal: the index is a performance optimization only.
         }
     }
 

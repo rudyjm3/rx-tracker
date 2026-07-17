@@ -43,7 +43,17 @@ DB_PASSWORD=
 PUSH_VAPID_PUBLIC_KEY=
 PUSH_VAPID_PRIVATE_KEY=
 PUSH_VAPID_SUBJECT=mailto:you@example.com
+# Set to 1 only when deployed behind a trusted reverse proxy (see note below).
+TRUST_PROXY=0
 ```
+
+> **Reverse-proxy deployments:** the login rate limiter identifies clients by
+> `REMOTE_ADDR` unless `TRUST_PROXY=1`, in which case it reads the client IP from
+> `X-Forwarded-For`. If you run behind a proxy (nginx, Cloudflare, a load
+> balancer) and leave `TRUST_PROXY` unset, every request looks like it comes from
+> the proxy, so a handful of failed logins can lock out all users behind it. Set
+> `TRUST_PROXY=1` in that setup — but only when the proxy is one you control and
+> it strips/sets `X-Forwarded-For`, otherwise the header can be spoofed.
 
 Install PHP dependencies:
 

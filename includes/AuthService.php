@@ -360,12 +360,16 @@ final class AuthService
 
     private function clientIp(): string
     {
-        // X-Forwarded-For is caller-controlled and can be spoofed; this is an
-        // acceptable trade-off for a basic rate limiter. Use REMOTE_ADDR only
-        // if deploying without a trusted reverse proxy.
-        $forwarded = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
-        if ($forwarded !== '') {
-            return trim(explode(',', $forwarded)[0]);
+        // X-Forwarded-For is caller-controlled and trivially spoofed, which would
+        // let an attacker sidestep the IP-based rate limit. Only honor it when the
+        // deployment explicitly declares it sits behind a trusted reverse proxy
+        // (TRUST_PROXY=1); otherwise use the direct peer address.
+        $trustProxy = in_array(strtolower((string) getenv('TRUST_PROXY')), ['1', 'true', 'yes'], true);
+        if ($trustProxy) {
+            $forwarded = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+            if ($forwarded !== '') {
+                return trim(explode(',', $forwarded)[0]);
+            }
         }
         return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
     }
