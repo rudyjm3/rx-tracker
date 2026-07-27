@@ -748,9 +748,20 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <button type="button" class="pain-log-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
-          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
-            <textarea name="note" data-pain-log-note rows="2" maxlength="255" placeholder="Any notes about this pain level&hellip;"></textarea>
-          </label>
+          <div class="log-datetime-row">
+            <label class="stacked-label">Date
+              <input type="date" data-pain-log-date>
+            </label>
+            <label class="stacked-label">Time
+              <input type="time" data-pain-log-time>
+            </label>
+          </div>
+          <button type="button" class="add-note-link" data-pain-log-comment-toggle>+ Add Comment</button>
+          <div data-pain-log-comment-wrap hidden>
+            <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+              <textarea name="note" data-pain-log-note rows="2" maxlength="255" placeholder="Any notes about this pain level&hellip;"></textarea>
+            </label>
+          </div>
           <p class="pain-log-error" data-pain-log-error role="alert" hidden></p>
           <div class="feedback-actions">
             <button type="submit" class="button primary small">Save log</button>
@@ -844,9 +855,33 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <button type="button" class="mood-log-level-btn" data-mood-level="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
-          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
-            <textarea name="note" data-mood-log-note rows="2" maxlength="255" placeholder="How are you feeling&hellip;"></textarea>
-          </label>
+          <div class="log-datetime-row">
+            <label class="stacked-label">Date
+              <input type="date" data-mood-log-date>
+            </label>
+            <label class="stacked-label">Time
+              <input type="time" data-mood-log-time>
+            </label>
+          </div>
+          <div class="mood-tag-section">
+            <p class="feedback-pain-label">Tags <span class="feedback-pain-hint">(optional)</span></p>
+            <div class="mood-tag-list" data-mood-tag-list role="group" aria-label="Select mood tags">
+              <?php foreach (['Annoyed', 'Anxious', 'Bored', 'Calm', 'Excited', 'Grateful', 'Happy', 'In Love', 'Indifferent', 'Lonely', 'Productive', 'Sad', 'Stressed', 'Tired'] as $tagOption): ?>
+              <button type="button" class="mood-tag-chip" data-mood-tag="<?= e($tagOption) ?>"><?= e($tagOption) ?></button>
+              <?php endforeach; ?>
+              <button type="button" class="mood-tag-chip mood-tag-chip--add" data-mood-tag-add-toggle>+ Tags</button>
+            </div>
+            <div class="mood-tag-custom-input" data-mood-tag-custom-wrap hidden>
+              <input type="text" data-mood-tag-custom-input maxlength="30" placeholder="Add a custom tag and press Enter">
+            </div>
+            <input type="hidden" name="tags" data-mood-log-tags value="">
+          </div>
+          <button type="button" class="add-note-link" data-mood-log-comment-toggle>+ Add Comment</button>
+          <div data-mood-log-comment-wrap hidden>
+            <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+              <textarea name="note" data-mood-log-note rows="2" maxlength="255" placeholder="How are you feeling&hellip;"></textarea>
+            </label>
+          </div>
           <p class="mood-log-error" data-mood-log-error role="alert" hidden></p>
           <div class="feedback-actions">
             <button type="submit" class="button primary small">Save log</button>
@@ -1634,12 +1669,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <span class="quick-action-label">Add medication</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
-        <a href="index.php?page=pain-tracking" class="quick-action-row">
+        <a href="index.php?page=pain-tracking&open=log" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--log"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span>
           <span class="quick-action-label">Pain tracking</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
-        <a href="index.php?page=mood-wellbeing" class="quick-action-row">
+        <a href="index.php?page=mood-wellbeing&open=log" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--mood"><i class="fa-solid fa-face-smile" aria-hidden="true"></i></span>
           <span class="quick-action-label">Mood &amp; Wellbeing</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>

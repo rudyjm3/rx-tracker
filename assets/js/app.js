@@ -566,6 +566,16 @@ const localDateStr = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+const localTimeStr = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const combineDateTime = (dateVal, timeVal) => {
+  if (!dateVal || !timeVal) return '';
+  return `${dateVal} ${timeVal}:00`;
+};
+
 const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType = 'none' }) => {
   if (!logPastDoseModal) return;
 
@@ -1889,6 +1899,10 @@ if (painPageBody) {
   const painLogLevelInput = document.querySelector('[data-pain-log-level]');
   const painLogNoteInput  = document.querySelector('[data-pain-log-note]');
   const painLogError      = document.querySelector('[data-pain-log-error]');
+  const painLogDateInput  = document.querySelector('[data-pain-log-date]');
+  const painLogTimeInput  = document.querySelector('[data-pain-log-time]');
+  const painLogCommentToggle = document.querySelector('[data-pain-log-comment-toggle]');
+  const painLogCommentWrap   = document.querySelector('[data-pain-log-comment-wrap]');
 
   // History elements
   const painHistoryPanel        = document.querySelector('[data-pain-history-panel]');
@@ -1911,7 +1925,19 @@ if (painPageBody) {
     if (painLogNoteInput)  painLogNoteInput.value  = '';
     if (painLogError)     { painLogError.hidden = true; painLogError.textContent = ''; }
     document.querySelectorAll('.pain-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    const now = new Date();
+    if (painLogDateInput) { painLogDateInput.value = localDateStr(now); painLogDateInput.max = localDateStr(now); }
+    if (painLogTimeInput) painLogTimeInput.value = localTimeStr(now);
+    if (painLogCommentWrap)   painLogCommentWrap.hidden = true;
+    if (painLogCommentToggle) painLogCommentToggle.hidden = false;
   };
+
+  painLogCommentToggle?.addEventListener('click', () => {
+    if (!painLogCommentWrap) return;
+    painLogCommentWrap.hidden = false;
+    painLogCommentToggle.hidden = true;
+    painLogNoteInput?.focus();
+  });
 
   document.querySelectorAll('.pain-log-level-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1943,9 +1969,10 @@ if (painPageBody) {
       return;
     }
     const note = (painLogNoteInput?.value ?? '').trim();
+    const loggedAt = combineDateTime(painLogDateInput?.value, painLogTimeInput?.value);
     const submitBtn = painLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note });
+    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note, loggedAt });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (painLogError) { painLogError.textContent = result.error ?? 'Could not save log. Please try again.'; painLogError.hidden = false; }
@@ -2212,6 +2239,11 @@ if (painPageBody) {
   });
 
   document.querySelector('[data-select-medication]')?.click();
+
+  if (new URLSearchParams(window.location.search).get('open') === 'log') {
+    painLogToggle?.click();
+    history.replaceState(null, '', 'index.php?page=pain-tracking');
+  }
 }
 
 // Mood & Wellbeing dedicated page
@@ -2270,6 +2302,15 @@ if (moodPageBody) {
   const moodLogLevelInput = document.querySelector('[data-mood-log-level]');
   const moodLogNoteInput  = document.querySelector('[data-mood-log-note]');
   const moodLogError      = document.querySelector('[data-mood-log-error]');
+  const moodLogDateInput  = document.querySelector('[data-mood-log-date]');
+  const moodLogTimeInput  = document.querySelector('[data-mood-log-time]');
+  const moodLogCommentToggle = document.querySelector('[data-mood-log-comment-toggle]');
+  const moodLogCommentWrap   = document.querySelector('[data-mood-log-comment-wrap]');
+  const moodTagList         = document.querySelector('[data-mood-tag-list]');
+  const moodTagAddToggle    = document.querySelector('[data-mood-tag-add-toggle]');
+  const moodTagCustomWrap   = document.querySelector('[data-mood-tag-custom-wrap]');
+  const moodTagCustomInput  = document.querySelector('[data-mood-tag-custom-input]');
+  const moodLogTagsInput    = document.querySelector('[data-mood-log-tags]');
 
   // History elements
   const moodHistoryPanel        = document.querySelector('[data-mood-history-panel]');
@@ -2287,11 +2328,46 @@ if (moodPageBody) {
     moodHistoryViewMoreBtns.forEach((btn) => { btn.textContent = label; });
   };
 
+  const syncMoodTagsInput = () => {
+    if (!moodLogTagsInput || !moodTagList) return;
+    const selected = Array.from(moodTagList.querySelectorAll('.mood-tag-chip.is-selected'))
+      .map((chip) => chip.dataset.moodTag ?? '')
+      .filter(Boolean);
+    moodLogTagsInput.value = selected.join(',');
+  };
+
+  const addCustomMoodTag = (text) => {
+    const value = text.trim();
+    if (!value || !moodTagList || !moodTagAddToggle) return;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'mood-tag-chip mood-tag-chip--custom is-selected';
+    chip.dataset.moodTag = value;
+    chip.textContent = value;
+    chip.addEventListener('click', () => {
+      chip.classList.remove('is-selected');
+      chip.remove();
+      syncMoodTagsInput();
+    });
+    moodTagList.insertBefore(chip, moodTagAddToggle);
+    syncMoodTagsInput();
+  };
+
   const resetMoodLogForm = () => {
     if (moodLogLevelInput) moodLogLevelInput.value = '';
     if (moodLogNoteInput)  moodLogNoteInput.value  = '';
     if (moodLogError)     { moodLogError.hidden = true; moodLogError.textContent = ''; }
     document.querySelectorAll('.mood-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    const now = new Date();
+    if (moodLogDateInput) { moodLogDateInput.value = localDateStr(now); moodLogDateInput.max = localDateStr(now); }
+    if (moodLogTimeInput) moodLogTimeInput.value = localTimeStr(now);
+    if (moodLogCommentWrap)   moodLogCommentWrap.hidden = true;
+    if (moodLogCommentToggle) moodLogCommentToggle.hidden = false;
+    moodTagList?.querySelectorAll('.mood-tag-chip--custom').forEach((chip) => chip.remove());
+    moodTagList?.querySelectorAll('.mood-tag-chip.is-selected').forEach((chip) => chip.classList.remove('is-selected'));
+    if (moodLogTagsInput) moodLogTagsInput.value = '';
+    if (moodTagCustomWrap) moodTagCustomWrap.hidden = true;
+    if (moodTagCustomInput) moodTagCustomInput.value = '';
   };
 
   document.querySelectorAll('.mood-log-level-btn').forEach((btn) => {
@@ -2300,6 +2376,33 @@ if (moodPageBody) {
       btn.classList.add('is-selected');
       if (moodLogLevelInput) moodLogLevelInput.value = btn.dataset.moodLevel ?? '';
     });
+  });
+
+  moodTagList?.querySelectorAll('.mood-tag-chip:not(.mood-tag-chip--add)').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('is-selected');
+      syncMoodTagsInput();
+    });
+  });
+
+  moodTagAddToggle?.addEventListener('click', () => {
+    if (!moodTagCustomWrap) return;
+    moodTagCustomWrap.hidden = false;
+    moodTagCustomInput?.focus();
+  });
+
+  moodTagCustomInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    addCustomMoodTag(moodTagCustomInput.value);
+    moodTagCustomInput.value = '';
+  });
+
+  moodLogCommentToggle?.addEventListener('click', () => {
+    if (!moodLogCommentWrap) return;
+    moodLogCommentWrap.hidden = false;
+    moodLogCommentToggle.hidden = true;
+    moodLogNoteInput?.focus();
   });
 
   moodLogToggle?.addEventListener('click', () => {
@@ -2324,9 +2427,11 @@ if (moodPageBody) {
       return;
     }
     const note = (moodLogNoteInput?.value ?? '').trim();
+    const loggedAt = combineDateTime(moodLogDateInput?.value, moodLogTimeInput?.value);
+    const tags = moodLogTagsInput?.value ?? '';
     const submitBtn = moodLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note });
+    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note, loggedAt, tags });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (moodLogError) { moodLogError.textContent = result.error ?? 'Could not save log. Please try again.'; moodLogError.hidden = false; }
@@ -2361,6 +2466,12 @@ if (moodPageBody) {
     const noteHtml = noteEsc
       ? `<small class="history-note"><span class="history-note-label">Comments:</span> ${noteEsc}</small>`
       : '';
+    const tagsHtml = (entry.tags ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => `<span class="history-mood-tag">${escSvg(t)}</span>`)
+      .join('');
     return `<li id="mood-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="mood-history-entry">
   <span><span class="history-date">${dateStr}</span><span class="history-time">${timeStr}</span></span>
   <div>
@@ -2370,6 +2481,7 @@ if (moodPageBody) {
       <span class="history-mood-label">Mood Score</span> <span class="history-mood-badge history-mood-badge--${mod}">${level}/10</span>
       <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-mood-level="${level}" data-note="${noteEsc}">Edit</button>
     </p>
+    ${tagsHtml ? `<p class="history-mood-tags">${tagsHtml}</p>` : ''}
     ${noteHtml}
     ${editedHtml}
   </div>
@@ -2592,6 +2704,11 @@ if (moodPageBody) {
   });
 
   document.querySelector('[data-select-mood-medication]')?.click();
+
+  if (new URLSearchParams(window.location.search).get('open') === 'log') {
+    moodLogToggle?.click();
+    history.replaceState(null, '', 'index.php?page=mood-wellbeing');
+  }
 }
 
 const historyPanel = document.querySelector('[data-history-panel]');
@@ -3056,7 +3173,7 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
   }
 };
 
-const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moodLevel, note }) => {
+const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moodLevel, note, loggedAt, tags }) => {
   const params = new URLSearchParams({
     csrf_token: getCsrfToken(),
     json_response: '1',
@@ -3067,6 +3184,8 @@ const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moo
   });
   if (painLevel != null) params.set('pain_level', String(painLevel));
   if (moodLevel != null) params.set('mood_level', String(moodLevel));
+  if (loggedAt) params.set('logged_at', loggedAt);
+  if (tags) params.set('tags', tags);
   try {
     const res = await window.fetch('index.php', {
       method: 'POST',

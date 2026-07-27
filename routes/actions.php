@@ -737,7 +737,29 @@ try {
             $moodLevel = max(1, min(10, (int) $rawMood));
         }
         $note  = mb_substr(trim(post_string('note')), 0, 255);
-        $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note);
+
+        $loggedAt = '';
+        $rawLoggedAt = post_string('logged_at');
+        if ($rawLoggedAt !== '') {
+            $parsed = DateTime::createFromFormat('Y-m-d H:i:s', $rawLoggedAt);
+            if ($parsed !== false && $parsed <= new DateTime('+1 minute')) {
+                $loggedAt = $parsed->format('Y-m-d H:i:s');
+            }
+        }
+
+        $tags = '';
+        if (in_array($logType, ['mood', 'both'], true)) {
+            $rawTags = post_string('tags');
+            if ($rawTags !== '') {
+                $tagList = array_values(array_unique(array_filter(array_map(
+                    static fn (string $t): string => mb_substr(trim($t), 0, 30),
+                    explode(',', $rawTags)
+                ))));
+                $tags = implode(',', array_slice($tagList, 0, 10));
+            }
+        }
+
+        $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note, $loggedAt, $tags);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true, 'id' => $newId], JSON_THROW_ON_ERROR);

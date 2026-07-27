@@ -39,6 +39,7 @@ final class MedicationRepository
         $this->ensureStartDateColumn();
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
+        $this->ensureStandaloneTagsColumn();
         $this->ensureMedicationNotesTable();
         $this->ensureOnboardingColumns();
     }
@@ -520,7 +521,7 @@ final class MedicationRepository
 
         $stmt1 = $this->db->prepare(
             "SELECT dl.id, dl.scheduled_for_date AS date, dl.scheduled_time AS time,
-                    dl.mood_level, dl.note, dl.status, dl.feedback_edited_at AS edited_at
+                    dl.mood_level, dl.note, NULL AS tags, dl.status, dl.feedback_edited_at AS edited_at
              FROM dose_logs dl
              INNER JOIN medications m ON m.id = dl.medication_id
              WHERE dl.medication_id = :medication_id
@@ -533,7 +534,7 @@ final class MedicationRepository
 
         $stmt2 = $this->db->prepare(
             "SELECT s.id, DATE(s.logged_at) AS date, TIME(s.logged_at) AS time,
-                    s.mood_level, s.note, NULL AS status, s.updated_at AS edited_at
+                    s.mood_level, s.note, s.tags, NULL AS status, s.updated_at AS edited_at
              FROM standalone_pain_mood_logs s
              WHERE s.medication_id = :medication_id
                AND s.user_id = :user_id
@@ -554,12 +555,14 @@ final class MedicationRepository
         string $logType,
         ?int $painLevel,
         ?int $moodLevel,
-        string $note
+        string $note,
+        string $loggedAt = '',
+        string $tags = ''
     ): int {
         $stmt = $this->db->prepare(
             'INSERT INTO standalone_pain_mood_logs
-                 (user_id, medication_id, log_type, pain_level, mood_level, note, logged_at)
-             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note, :logged_at)'
+                 (user_id, medication_id, log_type, pain_level, mood_level, note, tags, logged_at)
+             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note, :tags, :logged_at)'
         );
         $stmt->execute([
             'user_id'       => $this->userId,
@@ -568,7 +571,8 @@ final class MedicationRepository
             'pain_level'    => $painLevel,
             'mood_level'    => $moodLevel,
             'note'          => $note,
-            'logged_at'     => date('Y-m-d H:i:s'),
+            'tags'          => $tags,
+            'logged_at'     => $loggedAt !== '' ? $loggedAt : date('Y-m-d H:i:s'),
         ]);
         return (int) $this->db->lastInsertId();
     }
@@ -4127,6 +4131,7 @@ final class MedicationRepository
                         pain_level    TINYINT UNSIGNED NULL,
                         mood_level    TINYINT UNSIGNED NULL,
                         note          VARCHAR(255) NOT NULL DEFAULT '',
+                        tags          VARCHAR(500) NOT NULL DEFAULT '',
                         logged_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at    TIMESTAMP NULL DEFAULT NULL,
                         INDEX idx_standalone_user_med_date (user_id, medication_id, logged_at),
@@ -4148,6 +4153,7 @@ final class MedicationRepository
                         pain_level    INTEGER NULL,
                         mood_level    INTEGER NULL,
                         note          TEXT NOT NULL DEFAULT '',
+                        tags          TEXT NOT NULL DEFAULT '',
                         logged_at     TEXT DEFAULT CURRENT_TIMESTAMP,
                         updated_at    TEXT NULL
                     )"
@@ -4183,6 +4189,38 @@ final class MedicationRepository
                 }
                 if (!$hasColumn) {
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN feedback_edited_at TEXT NULL');
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureStandaloneTagsColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM standalone_pain_mood_logs LIKE 'tags'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE standalone_pain_mood_logs ADD COLUMN tags VARCHAR(500) NOT NULL DEFAULT '' AFTER note");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(standalone_pain_mood_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'tags') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE standalone_pain_mood_logs ADD COLUMN tags TEXT NOT NULL DEFAULT ''");
                 }
             }
         } catch (Throwable) {

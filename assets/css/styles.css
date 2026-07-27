@@ -6426,6 +6426,96 @@ a.nav-user-btn.is-active {
   margin: 0.25rem 0 0;
 }
 
+.log-datetime-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.log-datetime-row .stacked-label {
+  flex: 1;
+}
+
+.log-datetime-row input[type="date"],
+.log-datetime-row input[type="time"] {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+}
+
+.mood-tag-section {
+  margin-bottom: 0.75rem;
+}
+
+.mood-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.mood-tag-chip {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mood-tag-chip:hover {
+  border-color: var(--rx-blue);
+}
+
+.mood-tag-chip.is-selected {
+  background: var(--rx-gradient);
+  border-color: transparent;
+  color: #fff;
+}
+
+.mood-tag-chip--add {
+  background: transparent;
+  border-style: dashed;
+}
+
+.mood-tag-custom-input {
+  margin-top: 0.5rem;
+}
+
+.mood-tag-custom-input input {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
+  font-size: 0.85rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+}
+
+.history-mood-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.3rem 0 0;
+}
+
+.history-mood-tag {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+}
+
 /* pain-log-level-btn / mood-log-level-btn: same appearance as pain-level-btn /
    mood-level-btn but a separate class so the dose-feedback modal's global
    querySelectorAll('.pain-level-btn') handler doesn't interfere. */
