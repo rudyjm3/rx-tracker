@@ -283,6 +283,56 @@ try {
         exit;
     }
 
+    if ($action === 'add_mood_tag') {
+        $name = mb_substr(trim(post_string('name')), 0, 30);
+        header('Content-Type: application/json; charset=utf-8');
+        if ($name === '') {
+            echo json_encode(['ok' => false, 'error' => 'Tag name cannot be empty.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        try {
+            $tag = $repository->addMoodTag($name, true);
+            echo json_encode(['ok' => true, 'tag' => $tag], JSON_THROW_ON_ERROR);
+        } catch (RuntimeException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+        }
+        exit;
+    }
+
+    if ($action === 'rename_mood_tag') {
+        $tagId = (int) post_string('tag_id');
+        $name  = mb_substr(trim(post_string('name')), 0, 30);
+        header('Content-Type: application/json; charset=utf-8');
+        if ($tagId <= 0 || $name === '') {
+            echo json_encode(['ok' => false, 'error' => 'Invalid tag.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        try {
+            $repository->renameMoodTag($tagId, $name);
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        } catch (RuntimeException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+        }
+        exit;
+    }
+
+    if ($action === 'delete_mood_tag') {
+        $tagId = (int) post_string('tag_id');
+        $repository->deleteMoodTag($tagId);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'set_mood_tag_always_show') {
+        $tagId = (int) post_string('tag_id');
+        $show  = post_string('always_show') === '1';
+        $repository->setMoodTagAlwaysShow($tagId, $show);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     if ($action === 'delete_group') {
         $repository->deleteGroup((int) post_string('group_id'));
         if ($jsonResponse) {

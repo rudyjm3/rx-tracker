@@ -734,7 +734,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="pain-log-panel" data-pain-log-panel>
       <p class="pain-log-intro-text">Use this to record a pain level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
       <button type="button" class="pain-log-cta" data-pain-log-toggle>Log pain level now</button>
-      <div class="pain-log-form-wrap" data-pain-log-form-wrap hidden>
+    </div>
+
+    <div class="modal-overlay" data-pain-log-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-log-modal-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="pain-log-modal-title">Log pain level</h2>
+          <button type="button" class="modal-close-btn" data-close-pain-log-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="modal-scroll">
         <form class="pain-log-form" data-pain-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="json_response" value="1">
@@ -763,11 +773,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </label>
           </div>
           <p class="pain-log-error" data-pain-log-error role="alert" hidden></p>
-          <div class="feedback-actions">
+          <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
             <button type="button" class="button secondary small" data-pain-log-cancel>Cancel</button>
           </div>
         </form>
+        </div>
       </div>
     </div>
 
@@ -841,7 +852,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="mood-log-panel" data-mood-log-panel>
       <p class="pain-log-intro-text">Use this to record a mood level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
       <button type="button" class="pain-log-cta" data-mood-log-toggle>Log mood level now</button>
-      <div class="mood-log-form-wrap" data-mood-log-form-wrap hidden>
+    </div>
+
+    <div class="modal-overlay" data-mood-log-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mood-log-modal-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="mood-log-modal-title">Log mood level</h2>
+          <button type="button" class="modal-close-btn" data-close-mood-log-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="modal-scroll">
         <form class="mood-log-form" data-mood-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="json_response" value="1">
@@ -866,13 +887,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <div class="mood-tag-section">
             <p class="feedback-pain-label">Tags <span class="feedback-pain-hint">(optional)</span></p>
             <div class="mood-tag-list" data-mood-tag-list role="group" aria-label="Select mood tags">
-              <?php foreach (['Annoyed', 'Anxious', 'Bored', 'Calm', 'Excited', 'Grateful', 'Happy', 'In Love', 'Indifferent', 'Lonely', 'Productive', 'Sad', 'Stressed', 'Tired'] as $tagOption): ?>
-              <button type="button" class="mood-tag-chip" data-mood-tag="<?= e($tagOption) ?>"><?= e($tagOption) ?></button>
-              <?php endforeach; ?>
               <button type="button" class="mood-tag-chip mood-tag-chip--add" data-mood-tag-add-toggle>+ Tags</button>
-            </div>
-            <div class="mood-tag-custom-input" data-mood-tag-custom-wrap hidden>
-              <input type="text" data-mood-tag-custom-input maxlength="30" placeholder="Add a custom tag and press Enter">
             </div>
             <input type="hidden" name="tags" data-mood-log-tags value="">
           </div>
@@ -883,11 +898,77 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             </label>
           </div>
           <p class="mood-log-error" data-mood-log-error role="alert" hidden></p>
-          <div class="feedback-actions">
+          <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
             <button type="button" class="button secondary small" data-mood-log-cancel>Cancel</button>
           </div>
         </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay modal-overlay--popup" data-add-mood-tag-modal>
+      <div class="modal-dialog modal-dialog--sm" role="dialog" aria-modal="true" aria-labelledby="add-mood-tag-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="add-mood-tag-title">Add New Tag:</h2>
+          <a href="#" class="modal-manage-tags-link" data-open-manage-tags aria-label="Manage tags">
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </a>
+        </div>
+        <div class="modal-scroll">
+          <label class="stacked-label">
+            <input type="text" data-add-mood-tag-input maxlength="30" placeholder="Tag name">
+          </label>
+          <p class="mood-tag-error" data-add-mood-tag-error role="alert" hidden></p>
+          <div class="modal-footer">
+            <button type="button" class="button secondary small" data-close-add-mood-tag-modal>Cancel</button>
+            <button type="button" class="button primary small" data-add-mood-tag-confirm>Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay modal-overlay--popup" data-edit-mood-tag-modal>
+      <div class="modal-dialog modal-dialog--sm" role="dialog" aria-modal="true" aria-labelledby="edit-mood-tag-title">
+        <div class="modal-header modal-header--edit-tag">
+          <button type="button" class="modal-close-btn" data-close-edit-mood-tag-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+          <h2 class="modal-title" id="edit-mood-tag-title">Edit Tag</h2>
+        </div>
+        <div class="modal-scroll">
+          <div class="edit-mood-tag-name-row">
+            <span class="edit-mood-tag-name-text" data-edit-mood-tag-name-text></span>
+            <input type="text" class="edit-mood-tag-name-input" data-edit-mood-tag-name-input maxlength="30" hidden>
+            <button type="button" class="icon-button" data-edit-mood-tag-pencil aria-label="Rename tag">
+              <i class="fa-solid fa-pen" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p class="mood-tag-usage-count muted" data-edit-mood-tag-count></p>
+          <p class="mood-tag-error" data-edit-mood-tag-error role="alert" hidden></p>
+          <div class="modal-footer edit-mood-tag-footer">
+            <button type="button" class="button-link button-link--danger" data-edit-mood-tag-delete>Delete</button>
+            <button type="button" class="button primary small" data-edit-mood-tag-update>Update</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" data-manage-tags-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="manage-tags-title">
+        <div class="modal-header manage-tags-header">
+          <button type="button" class="icon-button" data-close-manage-tags-modal aria-label="Back">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          </button>
+          <h2 class="modal-title" id="manage-tags-title">Manage Tags</h2>
+        </div>
+        <div class="modal-scroll">
+          <div class="manage-tags-list-header">
+            <span class="manage-tags-col-label">Always show</span>
+          </div>
+          <ul class="manage-tags-list" data-manage-tags-list></ul>
+          <p class="manage-tags-loading" data-manage-tags-loading hidden>Loading&hellip;</p>
+        </div>
       </div>
     </div>
 

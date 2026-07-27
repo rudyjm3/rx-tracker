@@ -92,6 +92,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_log') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_tags') {
+    header('Content-Type: application/json; charset=utf-8');
+    $alwaysShowOnly = ($_GET['always_show_only'] ?? '') === '1';
+    $tags = $repository->listMoodTags($alwaysShowOnly);
+    echo json_encode(['ok' => true, 'tags' => $tags], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'refill_history') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);

@@ -2964,6 +2964,133 @@ button.danger:hover {
   padding: 0 1rem 1rem;
 }
 
+/* Nested "popup" modal — stacks visually on top of an already-open
+   full-screen modal (higher z-index) instead of replacing it, and stays a
+   small centered card at every viewport width. */
+.modal-overlay--popup {
+  z-index: 1100;
+}
+
+.modal-dialog--sm {
+  max-width: 420px;
+}
+
+.modal-header--edit-tag {
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.modal-manage-tags-link {
+  align-items: center;
+  color: var(--rx-text-muted);
+  display: inline-flex;
+  font-size: 1.1rem;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.mood-tag-error {
+  color: var(--rx-danger, #c9213c);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.edit-mood-tag-name-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.edit-mood-tag-name-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.edit-mood-tag-name-input {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  flex: 1;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.35rem 0.6rem;
+}
+
+.mood-tag-usage-count {
+  font-size: 0.85rem;
+}
+
+.edit-mood-tag-footer {
+  justify-content: space-between;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.4rem 0;
+}
+
+.button-link--danger {
+  color: var(--rx-danger, #c9213c);
+}
+
+.manage-tags-header {
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.manage-tags-list-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0.25rem 0.5rem;
+}
+
+.manage-tags-col-label {
+  color: var(--rx-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.manage-tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manage-tag-row {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.manage-tag-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.manage-tag-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.manage-tag-count {
+  display: block;
+  font-size: 0.78rem;
+}
+
 .instructions-content-box {
   background: var(--rx-bg);
   border: 1px solid var(--rx-border);
@@ -3419,6 +3546,22 @@ button.danger:hover {
   .modal-scroll {
     overflow-x: hidden;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  /* Nested popups opt out of the full-bleed mobile treatment above and stay
+     a small centered card, matching the desktop look at every width. */
+  .modal-overlay--popup {
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .modal-overlay--popup .modal-dialog--sm {
+    border-radius: var(--rx-radius-md);
+    height: auto;
+    max-height: calc(100vh - 2rem);
+    max-width: 420px;
+    width: 100%;
   }
 
   .alarm-dialog {

@@ -40,6 +40,7 @@ final class MedicationRepository
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
         $this->ensureStandaloneTagsColumn();
+        $this->ensureMoodTagsTable();
         $this->ensureMedicationNotesTable();
         $this->ensureOnboardingColumns();
     }
@@ -1621,6 +1622,135 @@ final class MedicationRepository
             ['id' => $noteId, 'medication_id' => $medicationId, 'user_id' => $this->userId, 'check_med_id' => $medicationId],
             $this->profileParam()
         ));
+    }
+
+    /**
+     * List the current user's mood tags, each with a live usage count of how
+     * many standalone pain/mood logs reference it. Scoped by user_id only
+     * (not profile_id) — mood tags are account-wide, not per-medication.
+     */
+    public function listMoodTags(bool $alwaysShowOnly = false): array
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $whereAlwaysShow = $alwaysShowOnly ? ' AND t.always_show = 1' : '';
+
+        if ($driver === 'mysql') {
+            $statement = $this->db->prepare(
+                'SELECT t.id, t.name, t.always_show, t.sort_order,
+                        (SELECT COUNT(*) FROM standalone_pain_mood_logs s
+                          WHERE s.user_id = :user_id_sub AND FIND_IN_SET(t.name, s.tags) > 0) AS entry_count
+                 FROM mood_tags t
+                 WHERE t.user_id = :user_id' . $whereAlwaysShow . '
+                 ORDER BY t.sort_order ASC, t.id ASC'
+            );
+            $statement->execute(['user_id' => $this->userId, 'user_id_sub' => $this->userId]);
+            return $statement->fetchAll();
+        }
+
+        // sqlite has no FIND_IN_SET; compute entry counts in PHP instead.
+        $tagStatement = $this->db->prepare(
+            'SELECT id, name, always_show, sort_order FROM mood_tags
+             WHERE user_id = :user_id' . $whereAlwaysShow . '
+             ORDER BY sort_order ASC, id ASC'
+        );
+        $tagStatement->execute(['user_id' => $this->userId]);
+        $tags = $tagStatement->fetchAll();
+
+        $logStatement = $this->db->prepare(
+            "SELECT tags FROM standalone_pain_mood_logs WHERE user_id = :user_id AND tags != ''"
+        );
+        $logStatement->execute(['user_id' => $this->userId]);
+        $allTagLists = array_map(
+            static fn (array $row): array => array_map('trim', explode(',', (string) $row['tags'])),
+            $logStatement->fetchAll()
+        );
+
+        foreach ($tags as &$tag) {
+            $count = 0;
+            foreach ($allTagLists as $tagList) {
+                if (in_array($tag['name'], $tagList, true)) {
+                    $count++;
+                }
+            }
+            $tag['entry_count'] = $count;
+        }
+        unset($tag);
+
+        return $tags;
+    }
+
+    public function addMoodTag(string $name, bool $alwaysShow = true): array
+    {
+        $name = mb_substr(trim($name), 0, 30);
+        if ($name === '') {
+            throw new RuntimeException('Tag name cannot be empty.');
+        }
+
+        $dupCheck = $this->db->prepare(
+            'SELECT 1 FROM mood_tags WHERE user_id = :user_id AND LOWER(name) = LOWER(:name) LIMIT 1'
+        );
+        $dupCheck->execute(['user_id' => $this->userId, 'name' => $name]);
+        if ($dupCheck->fetchColumn() !== false) {
+            throw new RuntimeException('Tag already exists.');
+        }
+
+        $sortStmt = $this->db->prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 FROM mood_tags WHERE user_id = :user_id');
+        $sortStmt->execute(['user_id' => $this->userId]);
+        $sortOrder = (int) $sortStmt->fetchColumn();
+
+        $insert = $this->db->prepare(
+            'INSERT INTO mood_tags (user_id, name, always_show, sort_order)
+             VALUES (:user_id, :name, :always_show, :sort_order)'
+        );
+        $insert->execute([
+            'user_id'     => $this->userId,
+            'name'        => $name,
+            'always_show' => $alwaysShow ? 1 : 0,
+            'sort_order'  => $sortOrder,
+        ]);
+
+        return [
+            'id'          => (int) $this->db->lastInsertId(),
+            'name'        => $name,
+            'always_show' => $alwaysShow ? 1 : 0,
+            'sort_order'  => $sortOrder,
+            'entry_count' => 0,
+        ];
+    }
+
+    public function renameMoodTag(int $tagId, string $newName): void
+    {
+        $newName = mb_substr(trim($newName), 0, 30);
+        if ($newName === '') {
+            throw new RuntimeException('Tag name cannot be empty.');
+        }
+
+        $dupCheck = $this->db->prepare(
+            'SELECT 1 FROM mood_tags WHERE user_id = :user_id AND LOWER(name) = LOWER(:name) AND id != :id LIMIT 1'
+        );
+        $dupCheck->execute(['user_id' => $this->userId, 'name' => $newName, 'id' => $tagId]);
+        if ($dupCheck->fetchColumn() !== false) {
+            throw new RuntimeException('Tag already exists.');
+        }
+
+        $statement = $this->db->prepare(
+            'UPDATE mood_tags SET name = :name WHERE id = :id AND user_id = :user_id'
+        );
+        $statement->execute(['name' => $newName, 'id' => $tagId, 'user_id' => $this->userId]);
+    }
+
+    public function deleteMoodTag(int $tagId): void
+    {
+        $statement = $this->db->prepare('DELETE FROM mood_tags WHERE id = :id AND user_id = :user_id');
+        $statement->execute(['id' => $tagId, 'user_id' => $this->userId]);
+    }
+
+    public function setMoodTagAlwaysShow(int $tagId, bool $alwaysShow): void
+    {
+        $statement = $this->db->prepare(
+            'UPDATE mood_tags SET always_show = :val WHERE id = :id AND user_id = :user_id'
+        );
+        $statement->execute(['val' => $alwaysShow ? 1 : 0, 'id' => $tagId, 'user_id' => $this->userId]);
     }
 
     public function getMissedGraceMinutes(): int
@@ -4221,6 +4351,83 @@ final class MedicationRepository
                 }
                 if (!$hasColumn) {
                     $this->db->exec("ALTER TABLE standalone_pain_mood_logs ADD COLUMN tags TEXT NOT NULL DEFAULT ''");
+                }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureMoodTagsTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS mood_tags (
+                        id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        user_id     INT UNSIGNED NOT NULL,
+                        name        VARCHAR(30) NOT NULL,
+                        always_show TINYINT(1) NOT NULL DEFAULT 1,
+                        sort_order  INT UNSIGNED NOT NULL DEFAULT 0,
+                        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_mood_tags_user_name (user_id, name),
+                        INDEX idx_mood_tags_user (user_id),
+                        CONSTRAINT fk_mood_tags_user
+                            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+            } elseif ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS mood_tags (
+                        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id     INTEGER NOT NULL,
+                        name        TEXT NOT NULL,
+                        always_show INTEGER NOT NULL DEFAULT 1,
+                        sort_order  INTEGER NOT NULL DEFAULT 0,
+                        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (user_id, name)
+                    )"
+                );
+            } else {
+                return;
+            }
+
+            if ($this->userId > 0) {
+                $flagStmt = $this->db->prepare(
+                    'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
+                );
+                $flagStmt->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded']);
+                if (!$flagStmt->fetchColumn()) {
+                    $predefined = [
+                        'Annoyed', 'Anxious', 'Bored', 'Calm', 'Excited', 'Grateful',
+                        'Happy', 'In Love', 'Indifferent', 'Lonely', 'Productive', 'Sad',
+                        'Stressed', 'Tired',
+                    ];
+                    $insertTag = $this->db->prepare(
+                        'INSERT INTO mood_tags (user_id, name, always_show, sort_order)
+                         VALUES (:user_id, :name, 1, :sort_order)'
+                    );
+                    foreach ($predefined as $i => $name) {
+                        try {
+                            $insertTag->execute(['user_id' => $this->userId, 'name' => $name, 'sort_order' => $i]);
+                        } catch (Throwable) {
+                            // Ignore unique-constraint collisions (tag already exists for this user).
+                        }
+                    }
+                    if ($driver === 'mysql') {
+                        $this->db->prepare(
+                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                             VALUES (:user_id, :key, :insert_value)
+                             ON DUPLICATE KEY UPDATE setting_value = :update_value'
+                        )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'insert_value' => '1', 'update_value' => '1']);
+                    } else {
+                        $this->db->prepare(
+                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                             VALUES (:user_id, :key, :value)
+                             ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+                        )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'value' => '1']);
+                    }
                 }
             }
         } catch (Throwable) {
