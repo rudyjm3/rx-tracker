@@ -221,10 +221,9 @@ const slotTo12h = (hhmm) => {
 
 const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMinutes, trackFeedback, feedbackType = 'none' }) => {
   if (!slotPickerModal) return;
-  const now = new Date();
+  const now = new Date(`${serverToday()}T${serverNowTime()}:00`);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const pad = (n) => String(n).padStart(2, '0');
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const today = serverToday();
 
   slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, feedbackType, sourceForm, today };
 
@@ -288,8 +287,7 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
     if (slotFreeTime) {
       slotFreeTime.hidden = !allLogged;
       if (allLogged && slotFreeTimeInput) {
-        const now = new Date();
-        slotFreeTimeInput.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        slotFreeTimeInput.value = serverNowTime();
         if (slotPickerConfirm) slotPickerConfirm.disabled = false;
       }
     }
@@ -318,8 +316,7 @@ slotLateQuestion?.addEventListener('change', (e) => {
   if (!slotLateTime) return;
   slotLateTime.hidden = !isLate;
   if (isLate && slotLateTimeInput && !slotLateTimeInput.value) {
-    const now = new Date();
-    slotLateTimeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    slotLateTimeInput.value = serverNowTime();
   }
 });
 
@@ -5128,11 +5125,7 @@ const openRefillModal = (medicationId, medicationName, medicationDose = '') => {
   if (refillMedNameEl) refillMedNameEl.textContent = medicationName;
   if (refillMedDoseEl) refillMedDoseEl.textContent = medicationDose;
   if (refillMedicationIdEl) refillMedicationIdEl.value = medicationId;
-  if (refillDateInput) {
-    const today = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    refillDateInput.value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-  }
+  if (refillDateInput) refillDateInput.value = serverToday();
   closeMedPlanModal();
   refillModal.classList.add('is-open');
   lockBodyScroll();
