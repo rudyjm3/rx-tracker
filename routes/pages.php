@@ -676,7 +676,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         </label>
         <div class="modal-footer">
           <button type="submit">Log side effect</button>
-          <button type="button" class="secondary" data-close-se-modal>Cancel</button>
+          <button type="button" class="button-link button-link--cancel" data-close-se-modal>Cancel</button>
         </div>
       </form>
       </div>
@@ -775,7 +775,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <p class="pain-log-error" data-pain-log-error role="alert" hidden></p>
           <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
-            <button type="button" class="button secondary small" data-pain-log-cancel>Cancel</button>
+            <button type="button" class="button-link button-link--cancel" data-pain-log-cancel>Cancel</button>
           </div>
         </form>
         </div>
@@ -900,7 +900,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <p class="mood-log-error" data-mood-log-error role="alert" hidden></p>
           <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
-            <button type="button" class="button secondary small" data-mood-log-cancel>Cancel</button>
+            <button type="button" class="button-link button-link--cancel" data-mood-log-cancel>Cancel</button>
           </div>
         </form>
         </div>
@@ -921,7 +921,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           </label>
           <p class="mood-tag-error" data-add-mood-tag-error role="alert" hidden></p>
           <div class="modal-footer">
-            <button type="button" class="button secondary small" data-close-add-mood-tag-modal>Cancel</button>
+            <button type="button" class="button-link button-link--cancel" data-close-add-mood-tag-modal>Cancel</button>
             <button type="button" class="button primary small" data-add-mood-tag-confirm>Add</button>
           </div>
         </div>
@@ -1078,7 +1078,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
           </select>
         </label>
-        <button type="submit">Save settings</button>
+        <button type="submit" class="button-solo">Save settings</button>
       </form>
       <hr>
       <h3 class="settings-subsection-heading">Alarm &amp; Notification Settings</h3>
@@ -1490,7 +1490,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php endif; ?>
       </div>
 
-      <button type="submit" style="width:100%;" data-export-btn>
+      <button type="submit" class="button-solo" data-export-btn>
         <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
       </button>
       <div data-export-notice style="display:none;align-items:center;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
@@ -1899,7 +1899,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Log refill</button>
-        <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-refill-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1932,7 +1932,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Save adjustment</button>
-        <button type="button" class="secondary" data-close-adjust-qty-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-adjust-qty-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1979,7 +1979,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit" class="danger">Discontinue Use</button>
-        <button type="button" class="secondary" data-close-discontinue-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-discontinue-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -2030,7 +2030,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Resume Use</button>
-        <button type="button" class="secondary" data-close-resume-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-resume-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -2059,7 +2059,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <textarea data-add-note-textarea rows="4" maxlength="5000" placeholder="Enter note&#8230;" style="width:100%"></textarea>
         <div class="refill-form-actions" style="padding:.5rem 0 0">
           <button type="button" data-save-add-note>Save note</button>
-          <button type="button" class="secondary" data-cancel-add-note>Cancel</button>
+          <button type="button" class="button-link button-link--cancel" data-cancel-add-note>Cancel</button>
         </div>
       </div>
     </div>
@@ -2093,7 +2093,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <div class="refill-form-actions modal-footer">
       <button type="button" data-save-update-dose>Save dose change</button>
-      <button type="button" class="secondary" data-close-update-dose-modal>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-update-dose-modal>Cancel</button>
     </div>
   </div>
 </div>
@@ -2143,7 +2143,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-slot-picker>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-slot-picker>Cancel</button>
       <button type="button" data-slot-picker-confirm disabled>Log dose</button>
     </div>
   </div>
@@ -2201,7 +2201,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </form>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-missed-dose-modal>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-missed-dose-modal>Cancel</button>
       <button type="button" data-missed-dose-confirm>Log dose</button>
     </div>
   </div>
@@ -2275,7 +2275,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </form>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-log-past-dose>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-log-past-dose>Cancel</button>
       <button type="button" data-log-past-dose-confirm disabled>Log dose</button>
     </div>
   </div>
@@ -2297,7 +2297,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-free-log>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-free-log>Cancel</button>
       <button type="button" data-free-log-confirm>Log dose</button>
     </div>
   </div>
