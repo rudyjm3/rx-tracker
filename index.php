@@ -108,8 +108,14 @@ if (!in_array($page, $bypassPages, true)) {
 
 $error         = null;
 $notice        = null;
+$nowMoment     = new DateTimeImmutable();
 $today         = today();
-$currentTime   = (new DateTimeImmutable())->format('H:i');
+$currentTime   = $nowMoment->format('H:i');
+// Used client-side to keep "now" accurate for the lifetime of a long-open page/PWA
+// session, rather than freezing at page-load time (epoch is timezone-independent;
+// the offset lets JS express it in the user's saved Settings timezone).
+$serverNowMs           = $nowMoment->getTimestamp() * 1000;
+$serverTzOffsetMinutes = intdiv($nowMoment->getOffset(), 60);
 $requestAction = (string) ($_GET['action'] ?? '');
 $jsonResponse  = false;
 

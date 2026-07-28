@@ -573,8 +573,38 @@ const combineDateTime = (dateVal, timeVal) => {
 // (index.php applies it before rendering) and stamps it on <body> — use that
 // instead of the browser's raw Date(), which follows the device's own clock
 // and can silently disagree with the user's chosen app timezone.
-const serverToday = () => document.body.dataset.serverToday || localDateStr(new Date());
-const serverNowTime = () => document.body.dataset.serverTime || localTimeStr(new Date());
+//
+// A page (especially an installed PWA) can stay open for hours, so we can't
+// just read the page-load snapshot forever — it goes stale and would default
+// new log entries to whatever time the page happened to load, even hours or
+// a calendar day later. Instead we anchor once at load (server epoch ms, which
+// is timezone-independent, plus the client's own clock at that same instant)
+// and add elapsed real time on every call. The result is shifted by the
+// server's saved UTC offset and read back with UTC getters, so the browser's
+// own local timezone is never consulted — only the server's.
+const clientLoadTimeMs = Date.now();
+
+const serverNowInstant = () => {
+  const epochAtLoad = Number(document.body.dataset.serverEpochMs);
+  const offsetMinutes = Number(document.body.dataset.serverTzOffsetMinutes || 0);
+  if (!Number.isFinite(epochAtLoad)) return new Date();
+  const elapsed = Date.now() - clientLoadTimeMs;
+  return new Date(epochAtLoad + elapsed + offsetMinutes * 60000);
+};
+
+const serverToday = () => {
+  if (Number.isNaN(Number(document.body.dataset.serverEpochMs))) return localDateStr(new Date());
+  const d = serverNowInstant();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+};
+
+const serverNowTime = () => {
+  if (Number.isNaN(Number(document.body.dataset.serverEpochMs))) return localTimeStr(new Date());
+  const d = serverNowInstant();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+};
 
 const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType = 'none' }) => {
   if (!logPastDoseModal) return;
@@ -2462,6 +2492,10 @@ if (moodPageBody) {
       if (addMoodTagError) { addMoodTagError.textContent = 'Tag name is required.'; addMoodTagError.hidden = false; }
       return;
     }
+    if (name.includes(',')) {
+      if (addMoodTagError) { addMoodTagError.textContent = 'Tag names cannot contain commas.'; addMoodTagError.hidden = false; }
+      return;
+    }
     if (addMoodTagConfirmBtn) addMoodTagConfirmBtn.disabled = true;
     try {
       const resp = await window.fetch('index.php', {
@@ -2612,6 +2646,10 @@ if (moodPageBody) {
       : editMoodTagNameText?.textContent ?? '').trim();
     if (!newName) {
       if (editMoodTagError) { editMoodTagError.textContent = 'Tag name is required.'; editMoodTagError.hidden = false; }
+      return;
+    }
+    if (newName.includes(',')) {
+      if (editMoodTagError) { editMoodTagError.textContent = 'Tag names cannot contain commas.'; editMoodTagError.hidden = false; }
       return;
     }
     if (editMoodTagUpdateBtn) editMoodTagUpdateBtn.disabled = true;

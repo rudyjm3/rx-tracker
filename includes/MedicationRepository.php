@@ -1685,6 +1685,9 @@ final class MedicationRepository
         if ($name === '') {
             throw new RuntimeException('Tag name cannot be empty.');
         }
+        if (str_contains($name, ',')) {
+            throw new RuntimeException('Tag names cannot contain commas.');
+        }
 
         $dupCheck = $this->db->prepare(
             'SELECT 1 FROM mood_tags WHERE user_id = :user_id AND LOWER(name) = LOWER(:name) LIMIT 1'
@@ -1723,6 +1726,9 @@ final class MedicationRepository
         $newName = mb_substr(trim($newName), 0, 30);
         if ($newName === '') {
             throw new RuntimeException('Tag name cannot be empty.');
+        }
+        if (str_contains($newName, ',')) {
+            throw new RuntimeException('Tag names cannot contain commas.');
         }
 
         $dupCheck = $this->db->prepare(
