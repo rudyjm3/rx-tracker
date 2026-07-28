@@ -1185,7 +1185,11 @@ final class MedicationRepository
         } else {
             // Map to the closest unlogged scheduled slot so todaySchedule can match it.
             $medication = $this->medicationById($medicationId);
-            $time    = $this->bestUnloggedSlotTime($medication, $date, $now);
+            $slotTime = $this->bestUnloggedSlotTime($medication, $date, $now);
+            if ($slotTime === null) {
+                throw new RuntimeException('Dose already logged. Please refresh to see the latest history.');
+            }
+            $time    = $slotTime;
             $takenAt = $now;
         }
 
@@ -2535,9 +2539,22 @@ final class MedicationRepository
         return $med;
     }
 
-    private function bestUnloggedSlotTime(array $medication, string $date, DateTimeImmutable $now): string
+    /**
+     * Finds the closest not-yet-logged scheduled slot for today. Returns null
+     * if the medication has defined slots but every one of them is already
+     * logged, so the caller can reject the request as a duplicate instead of
+     * fabricating a new slot at the current time (which would silently
+     * deduct inventory a second time for the same day). Medications with no
+     * defined schedule at all (pure ad-hoc PRN) log against the current
+     * moment, since there is no slot to duplicate.
+     */
+    private function bestUnloggedSlotTime(array $medication, string $date, DateTimeImmutable $now): ?string
     {
         $slots = $this->timesForDate($medication);
+        if ($slots === []) {
+            return $now->format('H:i:s');
+        }
+
         $logMap = $this->doseLogMapForDate($date);
         $nowMinutes = (int) $now->format('G') * 60 + (int) $now->format('i');
         $bestTime = null;
@@ -2556,7 +2573,7 @@ final class MedicationRepository
             }
         }
 
-        return $bestTime ?? $now->format('H:i:s');
+        return $bestTime;
     }
 
     private function doseLogMapForDate(string $date): array
