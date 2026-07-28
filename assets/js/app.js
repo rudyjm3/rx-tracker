@@ -105,10 +105,7 @@ const openFreeLogModal = ({ medName, sourceForm, trackFeedback, feedbackType = '
   if (!freeLogModal) return;
   freeLogState = { sourceForm, trackFeedback, feedbackType };
   if (freeLogTitle) freeLogTitle.textContent = `Log dose for ${medName}`;
-  if (freeLogTimeEl) {
-    const now = new Date();
-    freeLogTimeEl.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  }
+  if (freeLogTimeEl) freeLogTimeEl.value = serverNowTime();
   freeLogModal.classList.add('is-open');
   lockBodyScroll();
 };
@@ -133,8 +130,7 @@ freeLogConfirm?.addEventListener('click', async () => {
   if (!takenTime) { freeLogTimeEl.focus(); return; }
 
   if (trackFeedback) {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const dateStr = serverToday();
     closeFreeLogModal();
     openDoseFeedbackModal(
       sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
@@ -576,6 +572,13 @@ const combineDateTime = (dateVal, timeVal) => {
   return `${dateVal} ${timeVal}:00`;
 };
 
+// The server already computes "now" in the user's saved Settings timezone
+// (index.php applies it before rendering) and stamps it on <body> — use that
+// instead of the browser's raw Date(), which follows the device's own clock
+// and can silently disagree with the user's chosen app timezone.
+const serverToday = () => document.body.dataset.serverToday || localDateStr(new Date());
+const serverNowTime = () => document.body.dataset.serverTime || localTimeStr(new Date());
+
 const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType = 'none' }) => {
   if (!logPastDoseModal) return;
 
@@ -595,7 +598,7 @@ const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMod
   if (logPastDosePainSection) logPastDosePainSection.hidden = !showPastPain;
   if (logPastDoseMoodSection) logPastDoseMoodSection.hidden = !showPastMood;
 
-  const now = new Date();
+  const now = new Date(`${serverToday()}T00:00:00`);
   const today = localDateStr(now);
   const yesterday = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
   const minDate = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30));
@@ -1924,9 +1927,9 @@ if (painPageBody) {
     if (painLogNoteInput)  painLogNoteInput.value  = '';
     if (painLogError)     { painLogError.hidden = true; painLogError.textContent = ''; }
     document.querySelectorAll('.pain-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
-    const now = new Date();
-    if (painLogDateInput) { painLogDateInput.value = localDateStr(now); painLogDateInput.max = localDateStr(now); }
-    if (painLogTimeInput) painLogTimeInput.value = localTimeStr(now);
+    const today = serverToday();
+    if (painLogDateInput) { painLogDateInput.value = today; painLogDateInput.max = today; }
+    if (painLogTimeInput) painLogTimeInput.value = serverNowTime();
     if (painLogCommentWrap)   painLogCommentWrap.hidden = true;
     if (painLogCommentToggle) painLogCommentToggle.hidden = false;
   };
@@ -2049,7 +2052,7 @@ if (painPageBody) {
     if (painHistoryEmpty)   painHistoryEmpty.hidden   = true;
     painHistoryList.innerHTML = '';
     try {
-      const dateParam = painHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const dateParam = painHistoryExpanded ? '' : `&date=${encodeURIComponent(serverToday())}`;
       const resp = await window.fetch(`index.php?action=pain_log&medication_id=${encodeURIComponent(painPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (painHistoryLoading) painHistoryLoading.hidden = true;
@@ -2400,9 +2403,9 @@ if (moodPageBody) {
     if (moodLogNoteInput)  moodLogNoteInput.value  = '';
     if (moodLogError)     { moodLogError.hidden = true; moodLogError.textContent = ''; }
     document.querySelectorAll('.mood-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
-    const now = new Date();
-    if (moodLogDateInput) { moodLogDateInput.value = localDateStr(now); moodLogDateInput.max = localDateStr(now); }
-    if (moodLogTimeInput) moodLogTimeInput.value = localTimeStr(now);
+    const today = serverToday();
+    if (moodLogDateInput) { moodLogDateInput.value = today; moodLogDateInput.max = today; }
+    if (moodLogTimeInput) moodLogTimeInput.value = serverNowTime();
     if (moodLogCommentWrap)   moodLogCommentWrap.hidden = true;
     if (moodLogCommentToggle) moodLogCommentToggle.hidden = false;
     moodTagList?.querySelectorAll('.mood-tag-chip.is-selected').forEach((chip) => chip.classList.remove('is-selected'));
@@ -2759,7 +2762,7 @@ if (moodPageBody) {
     if (moodHistoryEmpty)   moodHistoryEmpty.hidden   = true;
     moodHistoryList.innerHTML = '';
     try {
-      const dateParam = moodHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const dateParam = moodHistoryExpanded ? '' : `&date=${encodeURIComponent(serverToday())}`;
       const resp = await window.fetch(`index.php?action=mood_log&medication_id=${encodeURIComponent(moodPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (moodHistoryLoading) moodHistoryLoading.hidden = true;

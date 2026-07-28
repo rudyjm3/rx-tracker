@@ -139,7 +139,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
 </head>
-<body data-mood-chart-scheme="<?= e($moodChartScheme) ?>">
+<body data-mood-chart-scheme="<?= e($moodChartScheme) ?>" data-server-today="<?= e($today) ?>" data-server-time="<?= e($currentTime) ?>">
 <main class="app-shell">
   <nav class="top-nav">
     <a class="nav-brand" href="index.php">
