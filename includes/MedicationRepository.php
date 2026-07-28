@@ -1739,10 +1739,49 @@ final class MedicationRepository
             throw new RuntimeException('Tag already exists.');
         }
 
+        $oldNameStmt = $this->db->prepare('SELECT name FROM mood_tags WHERE id = :id AND user_id = :user_id');
+        $oldNameStmt->execute(['id' => $tagId, 'user_id' => $this->userId]);
+        $oldName = (string) $oldNameStmt->fetchColumn();
+
         $statement = $this->db->prepare(
             'UPDATE mood_tags SET name = :name WHERE id = :id AND user_id = :user_id'
         );
         $statement->execute(['name' => $newName, 'id' => $tagId, 'user_id' => $this->userId]);
+
+        if ($oldName !== '' && $oldName !== $newName) {
+            $this->renameTagInStandaloneLogs($oldName, $newName);
+        }
+    }
+
+    /**
+     * Propagate a mood tag rename into every standalone pain/mood log entry
+     * that references the old name, so history and usage counts stay
+     * accurate immediately after a rename (not just for future entries).
+     * Splits on commas rather than using a SQL string replace so a rename
+     * can never bleed into an unrelated tag that happens to share a substring.
+     */
+    private function renameTagInStandaloneLogs(string $oldName, string $newName): void
+    {
+        $rowsStmt = $this->db->prepare(
+            "SELECT id, tags FROM standalone_pain_mood_logs WHERE user_id = :user_id AND tags != ''"
+        );
+        $rowsStmt->execute(['user_id' => $this->userId]);
+
+        $update = $this->db->prepare('UPDATE standalone_pain_mood_logs SET tags = :tags WHERE id = :id');
+        foreach ($rowsStmt->fetchAll() as $row) {
+            $tagList = array_map('trim', explode(',', (string) $row['tags']));
+            $changed = false;
+            foreach ($tagList as &$tag) {
+                if ($tag === $oldName) {
+                    $tag = $newName;
+                    $changed = true;
+                }
+            }
+            unset($tag);
+            if ($changed) {
+                $update->execute(['tags' => implode(',', $tagList), 'id' => $row['id']]);
+            }
+        }
     }
 
     public function deleteMoodTag(int $tagId): void
