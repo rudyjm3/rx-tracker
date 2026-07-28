@@ -2562,8 +2562,9 @@ final class MedicationRepository
 
         foreach ($slots as $slot) {
             $key = (int) $medication['id'] . '|' . $slot;
-            if (isset($logMap[$key])) {
-                continue; // slot already logged
+            $existingLog = $logMap[$key] ?? null;
+            if ($existingLog !== null && $existingLog['status'] !== 'missed') {
+                continue; // slot already resolved (taken/skipped)
             }
             [$h, $m] = explode(':', $slot);
             $diff = abs((int) $h * 60 + (int) $m - $nowMinutes);

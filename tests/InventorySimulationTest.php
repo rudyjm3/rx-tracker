@@ -84,6 +84,7 @@ $repo->createMedication('PRN Pain Med', '', 'interval', [], 6, '08:00:00', true,
 $repo->createMedication('Refill Adjust Med', '', 'fixed_times', ['10:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 40.0, 1.0);
 $repo->createMedication('Group Overlap Med', '', 'fixed_times', ['08:15:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 100.0, 1.0);
 $repo->createMedication('Double Submit Med', '', 'fixed_times', ['06:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 50.0, 1.0);
+$repo->createMedication('Missed Slot Fallback Med', '', 'fixed_times', ['05:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 20.0, 1.0);
 
 $all = $repo->activeMedications();
 $id1 = (int) findByName($all, 'Full Adherence Twice Daily')['id'];
@@ -93,6 +94,7 @@ $id4 = (int) findByName($all, 'PRN Pain Med')['id'];
 $id5 = (int) findByName($all, 'Refill Adjust Med')['id'];
 $id6 = (int) findByName($all, 'Group Overlap Med')['id'];
 $id7 = (int) findByName($all, 'Double Submit Med')['id'];
+$id8 = (int) findByName($all, 'Missed Slot Fallback Med')['id'];
 
 // Medication 6 belongs to a group whose scheduled_time matches its own slot —
 // confirms todaySchedule() doesn't list the same medication/time twice.
@@ -113,6 +115,7 @@ $expected4 = 100.0;
 $expected5 = 40.0;
 $expected6 = 100.0;
 $expected7 = 50.0;
+$expected8 = 20.0;
 
 $plan2 = ['taken', 'taken', 'taken', 'skipped', 'missed', 'taken', 'missed_backfill'];
 $missedBackfillDates2 = [];
@@ -216,6 +219,10 @@ for ($i = 0; $i < 30; $i++) {
         $expected7 -= 1.0;
     }
 
+    // --- Medication 8: never logged; every day's slot is left for the cron
+    // sweep below to auto-mark missed. Regression coverage for the non-JS
+    // fallback form, which calls logDoseNow() with no scheduled_time.
+
     // --- Simulated nightly cron sweep for missed doses (all medications) ---
     $cutoff = new DateTimeImmutable($date . ' 23:59:00');
     $repo->finalizeMissedDoses($cutoff, 30);
@@ -224,6 +231,13 @@ for ($i = 0; $i < 30; $i++) {
         $repo->finalizeMissedDoses($cutoff, 30);
     }
 }
+
+// Today's slot for medication 8 was just auto-marked missed by the cron sweep
+// above. The non-JS fallback form logs a dose with no scheduled_time, relying
+// on logDoseNow()'s auto-detect (bestUnloggedSlotTime()) to find it; a missed
+// slot must still be selectable there, not treated as already logged.
+$repo->logDoseNow($id8, 'fallback log, no scheduled_time');
+$expected8 -= 1.0;
 
 // Backfill medication 2's deliberately-missed-then-later-logged slots.
 foreach ($missedBackfillDates2 as $backfillDate) {
@@ -289,4 +303,13 @@ $missedRow7 = $db->query("SELECT status, deducted_quantity FROM dose_logs WHERE 
 assertSameValue('missed', (string) $missedRow7['status'], 'Medication 7s deliberately-unresolved day should be auto-marked missed.');
 assertSameValue(null, $missedRow7['deducted_quantity'], 'A missed dose_logs row must not carry a deducted_quantity.');
 
-echo "InventorySimulationTest passed: 30-day pill-count simulation reconciled for all 7 medications.\n";
+$current8 = (float) $repo->findMedication($id8)['current_quantity'];
+assertFloatEquals($expected8, $current8, 'Medication 8 (missed-slot fallback logDoseNow) current_quantity drifted from expectation.');
+$todayDate8 = $dayDate(0);
+$todayRow8 = $db->query("SELECT status, deducted_quantity FROM dose_logs WHERE medication_id = {$id8} AND scheduled_for_date = '{$todayDate8}' AND scheduled_time = '05:00:00'")->fetch();
+assertSameValue('taken', (string) $todayRow8['status'], 'A missed slot must still be selectable by logDoseNow()\'s auto-detect and flip to taken.');
+assertFloatEquals(1.0, (float) $todayRow8['deducted_quantity'], 'The fallback-logged dose should deduct exactly once.');
+$missedCount8 = (int) $db->query("SELECT COUNT(*) FROM dose_logs WHERE medication_id = {$id8} AND status = 'missed'")->fetchColumn();
+assertSameValue(29, $missedCount8, 'Medication 8s other 29 days should remain missed; only today should have flipped to taken.');
+
+echo "InventorySimulationTest passed: 30-day pill-count simulation reconciled for all 8 medications.\n";
