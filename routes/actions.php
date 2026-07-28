@@ -283,6 +283,56 @@ try {
         exit;
     }
 
+    if ($action === 'add_mood_tag') {
+        $name = mb_substr(trim(post_string('name')), 0, 30);
+        header('Content-Type: application/json; charset=utf-8');
+        if ($name === '') {
+            echo json_encode(['ok' => false, 'error' => 'Tag name cannot be empty.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        try {
+            $tag = $repository->addMoodTag($name, true);
+            echo json_encode(['ok' => true, 'tag' => $tag], JSON_THROW_ON_ERROR);
+        } catch (RuntimeException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+        }
+        exit;
+    }
+
+    if ($action === 'rename_mood_tag') {
+        $tagId = (int) post_string('tag_id');
+        $name  = mb_substr(trim(post_string('name')), 0, 30);
+        header('Content-Type: application/json; charset=utf-8');
+        if ($tagId <= 0 || $name === '') {
+            echo json_encode(['ok' => false, 'error' => 'Invalid tag.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        try {
+            $repository->renameMoodTag($tagId, $name);
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        } catch (RuntimeException $e) {
+            echo json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_THROW_ON_ERROR);
+        }
+        exit;
+    }
+
+    if ($action === 'delete_mood_tag') {
+        $tagId = (int) post_string('tag_id');
+        $repository->deleteMoodTag($tagId);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'set_mood_tag_always_show') {
+        $tagId = (int) post_string('tag_id');
+        $show  = post_string('always_show') === '1';
+        $repository->setMoodTagAlwaysShow($tagId, $show);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
     if ($action === 'delete_group') {
         $repository->deleteGroup((int) post_string('group_id'));
         if ($jsonResponse) {
@@ -737,7 +787,29 @@ try {
             $moodLevel = max(1, min(10, (int) $rawMood));
         }
         $note  = mb_substr(trim(post_string('note')), 0, 255);
-        $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note);
+
+        $loggedAt = '';
+        $rawLoggedAt = post_string('logged_at');
+        if ($rawLoggedAt !== '') {
+            $parsed = DateTime::createFromFormat('Y-m-d H:i:s', $rawLoggedAt);
+            if ($parsed !== false && $parsed <= new DateTime('+1 minute')) {
+                $loggedAt = $parsed->format('Y-m-d H:i:s');
+            }
+        }
+
+        $tags = '';
+        if (in_array($logType, ['mood', 'both'], true)) {
+            $rawTags = post_string('tags');
+            if ($rawTags !== '') {
+                $tagList = array_values(array_unique(array_filter(array_map(
+                    static fn (string $t): string => mb_substr(trim($t), 0, 30),
+                    explode(',', $rawTags)
+                ))));
+                $tags = implode(',', array_slice($tagList, 0, 10));
+            }
+        }
+
+        $newId = $repository->insertStandalonePainMoodLog($medicationId, $logType, $painLevel, $moodLevel, $note, $loggedAt, $tags);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true, 'id' => $newId], JSON_THROW_ON_ERROR);

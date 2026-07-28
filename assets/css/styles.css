@@ -2964,6 +2964,151 @@ button.danger:hover {
   padding: 0 1rem 1rem;
 }
 
+/* Nested "popup" modal — stacks visually on top of an already-open
+   full-screen modal (higher z-index) instead of replacing it, and stays a
+   small centered card at every viewport width. */
+.modal-overlay--popup {
+  z-index: 1100;
+}
+
+.modal-dialog--sm {
+  max-width: 420px;
+}
+
+.modal-header--edit-tag {
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.modal-manage-tags-link {
+  align-items: center;
+  color: var(--rx-text-muted);
+  display: inline-flex;
+  font-size: 1.1rem;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.mood-tag-error {
+  color: var(--rx-danger, #c9213c);
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+
+.edit-mood-tag-name-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.edit-mood-tag-name-text {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.edit-mood-tag-name-input {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  flex: 1;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.35rem 0.6rem;
+}
+
+.mood-tag-usage-count {
+  font-size: 0.85rem;
+}
+
+.edit-mood-tag-footer {
+  justify-content: space-between;
+}
+
+.button-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.4rem 0;
+}
+
+.button-link:hover {
+  background: none;
+  box-shadow: none;
+  opacity: 0.8;
+  transform: none;
+}
+
+.button-link--danger {
+  color: var(--rx-danger, #c9213c);
+}
+
+.button-link--cancel {
+  color: var(--rx-text-muted);
+  order: -1;
+}
+
+.button-solo {
+  display: block;
+  margin: 0 auto;
+  width: fit-content;
+}
+
+.manage-tags-header {
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.manage-tags-list-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0.25rem 0.5rem;
+}
+
+.manage-tags-col-label {
+  color: var(--rx-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.manage-tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manage-tag-row {
+  align-items: center;
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.manage-tag-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.manage-tag-name {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.manage-tag-count {
+  display: block;
+  font-size: 0.78rem;
+}
+
 .instructions-content-box {
   background: var(--rx-bg);
   border: 1px solid var(--rx-border);
@@ -3172,7 +3317,7 @@ button.danger:hover {
   border-top: 1px solid var(--rx-border);
   display: flex;
   gap: 0.5rem;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: 0.75rem 1rem;
 }
 
@@ -3197,9 +3342,16 @@ button.danger:hover {
   border-top: 1px solid var(--rx-border);
   display: flex;
   gap: 0.6rem;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-top: 0.8rem;
   padding: 0.75rem 1.25rem;
+}
+
+.modal-footer > button:only-child,
+.feedback-actions > button:only-child,
+.refill-form-actions > button:only-child {
+  display: block;
+  margin: 0 auto;
 }
 
 .modal-scroll .modal-footer {
@@ -3419,6 +3571,31 @@ button.danger:hover {
   .modal-scroll {
     overflow-x: hidden;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  /* Nested popups opt out of the full-bleed mobile treatment above and stay
+     a small centered card, matching the desktop look at every width. */
+  .modal-overlay--popup {
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .modal-overlay--popup .modal-dialog--sm {
+    border-radius: var(--rx-radius-md);
+    height: auto;
+    max-height: calc(100vh - 2rem);
+    max-width: 420px;
+    width: 100%;
+  }
+
+  /* Single-button footers/forms go full width on mobile; desktop default
+     (set outside this media query) is natural content width, centered. */
+  .modal-footer > button:only-child,
+  .feedback-actions > button:only-child,
+  .refill-form-actions > button:only-child,
+  .button-solo {
+    width: 100%;
   }
 
   .alarm-dialog {
@@ -4171,6 +4348,7 @@ button.danger:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+  justify-content: space-between;
   margin-top: 0.8rem;
 }
 
@@ -5063,6 +5241,7 @@ details.med-detail-section[open] .med-detail-section-title::after {
 .refill-form-actions {
   display: flex;
   gap: 0.6rem;
+  justify-content: space-between;
   margin-top: 0.8rem;
 }
 
@@ -6424,6 +6603,96 @@ a.nav-user-btn.is-active {
   color: var(--rx-danger, #c9213c);
   font-size: 0.85rem;
   margin: 0.25rem 0 0;
+}
+
+.log-datetime-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.log-datetime-row .stacked-label {
+  flex: 1;
+}
+
+.log-datetime-row input[type="date"],
+.log-datetime-row input[type="time"] {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+}
+
+.mood-tag-section {
+  margin-bottom: 0.75rem;
+}
+
+.mood-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.mood-tag-chip {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.mood-tag-chip:hover {
+  border-color: var(--rx-blue);
+}
+
+.mood-tag-chip.is-selected {
+  background: var(--rx-gradient);
+  border-color: transparent;
+  color: #fff;
+}
+
+.mood-tag-chip--add {
+  background: transparent;
+  border-style: dashed;
+}
+
+.mood-tag-custom-input {
+  margin-top: 0.5rem;
+}
+
+.mood-tag-custom-input input {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm);
+  color: var(--rx-text);
+  font-size: 0.85rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+}
+
+.history-mood-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.3rem 0 0;
+}
+
+.history-mood-tag {
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
 }
 
 /* pain-log-level-btn / mood-log-level-btn: same appearance as pain-level-btn /

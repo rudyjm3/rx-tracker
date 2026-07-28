@@ -105,10 +105,7 @@ const openFreeLogModal = ({ medName, sourceForm, trackFeedback, feedbackType = '
   if (!freeLogModal) return;
   freeLogState = { sourceForm, trackFeedback, feedbackType };
   if (freeLogTitle) freeLogTitle.textContent = `Log dose for ${medName}`;
-  if (freeLogTimeEl) {
-    const now = new Date();
-    freeLogTimeEl.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  }
+  if (freeLogTimeEl) freeLogTimeEl.value = serverNowTime();
   freeLogModal.classList.add('is-open');
   lockBodyScroll();
 };
@@ -133,8 +130,7 @@ freeLogConfirm?.addEventListener('click', async () => {
   if (!takenTime) { freeLogTimeEl.focus(); return; }
 
   if (trackFeedback) {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const dateStr = serverToday();
     closeFreeLogModal();
     openDoseFeedbackModal(
       sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
@@ -225,10 +221,9 @@ const slotTo12h = (hhmm) => {
 
 const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMinutes, trackFeedback, feedbackType = 'none' }) => {
   if (!slotPickerModal) return;
-  const now = new Date();
+  const now = new Date(`${serverToday()}T${serverNowTime()}:00`);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const pad = (n) => String(n).padStart(2, '0');
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const today = serverToday();
 
   slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, feedbackType, sourceForm, today };
 
@@ -292,8 +287,7 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
     if (slotFreeTime) {
       slotFreeTime.hidden = !allLogged;
       if (allLogged && slotFreeTimeInput) {
-        const now = new Date();
-        slotFreeTimeInput.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        slotFreeTimeInput.value = serverNowTime();
         if (slotPickerConfirm) slotPickerConfirm.disabled = false;
       }
     }
@@ -322,8 +316,7 @@ slotLateQuestion?.addEventListener('change', (e) => {
   if (!slotLateTime) return;
   slotLateTime.hidden = !isLate;
   if (isLate && slotLateTimeInput && !slotLateTimeInput.value) {
-    const now = new Date();
-    slotLateTimeInput.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    slotLateTimeInput.value = serverNowTime();
   }
 });
 
@@ -566,6 +559,53 @@ const localDateStr = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+const localTimeStr = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const combineDateTime = (dateVal, timeVal) => {
+  if (!dateVal || !timeVal) return '';
+  return `${dateVal} ${timeVal}:00`;
+};
+
+// The server already computes "now" in the user's saved Settings timezone
+// (index.php applies it before rendering) and stamps it on <body> — use that
+// instead of the browser's raw Date(), which follows the device's own clock
+// and can silently disagree with the user's chosen app timezone.
+//
+// A page (especially an installed PWA) can stay open for hours, so we can't
+// just read the page-load snapshot forever — it goes stale and would default
+// new log entries to whatever time the page happened to load, even hours or
+// a calendar day later. Instead we anchor once at load (server epoch ms, which
+// is timezone-independent, plus the client's own clock at that same instant)
+// and add elapsed real time on every call. The result is shifted by the
+// server's saved UTC offset and read back with UTC getters, so the browser's
+// own local timezone is never consulted — only the server's.
+const clientLoadTimeMs = Date.now();
+
+const serverNowInstant = () => {
+  const epochAtLoad = Number(document.body.dataset.serverEpochMs);
+  const offsetMinutes = Number(document.body.dataset.serverTzOffsetMinutes || 0);
+  if (!Number.isFinite(epochAtLoad)) return new Date();
+  const elapsed = Date.now() - clientLoadTimeMs;
+  return new Date(epochAtLoad + elapsed + offsetMinutes * 60000);
+};
+
+const serverToday = () => {
+  if (Number.isNaN(Number(document.body.dataset.serverEpochMs))) return localDateStr(new Date());
+  const d = serverNowInstant();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+};
+
+const serverNowTime = () => {
+  if (Number.isNaN(Number(document.body.dataset.serverEpochMs))) return localTimeStr(new Date());
+  const d = serverNowInstant();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+};
+
 const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMode, trackFeedback, feedbackType = 'none' }) => {
   if (!logPastDoseModal) return;
 
@@ -585,7 +625,7 @@ const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMod
   if (logPastDosePainSection) logPastDosePainSection.hidden = !showPastPain;
   if (logPastDoseMoodSection) logPastDoseMoodSection.hidden = !showPastMood;
 
-  const now = new Date();
+  const now = new Date(`${serverToday()}T00:00:00`);
   const today = localDateStr(now);
   const yesterday = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
   const minDate = localDateStr(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30));
@@ -1880,8 +1920,7 @@ if (painPageBody) {
   };
 
   // Log form elements
-  const painLogPanel      = document.querySelector('[data-pain-log-panel]');
-  const painLogFormWrap   = document.querySelector('[data-pain-log-form-wrap]');
+  const painLogModal      = document.querySelector('[data-pain-log-modal]');
   const painLogForm       = document.querySelector('[data-pain-log-form]');
   const painLogToggle     = document.querySelector('[data-pain-log-toggle]');
   const painLogCancel     = document.querySelector('[data-pain-log-cancel]');
@@ -1889,6 +1928,10 @@ if (painPageBody) {
   const painLogLevelInput = document.querySelector('[data-pain-log-level]');
   const painLogNoteInput  = document.querySelector('[data-pain-log-note]');
   const painLogError      = document.querySelector('[data-pain-log-error]');
+  const painLogDateInput  = document.querySelector('[data-pain-log-date]');
+  const painLogTimeInput  = document.querySelector('[data-pain-log-time]');
+  const painLogCommentToggle = document.querySelector('[data-pain-log-comment-toggle]');
+  const painLogCommentWrap   = document.querySelector('[data-pain-log-comment-wrap]');
 
   // History elements
   const painHistoryPanel        = document.querySelector('[data-pain-history-panel]');
@@ -1911,7 +1954,36 @@ if (painPageBody) {
     if (painLogNoteInput)  painLogNoteInput.value  = '';
     if (painLogError)     { painLogError.hidden = true; painLogError.textContent = ''; }
     document.querySelectorAll('.pain-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    const today = serverToday();
+    if (painLogDateInput) { painLogDateInput.value = today; painLogDateInput.max = today; }
+    if (painLogTimeInput) painLogTimeInput.value = serverNowTime();
+    if (painLogCommentWrap)   painLogCommentWrap.hidden = true;
+    if (painLogCommentToggle) painLogCommentToggle.hidden = false;
   };
+
+  const openPainLogModal = () => {
+    if (!painLogModal) return;
+    if (painLogMedIdInput) painLogMedIdInput.value = String(painPageMedId);
+    resetPainLogForm();
+    painLogModal.classList.add('is-open');
+    lockBodyScroll();
+  };
+
+  const closePainLogModal = () => {
+    if (!painLogModal) return;
+    painLogModal.classList.remove('is-open');
+    unlockBodyScroll();
+  };
+
+  document.querySelectorAll('[data-close-pain-log-modal]').forEach((btn) => btn.addEventListener('click', closePainLogModal));
+  painLogModal?.addEventListener('click', (e) => { if (e.target === painLogModal) closePainLogModal(); });
+
+  painLogCommentToggle?.addEventListener('click', () => {
+    if (!painLogCommentWrap) return;
+    painLogCommentWrap.hidden = false;
+    painLogCommentToggle.hidden = true;
+    painLogNoteInput?.focus();
+  });
 
   document.querySelectorAll('.pain-log-level-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1922,17 +1994,11 @@ if (painPageBody) {
   });
 
   painLogToggle?.addEventListener('click', () => {
-    if (!painLogFormWrap) return;
-    painLogFormWrap.hidden = false;
-    painLogToggle.hidden   = true;
-    if (painLogMedIdInput) painLogMedIdInput.value = String(painPageMedId);
-    resetPainLogForm();
+    openPainLogModal();
   });
 
   painLogCancel?.addEventListener('click', () => {
-    if (painLogFormWrap) painLogFormWrap.hidden = true;
-    if (painLogToggle)   painLogToggle.hidden   = false;
-    resetPainLogForm();
+    closePainLogModal();
   });
 
   painLogForm?.addEventListener('submit', async (e) => {
@@ -1943,16 +2009,16 @@ if (painPageBody) {
       return;
     }
     const note = (painLogNoteInput?.value ?? '').trim();
+    const loggedAt = combineDateTime(painLogDateInput?.value, painLogTimeInput?.value);
     const submitBtn = painLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note });
+    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note, loggedAt });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (painLogError) { painLogError.textContent = result.error ?? 'Could not save log. Please try again.'; painLogError.hidden = false; }
       return;
     }
-    if (painLogFormWrap) painLogFormWrap.hidden = true;
-    if (painLogToggle)   painLogToggle.hidden   = false;
+    closePainLogModal();
     resetPainLogForm();
     loadPainPageGraph();
     painPageHistoryLoaded = false;
@@ -2013,7 +2079,7 @@ if (painPageBody) {
     if (painHistoryEmpty)   painHistoryEmpty.hidden   = true;
     painHistoryList.innerHTML = '';
     try {
-      const dateParam = painHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const dateParam = painHistoryExpanded ? '' : `&date=${encodeURIComponent(serverToday())}`;
       const resp = await window.fetch(`index.php?action=pain_log&medication_id=${encodeURIComponent(painPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (painHistoryLoading) painHistoryLoading.hidden = true;
@@ -2190,8 +2256,7 @@ if (painPageBody) {
       painHistoryExpanded = false;
       painHistoryPanel?.classList.remove('is-expanded');
       setPainHistoryViewMoreLabel();
-      if (painLogFormWrap) painLogFormWrap.hidden = true;
-      if (painLogToggle)   painLogToggle.hidden   = false;
+      closePainLogModal();
       resetPainLogForm();
       document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
@@ -2212,6 +2277,11 @@ if (painPageBody) {
   });
 
   document.querySelector('[data-select-medication]')?.click();
+
+  if (new URLSearchParams(window.location.search).get('open') === 'log') {
+    painLogToggle?.click();
+    history.replaceState(null, '', 'index.php?page=pain-tracking');
+  }
 }
 
 // Mood & Wellbeing dedicated page
@@ -2261,8 +2331,7 @@ if (moodPageBody) {
   };
 
   // Log form elements
-  const moodLogPanel      = document.querySelector('[data-mood-log-panel]');
-  const moodLogFormWrap   = document.querySelector('[data-mood-log-form-wrap]');
+  const moodLogModal      = document.querySelector('[data-mood-log-modal]');
   const moodLogForm       = document.querySelector('[data-mood-log-form]');
   const moodLogToggle     = document.querySelector('[data-mood-log-toggle]');
   const moodLogCancel     = document.querySelector('[data-mood-log-cancel]');
@@ -2270,6 +2339,35 @@ if (moodPageBody) {
   const moodLogLevelInput = document.querySelector('[data-mood-log-level]');
   const moodLogNoteInput  = document.querySelector('[data-mood-log-note]');
   const moodLogError      = document.querySelector('[data-mood-log-error]');
+  const moodLogDateInput  = document.querySelector('[data-mood-log-date]');
+  const moodLogTimeInput  = document.querySelector('[data-mood-log-time]');
+  const moodLogCommentToggle = document.querySelector('[data-mood-log-comment-toggle]');
+  const moodLogCommentWrap   = document.querySelector('[data-mood-log-comment-wrap]');
+  const moodTagList         = document.querySelector('[data-mood-tag-list]');
+  const moodTagAddToggle    = document.querySelector('[data-mood-tag-add-toggle]');
+  const moodLogTagsInput    = document.querySelector('[data-mood-log-tags]');
+
+  // Add New Tag popup elements
+  const addMoodTagModal      = document.querySelector('[data-add-mood-tag-modal]');
+  const addMoodTagInput      = document.querySelector('[data-add-mood-tag-input]');
+  const addMoodTagError      = document.querySelector('[data-add-mood-tag-error]');
+  const addMoodTagConfirmBtn = document.querySelector('[data-add-mood-tag-confirm]');
+
+  // Manage Tags modal elements
+  const manageTagsModal   = document.querySelector('[data-manage-tags-modal]');
+  const manageTagsList    = document.querySelector('[data-manage-tags-list]');
+  const manageTagsLoading = document.querySelector('[data-manage-tags-loading]');
+
+  // Edit Tag popup elements
+  const editMoodTagModal     = document.querySelector('[data-edit-mood-tag-modal]');
+  const editMoodTagNameText  = document.querySelector('[data-edit-mood-tag-name-text]');
+  const editMoodTagNameInput = document.querySelector('[data-edit-mood-tag-name-input]');
+  const editMoodTagPencilBtn = document.querySelector('[data-edit-mood-tag-pencil]');
+  const editMoodTagCount     = document.querySelector('[data-edit-mood-tag-count]');
+  const editMoodTagError     = document.querySelector('[data-edit-mood-tag-error]');
+  const editMoodTagDeleteBtn = document.querySelector('[data-edit-mood-tag-delete]');
+  const editMoodTagUpdateBtn = document.querySelector('[data-edit-mood-tag-update]');
+  let editMoodTagCurrentId = null;
 
   // History elements
   const moodHistoryPanel        = document.querySelector('[data-mood-history-panel]');
@@ -2287,12 +2385,79 @@ if (moodPageBody) {
     moodHistoryViewMoreBtns.forEach((btn) => { btn.textContent = label; });
   };
 
+  const syncMoodTagsInput = () => {
+    if (!moodLogTagsInput || !moodTagList) return;
+    const selected = Array.from(moodTagList.querySelectorAll('.mood-tag-chip.is-selected'))
+      .map((chip) => chip.dataset.moodTag ?? '')
+      .filter(Boolean);
+    moodLogTagsInput.value = selected.join(',');
+  };
+
+  const wireMoodTagChip = (chip) => {
+    chip.addEventListener('click', () => {
+      chip.classList.toggle('is-selected');
+      syncMoodTagsInput();
+    });
+  };
+
+  const renderMoodTagChips = async (preserveSelection = false) => {
+    if (!moodTagList || !moodTagAddToggle) return;
+    const previouslySelected = preserveSelection
+      ? new Set(Array.from(moodTagList.querySelectorAll('.mood-tag-chip.is-selected')).map((c) => c.dataset.moodTag))
+      : new Set();
+    moodTagList.querySelectorAll('.mood-tag-chip:not(.mood-tag-chip--add)').forEach((c) => c.remove());
+    try {
+      const resp = await window.fetch('index.php?action=mood_tags&always_show_only=1', { credentials: 'same-origin' });
+      const data = await resp.json();
+      if (!data.ok) return;
+      data.tags.forEach((tag) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'mood-tag-chip' + (previouslySelected.has(tag.name) ? ' is-selected' : '');
+        chip.dataset.moodTag = tag.name;
+        chip.textContent = tag.name;
+        wireMoodTagChip(chip);
+        moodTagList.insertBefore(chip, moodTagAddToggle);
+      });
+      if (preserveSelection) syncMoodTagsInput();
+    } catch {
+      // leave the chip row empty (just the "+ Tags" button) on failure
+    }
+  };
+
   const resetMoodLogForm = () => {
     if (moodLogLevelInput) moodLogLevelInput.value = '';
     if (moodLogNoteInput)  moodLogNoteInput.value  = '';
     if (moodLogError)     { moodLogError.hidden = true; moodLogError.textContent = ''; }
     document.querySelectorAll('.mood-log-level-btn').forEach((b) => b.classList.remove('is-selected'));
+    const today = serverToday();
+    if (moodLogDateInput) { moodLogDateInput.value = today; moodLogDateInput.max = today; }
+    if (moodLogTimeInput) moodLogTimeInput.value = serverNowTime();
+    if (moodLogCommentWrap)   moodLogCommentWrap.hidden = true;
+    if (moodLogCommentToggle) moodLogCommentToggle.hidden = false;
+    moodTagList?.querySelectorAll('.mood-tag-chip.is-selected').forEach((chip) => chip.classList.remove('is-selected'));
+    if (moodLogTagsInput) moodLogTagsInput.value = '';
   };
+
+  const openMoodLogModal = (preserveState = false) => {
+    if (!moodLogModal) return;
+    if (!preserveState) {
+      if (moodLogMedIdInput) moodLogMedIdInput.value = String(moodPageMedId);
+      resetMoodLogForm();
+    }
+    renderMoodTagChips(preserveState);
+    moodLogModal.classList.add('is-open');
+    lockBodyScroll();
+  };
+
+  const closeMoodLogModal = () => {
+    if (!moodLogModal) return;
+    moodLogModal.classList.remove('is-open');
+    unlockBodyScroll();
+  };
+
+  document.querySelectorAll('[data-close-mood-log-modal]').forEach((btn) => btn.addEventListener('click', closeMoodLogModal));
+  moodLogModal?.addEventListener('click', (e) => { if (e.target === moodLogModal) closeMoodLogModal(); });
 
   document.querySelectorAll('.mood-log-level-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2302,18 +2467,248 @@ if (moodPageBody) {
     });
   });
 
+  const openAddMoodTagModal = () => {
+    if (!addMoodTagModal) return;
+    if (addMoodTagInput) addMoodTagInput.value = '';
+    if (addMoodTagError) { addMoodTagError.hidden = true; addMoodTagError.textContent = ''; }
+    addMoodTagModal.classList.add('is-open');
+    lockBodyScroll();
+    addMoodTagInput?.focus();
+  };
+
+  const closeAddMoodTagModal = () => {
+    if (!addMoodTagModal) return;
+    addMoodTagModal.classList.remove('is-open');
+    unlockBodyScroll();
+  };
+
+  moodTagAddToggle?.addEventListener('click', openAddMoodTagModal);
+  document.querySelectorAll('[data-close-add-mood-tag-modal]').forEach((btn) => btn.addEventListener('click', closeAddMoodTagModal));
+  addMoodTagModal?.addEventListener('click', (e) => { if (e.target === addMoodTagModal) closeAddMoodTagModal(); });
+
+  const submitAddMoodTag = async () => {
+    const name = (addMoodTagInput?.value ?? '').trim();
+    if (!name) {
+      if (addMoodTagError) { addMoodTagError.textContent = 'Tag name is required.'; addMoodTagError.hidden = false; }
+      return;
+    }
+    if (name.includes(',')) {
+      if (addMoodTagError) { addMoodTagError.textContent = 'Tag names cannot contain commas.'; addMoodTagError.hidden = false; }
+      return;
+    }
+    if (addMoodTagConfirmBtn) addMoodTagConfirmBtn.disabled = true;
+    try {
+      const resp = await window.fetch('index.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf_token: getCsrfToken(), json_response: '1', action: 'add_mood_tag', name }).toString(),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error ?? 'Could not add tag.');
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'mood-tag-chip is-selected';
+      chip.dataset.moodTag = data.tag.name;
+      chip.textContent = data.tag.name;
+      wireMoodTagChip(chip);
+      moodTagList?.insertBefore(chip, moodTagAddToggle);
+      syncMoodTagsInput();
+      closeAddMoodTagModal();
+    } catch (err) {
+      if (addMoodTagError) { addMoodTagError.textContent = err.message; addMoodTagError.hidden = false; }
+    } finally {
+      if (addMoodTagConfirmBtn) addMoodTagConfirmBtn.disabled = false;
+    }
+  };
+
+  addMoodTagConfirmBtn?.addEventListener('click', submitAddMoodTag);
+  addMoodTagInput?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    submitAddMoodTag();
+  });
+
+  // Edit Tag popup (nested on top of Manage Tags)
+  const openEditMoodTagModal = (tag) => {
+    if (!editMoodTagModal) return;
+    editMoodTagCurrentId = tag.id;
+    if (editMoodTagNameText)  { editMoodTagNameText.textContent = tag.name; editMoodTagNameText.hidden = false; }
+    if (editMoodTagNameInput) { editMoodTagNameInput.value = tag.name; editMoodTagNameInput.hidden = true; }
+    if (editMoodTagCount) {
+      editMoodTagCount.textContent = tag.entry_count === 0
+        ? 'no entries'
+        : `${tag.entry_count} ${tag.entry_count === 1 ? 'entry' : 'entries'}`;
+    }
+    if (editMoodTagError) { editMoodTagError.hidden = true; editMoodTagError.textContent = ''; }
+    editMoodTagModal.classList.add('is-open');
+    lockBodyScroll();
+  };
+
+  const closeEditMoodTagModal = () => {
+    if (!editMoodTagModal) return;
+    editMoodTagModal.classList.remove('is-open');
+    unlockBodyScroll();
+    editMoodTagCurrentId = null;
+  };
+
+  document.querySelectorAll('[data-close-edit-mood-tag-modal]').forEach((btn) => btn.addEventListener('click', closeEditMoodTagModal));
+  editMoodTagModal?.addEventListener('click', (e) => { if (e.target === editMoodTagModal) closeEditMoodTagModal(); });
+
+  editMoodTagPencilBtn?.addEventListener('click', () => {
+    if (editMoodTagNameText) editMoodTagNameText.hidden = true;
+    if (editMoodTagNameInput) { editMoodTagNameInput.hidden = false; editMoodTagNameInput.focus(); }
+  });
+
+  // Manage Tags (full-screen)
+  const buildManageTagRow = (tag) => {
+    const li = document.createElement('li');
+    li.className = 'manage-tag-row';
+    const countLabel = tag.entry_count === 0
+      ? 'no entries'
+      : `${tag.entry_count} ${tag.entry_count === 1 ? 'entry' : 'entries'}`;
+    li.innerHTML = `
+      <button type="button" class="icon-button manage-tag-edit-btn" aria-label="Edit ${escHtml(tag.name)}">
+        <i class="fa-solid fa-pen" aria-hidden="true"></i>
+      </button>
+      <div class="manage-tag-info">
+        <span class="manage-tag-name">${escHtml(tag.name)}</span>
+        <span class="manage-tag-count muted">${countLabel}</span>
+      </div>
+      <label class="toggle-control">
+        <input type="checkbox" class="manage-tag-always-show"${tag.always_show ? ' checked' : ''}>
+        <span class="toggle-slider" aria-hidden="true"></span>
+      </label>`;
+    li.querySelector('.manage-tag-edit-btn')?.addEventListener('click', () => openEditMoodTagModal(tag));
+    li.querySelector('.manage-tag-always-show')?.addEventListener('change', async (e) => {
+      const checked = e.target.checked;
+      try {
+        const resp = await window.fetch('index.php', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            csrf_token: getCsrfToken(), json_response: '1', action: 'set_mood_tag_always_show',
+            tag_id: String(tag.id), always_show: checked ? '1' : '0',
+          }).toString(),
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error();
+      } catch {
+        e.target.checked = !checked;
+      }
+    });
+    return li;
+  };
+
+  const loadManageTags = async () => {
+    if (!manageTagsList) return;
+    manageTagsList.innerHTML = '';
+    if (manageTagsLoading) manageTagsLoading.hidden = false;
+    try {
+      const resp = await window.fetch('index.php?action=mood_tags', { credentials: 'same-origin' });
+      const data = await resp.json();
+      if (data.ok) data.tags.forEach((tag) => manageTagsList.appendChild(buildManageTagRow(tag)));
+    } finally {
+      if (manageTagsLoading) manageTagsLoading.hidden = true;
+    }
+  };
+
+  const openManageTagsModal = () => {
+    if (!manageTagsModal) return;
+    manageTagsModal.classList.add('is-open');
+    lockBodyScroll();
+    loadManageTags();
+  };
+
+  const closeManageTagsModal = () => {
+    if (!manageTagsModal) return;
+    manageTagsModal.classList.remove('is-open');
+    unlockBodyScroll();
+  };
+
+  document.querySelectorAll('[data-close-manage-tags-modal]').forEach((btn) => btn.addEventListener('click', () => {
+    closeManageTagsModal();
+    openMoodLogModal(true);
+  }));
+
+  document.querySelector('[data-open-manage-tags]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeAddMoodTagModal();
+    closeMoodLogModal();
+    openManageTagsModal();
+  });
+
+  const submitEditMoodTagUpdate = async () => {
+    if (!editMoodTagCurrentId) return;
+    const newName = (editMoodTagNameInput && !editMoodTagNameInput.hidden
+      ? editMoodTagNameInput.value
+      : editMoodTagNameText?.textContent ?? '').trim();
+    if (!newName) {
+      if (editMoodTagError) { editMoodTagError.textContent = 'Tag name is required.'; editMoodTagError.hidden = false; }
+      return;
+    }
+    if (newName.includes(',')) {
+      if (editMoodTagError) { editMoodTagError.textContent = 'Tag names cannot contain commas.'; editMoodTagError.hidden = false; }
+      return;
+    }
+    if (editMoodTagUpdateBtn) editMoodTagUpdateBtn.disabled = true;
+    try {
+      const resp = await window.fetch('index.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          csrf_token: getCsrfToken(), json_response: '1', action: 'rename_mood_tag',
+          tag_id: String(editMoodTagCurrentId), name: newName,
+        }).toString(),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error ?? 'Could not rename tag.');
+      closeEditMoodTagModal();
+      loadManageTags();
+    } catch (err) {
+      if (editMoodTagError) { editMoodTagError.textContent = err.message; editMoodTagError.hidden = false; }
+    } finally {
+      if (editMoodTagUpdateBtn) editMoodTagUpdateBtn.disabled = false;
+    }
+  };
+
+  editMoodTagUpdateBtn?.addEventListener('click', submitEditMoodTagUpdate);
+
+  editMoodTagDeleteBtn?.addEventListener('click', async () => {
+    if (!editMoodTagCurrentId) return;
+    if (!confirm('Delete this tag? This cannot be undone.')) return;
+    try {
+      await window.fetch('index.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          csrf_token: getCsrfToken(), json_response: '1', action: 'delete_mood_tag',
+          tag_id: String(editMoodTagCurrentId),
+        }).toString(),
+      });
+      closeEditMoodTagModal();
+      loadManageTags();
+    } catch {
+      // leave the popup open so the user can retry
+    }
+  });
+
+  moodLogCommentToggle?.addEventListener('click', () => {
+    if (!moodLogCommentWrap) return;
+    moodLogCommentWrap.hidden = false;
+    moodLogCommentToggle.hidden = true;
+    moodLogNoteInput?.focus();
+  });
+
   moodLogToggle?.addEventListener('click', () => {
-    if (!moodLogFormWrap) return;
-    moodLogFormWrap.hidden = false;
-    moodLogToggle.hidden   = true;
-    if (moodLogMedIdInput) moodLogMedIdInput.value = String(moodPageMedId);
-    resetMoodLogForm();
+    openMoodLogModal();
   });
 
   moodLogCancel?.addEventListener('click', () => {
-    if (moodLogFormWrap) moodLogFormWrap.hidden = true;
-    if (moodLogToggle)   moodLogToggle.hidden   = false;
-    resetMoodLogForm();
+    closeMoodLogModal();
   });
 
   moodLogForm?.addEventListener('submit', async (e) => {
@@ -2324,16 +2719,17 @@ if (moodPageBody) {
       return;
     }
     const note = (moodLogNoteInput?.value ?? '').trim();
+    const loggedAt = combineDateTime(moodLogDateInput?.value, moodLogTimeInput?.value);
+    const tags = moodLogTagsInput?.value ?? '';
     const submitBtn = moodLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note });
+    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note, loggedAt, tags });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (moodLogError) { moodLogError.textContent = result.error ?? 'Could not save log. Please try again.'; moodLogError.hidden = false; }
       return;
     }
-    if (moodLogFormWrap) moodLogFormWrap.hidden = true;
-    if (moodLogToggle)   moodLogToggle.hidden   = false;
+    closeMoodLogModal();
     resetMoodLogForm();
     loadMoodPageGraph();
     moodPageHistoryLoaded = false;
@@ -2361,6 +2757,12 @@ if (moodPageBody) {
     const noteHtml = noteEsc
       ? `<small class="history-note"><span class="history-note-label">Comments:</span> ${noteEsc}</small>`
       : '';
+    const tagsHtml = (entry.tags ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => `<span class="history-mood-tag">${escSvg(t)}</span>`)
+      .join('');
     return `<li id="mood-entry-${entryId}" data-entry-id="${entryId}" data-entry-date="${entry.date ?? ''}" data-entry-time="${entry.time ?? ''}" class="mood-history-entry">
   <span><span class="history-date">${dateStr}</span><span class="history-time">${timeStr}</span></span>
   <div>
@@ -2370,6 +2772,7 @@ if (moodPageBody) {
       <span class="history-mood-label">Mood Score</span> <span class="history-mood-badge history-mood-badge--${mod}">${level}/10</span>
       <button type="button" class="history-entry-edit-btn" data-entry-id="${entryId}" data-source="${source}" data-mood-level="${level}" data-note="${noteEsc}">Edit</button>
     </p>
+    ${tagsHtml ? `<p class="history-mood-tags">${tagsHtml}</p>` : ''}
     ${noteHtml}
     ${editedHtml}
   </div>
@@ -2394,7 +2797,7 @@ if (moodPageBody) {
     if (moodHistoryEmpty)   moodHistoryEmpty.hidden   = true;
     moodHistoryList.innerHTML = '';
     try {
-      const dateParam = moodHistoryExpanded ? '' : `&date=${encodeURIComponent(localDateStr(new Date()))}`;
+      const dateParam = moodHistoryExpanded ? '' : `&date=${encodeURIComponent(serverToday())}`;
       const resp = await window.fetch(`index.php?action=mood_log&medication_id=${encodeURIComponent(moodPageMedId)}&days=365${dateParam}`);
       const payload = await resp.json();
       if (moodHistoryLoading) moodHistoryLoading.hidden = true;
@@ -2570,8 +2973,7 @@ if (moodPageBody) {
       moodHistoryExpanded = false;
       moodHistoryPanel?.classList.remove('is-expanded');
       setMoodHistoryViewMoreLabel();
-      if (moodLogFormWrap) moodLogFormWrap.hidden = true;
-      if (moodLogToggle)   moodLogToggle.hidden   = false;
+      closeMoodLogModal();
       resetMoodLogForm();
       document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
         t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
@@ -2592,6 +2994,11 @@ if (moodPageBody) {
   });
 
   document.querySelector('[data-select-mood-medication]')?.click();
+
+  if (new URLSearchParams(window.location.search).get('open') === 'log') {
+    moodLogToggle?.click();
+    history.replaceState(null, '', 'index.php?page=mood-wellbeing');
+  }
 }
 
 const historyPanel = document.querySelector('[data-history-panel]');
@@ -3056,7 +3463,7 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
   }
 };
 
-const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moodLevel, note }) => {
+const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moodLevel, note, loggedAt, tags }) => {
   const params = new URLSearchParams({
     csrf_token: getCsrfToken(),
     json_response: '1',
@@ -3067,6 +3474,8 @@ const postStandalonePainMoodLog = async ({ medicationId, logType, painLevel, moo
   });
   if (painLevel != null) params.set('pain_level', String(painLevel));
   if (moodLevel != null) params.set('mood_level', String(moodLevel));
+  if (loggedAt) params.set('logged_at', loggedAt);
+  if (tags) params.set('tags', tags);
   try {
     const res = await window.fetch('index.php', {
       method: 'POST',
@@ -4754,11 +5163,7 @@ const openRefillModal = (medicationId, medicationName, medicationDose = '') => {
   if (refillMedNameEl) refillMedNameEl.textContent = medicationName;
   if (refillMedDoseEl) refillMedDoseEl.textContent = medicationDose;
   if (refillMedicationIdEl) refillMedicationIdEl.value = medicationId;
-  if (refillDateInput) {
-    const today = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    refillDateInput.value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-  }
+  if (refillDateInput) refillDateInput.value = serverToday();
   closeMedPlanModal();
   refillModal.classList.add('is-open');
   lockBodyScroll();

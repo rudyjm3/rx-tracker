@@ -139,7 +139,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
 </head>
-<body data-mood-chart-scheme="<?= e($moodChartScheme) ?>">
+<body data-mood-chart-scheme="<?= e($moodChartScheme) ?>" data-server-today="<?= e($today) ?>" data-server-time="<?= e($currentTime) ?>" data-server-epoch-ms="<?= e((string) $serverNowMs) ?>" data-server-tz-offset-minutes="<?= e((string) $serverTzOffsetMinutes) ?>">
 <main class="app-shell">
   <nav class="top-nav">
     <a class="nav-brand" href="index.php">
@@ -151,6 +151,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
+      <a href="index.php?page=pain-tracking"<?= $page === 'pain-tracking' ? ' class="is-active"' : '' ?>>Pain Tracking</a>
+      <a href="index.php?page=mood-wellbeing"<?= $page === 'mood-wellbeing' ? ' class="is-active"' : '' ?>>Mood &amp; Wellbeing</a>
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>
@@ -676,7 +678,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         </label>
         <div class="modal-footer">
           <button type="submit">Log side effect</button>
-          <button type="button" class="secondary" data-close-se-modal>Cancel</button>
+          <button type="button" class="button-link button-link--cancel" data-close-se-modal>Cancel</button>
         </div>
       </form>
       </div>
@@ -734,7 +736,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="pain-log-panel" data-pain-log-panel>
       <p class="pain-log-intro-text">Use this to record a pain level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
       <button type="button" class="pain-log-cta" data-pain-log-toggle>Log pain level now</button>
-      <div class="pain-log-form-wrap" data-pain-log-form-wrap hidden>
+    </div>
+
+    <div class="modal-overlay" data-pain-log-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pain-log-modal-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="pain-log-modal-title">Log pain level</h2>
+          <button type="button" class="modal-close-btn" data-close-pain-log-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="modal-scroll">
         <form class="pain-log-form" data-pain-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="json_response" value="1">
@@ -748,15 +760,27 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <button type="button" class="pain-log-level-btn" data-pain-level="<?= $i ?>" aria-label="Pain level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
-          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
-            <textarea name="note" data-pain-log-note rows="2" maxlength="255" placeholder="Any notes about this pain level&hellip;"></textarea>
-          </label>
+          <div class="log-datetime-row">
+            <label class="stacked-label">Date
+              <input type="date" data-pain-log-date>
+            </label>
+            <label class="stacked-label">Time
+              <input type="time" data-pain-log-time>
+            </label>
+          </div>
+          <button type="button" class="add-note-link" data-pain-log-comment-toggle>+ Add Comment</button>
+          <div data-pain-log-comment-wrap hidden>
+            <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+              <textarea name="note" data-pain-log-note rows="2" maxlength="255" placeholder="Any notes about this pain level&hellip;"></textarea>
+            </label>
+          </div>
           <p class="pain-log-error" data-pain-log-error role="alert" hidden></p>
-          <div class="feedback-actions">
+          <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
-            <button type="button" class="button secondary small" data-pain-log-cancel>Cancel</button>
+            <button type="button" class="button-link button-link--cancel" data-pain-log-cancel>Cancel</button>
           </div>
         </form>
+        </div>
       </div>
     </div>
 
@@ -830,7 +854,17 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     <div class="mood-log-panel" data-mood-log-panel>
       <p class="pain-log-intro-text">Use this to record a mood level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
       <button type="button" class="pain-log-cta" data-mood-log-toggle>Log mood level now</button>
-      <div class="mood-log-form-wrap" data-mood-log-form-wrap hidden>
+    </div>
+
+    <div class="modal-overlay" data-mood-log-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="mood-log-modal-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="mood-log-modal-title">Log mood level</h2>
+          <button type="button" class="modal-close-btn" data-close-mood-log-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="modal-scroll">
         <form class="mood-log-form" data-mood-log-form novalidate>
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="json_response" value="1">
@@ -844,15 +878,99 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <button type="button" class="mood-log-level-btn" data-mood-level="<?= $i ?>" aria-label="Mood level <?= $i ?>"><?= $i ?></button>
             <?php endfor; ?>
           </div>
-          <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
-            <textarea name="note" data-mood-log-note rows="2" maxlength="255" placeholder="How are you feeling&hellip;"></textarea>
-          </label>
+          <div class="log-datetime-row">
+            <label class="stacked-label">Date
+              <input type="date" data-mood-log-date>
+            </label>
+            <label class="stacked-label">Time
+              <input type="time" data-mood-log-time>
+            </label>
+          </div>
+          <div class="mood-tag-section">
+            <p class="feedback-pain-label">Tags <span class="feedback-pain-hint">(optional)</span></p>
+            <div class="mood-tag-list" data-mood-tag-list role="group" aria-label="Select mood tags">
+              <button type="button" class="mood-tag-chip mood-tag-chip--add" data-mood-tag-add-toggle>+ Tags</button>
+            </div>
+            <input type="hidden" name="tags" data-mood-log-tags value="">
+          </div>
+          <button type="button" class="add-note-link" data-mood-log-comment-toggle>+ Add Comment</button>
+          <div data-mood-log-comment-wrap hidden>
+            <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+              <textarea name="note" data-mood-log-note rows="2" maxlength="255" placeholder="How are you feeling&hellip;"></textarea>
+            </label>
+          </div>
           <p class="mood-log-error" data-mood-log-error role="alert" hidden></p>
-          <div class="feedback-actions">
+          <div class="modal-footer">
             <button type="submit" class="button primary small">Save log</button>
-            <button type="button" class="button secondary small" data-mood-log-cancel>Cancel</button>
+            <button type="button" class="button-link button-link--cancel" data-mood-log-cancel>Cancel</button>
           </div>
         </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay modal-overlay--popup" data-add-mood-tag-modal>
+      <div class="modal-dialog modal-dialog--sm" role="dialog" aria-modal="true" aria-labelledby="add-mood-tag-title">
+        <div class="modal-header">
+          <h2 class="modal-title" id="add-mood-tag-title">Add New Tag:</h2>
+          <a href="#" class="modal-manage-tags-link" data-open-manage-tags aria-label="Manage tags">
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </a>
+        </div>
+        <div class="modal-scroll">
+          <label class="stacked-label">
+            <input type="text" data-add-mood-tag-input maxlength="30" placeholder="Tag name">
+          </label>
+          <p class="mood-tag-error" data-add-mood-tag-error role="alert" hidden></p>
+          <div class="modal-footer">
+            <button type="button" class="button-link button-link--cancel" data-close-add-mood-tag-modal>Cancel</button>
+            <button type="button" class="button primary small" data-add-mood-tag-confirm>Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay modal-overlay--popup" data-edit-mood-tag-modal>
+      <div class="modal-dialog modal-dialog--sm" role="dialog" aria-modal="true" aria-labelledby="edit-mood-tag-title">
+        <div class="modal-header modal-header--edit-tag">
+          <button type="button" class="modal-close-btn" data-close-edit-mood-tag-modal aria-label="Close">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+          </button>
+          <h2 class="modal-title" id="edit-mood-tag-title">Edit Tag</h2>
+        </div>
+        <div class="modal-scroll">
+          <div class="edit-mood-tag-name-row">
+            <span class="edit-mood-tag-name-text" data-edit-mood-tag-name-text></span>
+            <input type="text" class="edit-mood-tag-name-input" data-edit-mood-tag-name-input maxlength="30" hidden>
+            <button type="button" class="icon-button" data-edit-mood-tag-pencil aria-label="Rename tag">
+              <i class="fa-solid fa-pen" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p class="mood-tag-usage-count muted" data-edit-mood-tag-count></p>
+          <p class="mood-tag-error" data-edit-mood-tag-error role="alert" hidden></p>
+          <div class="modal-footer edit-mood-tag-footer">
+            <button type="button" class="button-link button-link--danger" data-edit-mood-tag-delete>Delete</button>
+            <button type="button" class="button primary small" data-edit-mood-tag-update>Update</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" data-manage-tags-modal>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="manage-tags-title">
+        <div class="modal-header manage-tags-header">
+          <button type="button" class="icon-button" data-close-manage-tags-modal aria-label="Back">
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+          </button>
+          <h2 class="modal-title" id="manage-tags-title">Manage Tags</h2>
+        </div>
+        <div class="modal-scroll">
+          <div class="manage-tags-list-header">
+            <span class="manage-tags-col-label">Always show</span>
+          </div>
+          <ul class="manage-tags-list" data-manage-tags-list></ul>
+          <p class="manage-tags-loading" data-manage-tags-loading hidden>Loading&hellip;</p>
+        </div>
       </div>
     </div>
 
@@ -962,7 +1080,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
             <option value="30"<?= $snoozeMinutes === 30 ? ' selected' : '' ?>>30 minutes</option>
           </select>
         </label>
-        <button type="submit">Save settings</button>
+        <button type="submit" class="button-solo">Save settings</button>
       </form>
       <hr>
       <h3 class="settings-subsection-heading">Alarm &amp; Notification Settings</h3>
@@ -1374,7 +1492,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <?php endif; ?>
       </div>
 
-      <button type="submit" style="width:100%;" data-export-btn>
+      <button type="submit" class="button-solo" data-export-btn>
         <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> Generate &amp; Download PDF
       </button>
       <div data-export-notice style="display:none;align-items:center;flex-wrap:wrap;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;gap:0.6rem;margin-top:0.75rem;padding:0.7rem 1rem;">
@@ -1634,12 +1752,12 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
           <span class="quick-action-label">Add medication</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
-        <a href="index.php?page=pain-tracking" class="quick-action-row">
+        <a href="index.php?page=pain-tracking&open=log" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--log"><i class="fa-solid fa-chart-line" aria-hidden="true"></i></span>
           <span class="quick-action-label">Pain tracking</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
         </a>
-        <a href="index.php?page=mood-wellbeing" class="quick-action-row">
+        <a href="index.php?page=mood-wellbeing&open=log" class="quick-action-row">
           <span class="quick-action-icon quick-action-icon--mood"><i class="fa-solid fa-face-smile" aria-hidden="true"></i></span>
           <span class="quick-action-label">Mood &amp; Wellbeing</span>
           <i class="fa-solid fa-chevron-right quick-action-chevron" aria-hidden="true"></i>
@@ -1783,7 +1901,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Log refill</button>
-        <button type="button" class="secondary" data-close-refill-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-refill-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1816,7 +1934,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Save adjustment</button>
-        <button type="button" class="secondary" data-close-adjust-qty-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-adjust-qty-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1863,7 +1981,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit" class="danger">Discontinue Use</button>
-        <button type="button" class="secondary" data-close-discontinue-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-discontinue-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1914,7 +2032,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </label>
       <div class="refill-form-actions modal-footer">
         <button type="submit">Resume Use</button>
-        <button type="button" class="secondary" data-close-resume-modal>Cancel</button>
+        <button type="button" class="button-link button-link--cancel" data-close-resume-modal>Cancel</button>
       </div>
     </form>
     </div>
@@ -1943,7 +2061,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
         <textarea data-add-note-textarea rows="4" maxlength="5000" placeholder="Enter note&#8230;" style="width:100%"></textarea>
         <div class="refill-form-actions" style="padding:.5rem 0 0">
           <button type="button" data-save-add-note>Save note</button>
-          <button type="button" class="secondary" data-cancel-add-note>Cancel</button>
+          <button type="button" class="button-link button-link--cancel" data-cancel-add-note>Cancel</button>
         </div>
       </div>
     </div>
@@ -1977,7 +2095,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
     </div>
     <div class="refill-form-actions modal-footer">
       <button type="button" data-save-update-dose>Save dose change</button>
-      <button type="button" class="secondary" data-close-update-dose-modal>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-update-dose-modal>Cancel</button>
     </div>
   </div>
 </div>
@@ -2027,7 +2145,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-slot-picker>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-slot-picker>Cancel</button>
       <button type="button" data-slot-picker-confirm disabled>Log dose</button>
     </div>
   </div>
@@ -2085,7 +2203,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </form>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-missed-dose-modal>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-missed-dose-modal>Cancel</button>
       <button type="button" data-missed-dose-confirm>Log dose</button>
     </div>
   </div>
@@ -2159,7 +2277,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </form>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-log-past-dose>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-log-past-dose>Cancel</button>
       <button type="button" data-log-past-dose-confirm disabled>Log dose</button>
     </div>
   </div>
@@ -2181,7 +2299,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       </div>
     </div>
     <div class="modal-footer slot-picker-footer">
-      <button type="button" class="secondary" data-close-free-log>Cancel</button>
+      <button type="button" class="button-link button-link--cancel" data-close-free-log>Cancel</button>
       <button type="button" data-free-log-confirm>Log dose</button>
     </div>
   </div>
