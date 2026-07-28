@@ -151,6 +151,8 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
       <a href="index.php?page=medications"<?= $page === 'medications' ? ' class="is-active"' : '' ?>>Medications</a>
       <a href="index.php?page=calendar"<?= $page === 'calendar' ? ' class="is-active"' : '' ?>>Calendar</a>
       <a href="index.php?page=export"<?= $page === 'export' ? ' class="is-active"' : '' ?>>Export</a>
+      <a href="index.php?page=pain-tracking"<?= $page === 'pain-tracking' ? ' class="is-active"' : '' ?>>Pain Tracking</a>
+      <a href="index.php?page=mood-wellbeing"<?= $page === 'mood-wellbeing' ? ' class="is-active"' : '' ?>>Mood &amp; Wellbeing</a>
     </div>
     <div class="nav-actions">
       <?php $currentUser = $auth->currentUser(); ?>

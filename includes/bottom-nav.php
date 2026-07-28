@@ -1,5 +1,5 @@
 <nav class="bottom-nav" aria-label="Main navigation">
-  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
+  <a href="index.php" class="bottom-nav-item<?= !in_array($page, ['settings', 'calendar', 'export', 'medications', 'help', 'pain-tracking', 'mood-wellbeing'], true) ? ' is-active' : '' ?>" aria-label="Dashboard">
     <i class="fa-solid fa-house" aria-hidden="true"></i>
     Dashboard
   </a>
@@ -15,7 +15,7 @@
     <i class="fa-solid fa-file-export" aria-hidden="true"></i>
     Export
   </a>
-  <button type="button" class="bottom-nav-item<?= in_array($page, ['settings', 'help'], true) ? ' is-active' : '' ?>" aria-label="More" onclick="document.getElementById('more-menu').classList.add('is-open')">
+  <button type="button" class="bottom-nav-item<?= in_array($page, ['settings', 'help', 'pain-tracking', 'mood-wellbeing'], true) ? ' is-active' : '' ?>" aria-label="More" onclick="document.getElementById('more-menu').classList.add('is-open')">
     <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
     More
   </button>
@@ -26,6 +26,14 @@
     <a href="index.php?page=settings" class="more-menu__item<?= $page === 'settings' ? ' is-active' : '' ?>">
       <i class="fa-solid fa-gear" aria-hidden="true"></i>
       Settings
+    </a>
+    <a href="index.php?page=pain-tracking" class="more-menu__item<?= $page === 'pain-tracking' ? ' is-active' : '' ?>">
+      <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+      Pain Tracking
+    </a>
+    <a href="index.php?page=mood-wellbeing" class="more-menu__item<?= $page === 'mood-wellbeing' ? ' is-active' : '' ?>">
+      <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+      Mood &amp; Wellbeing
     </a>
     <a href="index.php?page=help" class="more-menu__item<?= $page === 'help' ? ' is-active' : '' ?>">
       <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
