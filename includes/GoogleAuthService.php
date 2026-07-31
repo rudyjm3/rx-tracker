@@ -6,6 +6,11 @@ final class GoogleAuthService
 {
     private const ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
     private const JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
+    private const JWKS_CACHE_FILE = 'rxtracker_google_jwks_cache.json';
+    private const JWKS_DEFAULT_TTL = 3600;
+
+    /** @var array<string, mixed>|null In-process cache so one request never fetches twice. */
+    private ?array $jwksMemoCache = null;
 
     public function __construct(
         private readonly PDO $db,
@@ -181,17 +186,98 @@ final class GoogleAuthService
 
     private function publicKeyForKid(string $kid): string
     {
-        $json = @file_get_contents(self::JWKS_URL);
-        if ($json === false) {
-            throw new RuntimeException('Unable to verify Google sign-in right now.');
+        $key = $this->findJwk($this->jwks(false), $kid);
+        if ($key === null) {
+            // Not in the cached set — Google rotates keys, so force a fresh
+            // fetch once before giving up rather than trusting a stale cache.
+            $key = $this->findJwk($this->jwks(true), $kid);
         }
-        $jwks = $this->jsonDecode($json);
+        if ($key === null) {
+            throw new RuntimeException('Google signing key was not found.');
+        }
+        return $this->jwkToPem((string) $key['n'], (string) $key['e']);
+    }
+
+    private function findJwk(array $jwks, string $kid): ?array
+    {
         foreach (($jwks['keys'] ?? []) as $key) {
             if (($key['kid'] ?? '') === $kid && isset($key['n'], $key['e'])) {
-                return $this->jwkToPem((string) $key['n'], (string) $key['e']);
+                return $key;
             }
         }
-        throw new RuntimeException('Google signing key was not found.');
+        return null;
+    }
+
+    /**
+     * Returns Google's JWKS document, cached on disk between requests (keyed
+     * by the Cache-Control max-age Google sends, capped to a sane range) so
+     * a plain file_get_contents() doesn't hit the network on every sign-in.
+     */
+    private function jwks(bool $forceRefresh): array
+    {
+        if (!$forceRefresh && $this->jwksMemoCache !== null) {
+            return $this->jwksMemoCache;
+        }
+
+        $cacheFile = sys_get_temp_dir() . '/' . self::JWKS_CACHE_FILE;
+
+        if (!$forceRefresh) {
+            $cached = $this->readJwksCache($cacheFile);
+            if ($cached !== null) {
+                $this->jwksMemoCache = $cached;
+                return $cached;
+            }
+        }
+
+        $context = stream_context_create(['http' => ['timeout' => 5]]);
+        $json = @file_get_contents(self::JWKS_URL, false, $context);
+        if ($json === false) {
+            // Network hiccup: fall back to a stale cache rather than failing
+            // sign-in outright if we have one, however old.
+            $stale = $this->readJwksCache($cacheFile, true);
+            if ($stale !== null) {
+                $this->jwksMemoCache = $stale;
+                return $stale;
+            }
+            throw new RuntimeException('Unable to verify Google sign-in right now.');
+        }
+
+        $jwks = $this->jsonDecode($json);
+        $ttl = $this->jwksCacheTtl($http_response_header ?? []);
+        @file_put_contents(
+            $cacheFile,
+            json_encode(['expires_at' => time() + $ttl, 'jwks' => $jwks], JSON_THROW_ON_ERROR),
+            LOCK_EX
+        );
+        $this->jwksMemoCache = $jwks;
+
+        return $jwks;
+    }
+
+    private function readJwksCache(string $cacheFile, bool $ignoreExpiry = false): ?array
+    {
+        $raw = @file_get_contents($cacheFile);
+        if ($raw === false) {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !isset($decoded['jwks']) || !is_array($decoded['jwks'])) {
+            return null;
+        }
+        if (!$ignoreExpiry && (int) ($decoded['expires_at'] ?? 0) <= time()) {
+            return null;
+        }
+        return $decoded['jwks'];
+    }
+
+    private function jwksCacheTtl(array $responseHeaders): int
+    {
+        foreach ($responseHeaders as $header) {
+            if (stripos($header, 'cache-control:') === 0 && preg_match('/max-age=(\d+)/i', $header, $matches)) {
+                return max(300, min(86400, (int) $matches[1]));
+            }
+        }
+        return self::JWKS_DEFAULT_TTL;
     }
 
     private function jwkToPem(string $n, string $e): string
