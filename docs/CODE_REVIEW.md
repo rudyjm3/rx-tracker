@@ -52,12 +52,13 @@ architectural refactors are deferred (tracked below).
 Regression coverage for findings #1 and #2 was added in `tests/OwnershipTest.php`
 (multi-tenant group + schedule-rewrite authorization). All four test scripts pass.
 
-**Follow-up identified while fixing #6:** `database/schema.sql` (the fresh-install source of
-truth) is out of sync with the numbered migrations — e.g. migration `013`'s `mood_tags` table
-and migration `012`'s `tags` column on `standalone_pain_mood_logs` don't appear in `schema.sql`
-at all; they were only ever created by the runtime `ensure*()` methods. Not fixed here (out of
-scope for the perf fix), but `schema.sql` should be reconciled in a follow-up so it stops
-drifting from what the app actually creates.
+**Follow-up identified while fixing #6, now fixed:** `database/schema.sql` (the fresh-install
+source of truth) was out of sync with the numbered migrations — migration `013`'s `mood_tags`
+table and migration `012`'s `tags` column on `standalone_pain_mood_logs` didn't appear in
+`schema.sql` at all; they were only ever created by the runtime `ensure*()` methods. Both are now
+appended to `schema.sql`, verbatim with migrations `012`/`013` and the MySQL branch of
+`ensureStandaloneTagsColumn()`/`ensureMoodTagsTableSchema()`, so a fresh install matches what the
+app actually creates.
 
 ### Priority remediation list
 
