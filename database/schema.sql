@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS push_delivery_log (
     scheduled_time TIME NOT NULL,
     sent_at DATETIME NOT NULL,
     action_nonce VARCHAR(64) NOT NULL DEFAULT '',
-    UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time),
+    postponed_until VARCHAR(19) NOT NULL DEFAULT '',
+    UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time, postponed_until),
     INDEX idx_push_nonce (action_nonce(32)),
     CONSTRAINT fk_push_delivery_medication
         FOREIGN KEY (medication_id) REFERENCES medications (id)
@@ -139,6 +140,9 @@ CREATE TABLE IF NOT EXISTS push_delivery_log (
 
 ALTER TABLE push_delivery_log
     ADD COLUMN IF NOT EXISTS action_nonce VARCHAR(64) NOT NULL DEFAULT '';
+
+ALTER TABLE push_delivery_log
+    ADD COLUMN IF NOT EXISTS postponed_until VARCHAR(19) NOT NULL DEFAULT '';
 
 ALTER TABLE medications
     ADD COLUMN IF NOT EXISTS medication_type ENUM('prescription','otc','supplement') NOT NULL DEFAULT 'prescription';
