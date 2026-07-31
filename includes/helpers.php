@@ -247,7 +247,22 @@ function daysUntilRunout(array $medication): ?int
         if ($intervalHours <= 0) {
             return null;
         }
-        $dosesPerDay = max(1, round(24 / $intervalHours));
+        $firstDoseTime = substr((string) ($medication['first_dose_time'] ?? ''), 0, 5);
+        if ($firstDoseTime === '') {
+            return null;
+        }
+
+        // Mirror MedicationRepository::timesForDate() so the run-out estimate
+        // matches the actual number of dose slots generated per day, since
+        // round(24 / $intervalHours) drifts for intervals that don't divide
+        // 24 evenly (e.g. 5h).
+        $stepMinutes  = $intervalHours * 60;
+        $slotCount    = 0;
+        for ($m = timeToMinutes($firstDoseTime); $m < 1440; $m += $stepMinutes) {
+            $slotCount++;
+        }
+
+        $dosesPerDay = max(1, $slotCount);
         $qtyPerDose  = max(0.001, (float) ($medication['quantity_per_dose'] ?? 1));
         return (int) floor($qty / ($dosesPerDay * $qtyPerDose));
     }

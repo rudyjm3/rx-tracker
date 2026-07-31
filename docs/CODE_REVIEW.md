@@ -46,8 +46,8 @@ architectural refactors are deferred (tracked below).
 | 8 | Cross-tenant day-scoped reads | **Fixed** — `doseLogMapForDate`/`activePostponesForDate` scoped to the user |
 | 6 | Constructor runs migrations per request | **Fixed** (`claude/schema-migration-perf-fix`) — gated behind a `schema_state` version check + in-process cache; the two per-user hybrid methods (mood-tag seeding, notes backfill) still run per user, everything else runs once per database |
 | 9 | God-files / triple JS escaper | **Deferred** — large refactor |
-| 10 | Interval run-out estimate vs schedule | **Deferred** — low-impact estimate discrepancy |
-| — | Google JWKS not cached | **Deferred** — perf-only; skipped to avoid cache-staleness complexity |
+| 10 | Interval run-out estimate vs schedule | **Fixed** (`claude/interval-estimate-jwks-cache-j0ea2o`) — `daysUntilRunout()` now derives doses/day from the same slot count as `timesForDate()` |
+| — | Google JWKS not cached | **Fixed** (`claude/interval-estimate-jwks-cache-j0ea2o`) — `publicKeyForKid()` now caches the JWKS document on disk, honoring `Cache-Control: max-age` (clamped 300s–86400s), with a stale-cache fallback on fetch failure and a forced refresh on `kid` miss |
 
 Regression coverage for findings #1 and #2 was added in `tests/OwnershipTest.php`
 (multi-tenant group + schedule-rewrite authorization). All four test scripts pass.
@@ -70,7 +70,7 @@ app actually creates.
 | 4 | Medium | Security | Login rate limiter is IP-spoofable (`X-Forwarded-For`) and fails open |
 | 5 | Medium | Performance | `medications` has no index on `user_id`; every request filters on it |
 | 6 | Medium | Perf / Arch | 25 `ensure*()` schema-migration checks run in the repository constructor on every request |
-| 7 | Low | Security | Google `verifyIdToken` skips `nbf`/`iat` and re-fetches JWKS on every sign-in |
+| 7 | Low | Security | Google `verifyIdToken` skips `nbf`/`iat` and re-fetches JWKS on every sign-in — **Fixed** |
 | 8 | Low | Correctness | `doseLogMapForDate` / `activePostponesForDate` query across all users' rows |
 | 9 | Low | Maintainability | Three separate HTML-escaping implementations in `app.js`; god-files; thin test coverage |
 
@@ -165,13 +165,15 @@ The code comments call these out as deliberate trade-offs. Two consequences:
 `REMOTE_ADDR`); and prefer failing closed for the IP check, or alert on repeated limiter exceptions.
 Low-effort, meaningful hardening for a health app.
 
-### 5. LOW — Google ID-token verification gaps
+### 5. LOW — Google ID-token verification gaps — **Fixed**
 
-`GoogleAuthService::verifyIdToken()` validates signature, `iss`, `aud`, and `exp`
-(`GoogleAuthService.php:157-168`) but does not check `nbf`/`iat`, and `publicKeyForKid()` re-fetches
-Google's JWKS over the network on **every** sign-in with no caching (`GoogleAuthService.php:174`). The
-core checks are sound; add `nbf`/`iat` tolerance validation and cache the JWKS by `kid` (respecting
-`Cache-Control`) to reduce latency and a network-dependency failure mode.
+`GoogleAuthService::verifyIdToken()` validates signature, `iss`, `aud`, `exp`, and now `nbf`/`iat`
+(with clock-skew leeway). `publicKeyForKid()` previously re-fetched Google's JWKS over the network on
+**every** sign-in with no caching; it now caches the JWKS document on disk (`jwks()`,
+`GoogleAuthService.php`), honoring the `Cache-Control: max-age` Google sends (clamped to 300s–86400s,
+default 3600s), falling back to a stale cache on fetch failure, and forcing one fresh re-fetch when a
+`kid` isn't found in the cached set (to tolerate Google's key rotation). Covered by
+`tests/GoogleAuthServiceJwksCacheTest.php`.
 
 ### 6. LOW — Remember-me / CSP notes
 
@@ -195,14 +197,16 @@ correctness holds **today** purely because `medication_id` is a globally-unique 
 (any future keying change leaks data) and loads every tenant's rows for the date into memory on each
 dashboard/schedule render. Scope both queries with a join to `medications` on `user_id` (+ profile).
 
-### 10. LOW — Inventory forecast can disagree with the actual schedule
+### 10. LOW — Inventory forecast can disagree with the actual schedule — **Fixed**
 
-`daysUntilRunout()` for interval meds estimates doses/day as `round(24 / interval_hours)`
-(`helpers.php:255`), while the real slot generator `timesForDate()` emits every slot from
-`first_dose_time` within a 24h window (`MedicationRepository.php:2390`). For intervals that don't
-divide 24 evenly (e.g. 5h), the two can differ by a dose, making the "days left / run-out" estimate
-slightly off. Consider deriving the forecast from `count(timesForDate())` so the estimate and the
-schedule share one source of truth.
+`daysUntilRunout()` for interval meds previously estimated doses/day as `round(24 / interval_hours)`
+(`helpers.php:250`), while the real slot generator `timesForDate()` emits every slot from
+`first_dose_time` within a 24h window (`MedicationRepository.php:2764`). For intervals that don't
+divide 24 evenly (e.g. 5h), the two could differ by a dose, making the "days left / run-out" estimate
+slightly off. `daysUntilRunout()` now mirrors `timesForDate()`'s slot-counting loop (walking from
+`first_dose_time` in `interval_hours` steps within the 24h day) so the estimate and the schedule share
+one source of truth; it also returns `null` (no guess) when `first_dose_time` is missing, matching
+`timesForDate()`'s own behavior. Covered by `tests/DaysUntilRunoutTest.php`.
 
 _No correctness defects were found in the adherence math (`adherenceForDateRange`,
 `MedicationRepository.php:148`), the missed-dose finalizer (`finalizeMissedDoses`,
