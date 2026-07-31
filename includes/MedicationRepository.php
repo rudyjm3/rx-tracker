@@ -16,6 +16,11 @@ final class MedicationRepository
 
     private static array $schemaSweepDone = [];
 
+    // Set by any individual ensure*() call within runFullSchemaSweep() that catches a failure.
+    // Gates recordSchemaVersion() — see ensureSchemaSweep() — so a partially-failed sweep is
+    // retried on the next construction instead of being permanently marked as migrated.
+    private bool $schemaSweepFailed = false;
+
     public function __construct(
         private readonly PDO $db,
         private readonly int $userId = 0,
@@ -47,8 +52,15 @@ final class MedicationRepository
         }
 
         if ($version < self::CURRENT_SCHEMA_VERSION) {
+            $this->schemaSweepFailed = false;
             $this->runFullSchemaSweep();
-            $this->recordSchemaVersion(self::CURRENT_SCHEMA_VERSION);
+            // Only record success if every step in the sweep completed without an individual
+            // ensure*() catching a Throwable — otherwise the sweep is silently incomplete (e.g. a
+            // required column never got added) and must be retried on the next construction
+            // rather than permanently marked as migrated.
+            if (!$this->schemaSweepFailed) {
+                $this->recordSchemaVersion(self::CURRENT_SCHEMA_VERSION);
+            }
         }
 
         self::$schemaSweepDone[$connKey] = true;
@@ -76,6 +88,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if this fails; ensureSchemaSweep() will simply re-run the
             // full sweep on every subsequent construction until the table can be created.
         }
@@ -3274,6 +3287,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -3354,6 +3368,7 @@ final class MedicationRepository
                 $this->db->commit();
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             try { $this->db->rollBack(); } catch (Throwable) {}
             // Keep app booting even if migration fails.
         }
@@ -3391,6 +3406,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3425,6 +3441,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3467,6 +3484,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -3581,6 +3599,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails; runtime errors will surface if unresolved.
         }
     }
@@ -3613,6 +3632,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3645,6 +3665,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3677,6 +3698,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3711,6 +3733,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3743,6 +3766,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3760,6 +3784,7 @@ final class MedicationRepository
             }
             // SQLite has no fixed-length VARCHAR enforcement, so no migration is needed there.
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3792,6 +3817,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; normal query errors will surface if unresolved.
         }
     }
@@ -3850,6 +3876,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -3890,6 +3917,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -3934,6 +3962,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -3967,6 +3996,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; runtime errors will surface if unresolved.
         }
     }
@@ -4021,6 +4051,7 @@ final class MedicationRepository
                 $this->db->exec('DROP TABLE push_delivery_log_old');
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails; runtime errors will surface if unresolved.
         }
     }
@@ -4053,6 +4084,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4087,6 +4119,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4148,6 +4181,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4187,6 +4221,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4217,6 +4252,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4240,6 +4276,7 @@ final class MedicationRepository
                 $this->db->exec('CREATE INDEX IF NOT EXISTS idx_medications_tenant ON medications (user_id, profile_id, active)');
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Non-fatal: the index is a performance optimization only.
         }
     }
@@ -4282,6 +4319,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -4457,6 +4495,7 @@ final class MedicationRepository
                 try { $this->db->exec("ALTER TABLE medication_groups ADD COLUMN profile_id INTEGER NULL"); } catch (Throwable) {}
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -4491,6 +4530,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4538,6 +4578,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -4570,6 +4611,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4602,6 +4644,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4639,6 +4682,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
@@ -4730,6 +4774,7 @@ final class MedicationRepository
                 );
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if table setup fails.
         }
     }
@@ -4894,6 +4939,7 @@ final class MedicationRepository
                 }
             }
         } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Non-fatal: new columns/tables added progressively.
         }
     }
