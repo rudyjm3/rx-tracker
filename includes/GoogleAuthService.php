@@ -6,7 +6,8 @@ final class GoogleAuthService
 {
     private const ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
     private const JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
-    private const JWKS_CACHE_FILE = 'rxtracker_google_jwks_cache.json';
+    private const JWKS_CACHE_DIR = __DIR__ . '/../storage/cache';
+    private const JWKS_CACHE_FILE = 'google_jwks_cache.json';
     private const JWKS_DEFAULT_TTL = 3600;
 
     /** @var array<string, mixed>|null In-process cache so one request never fetches twice. */
@@ -219,7 +220,7 @@ final class GoogleAuthService
             return $this->jwksMemoCache;
         }
 
-        $cacheFile = sys_get_temp_dir() . '/' . self::JWKS_CACHE_FILE;
+        $cacheFile = $this->jwksCacheFilePath();
 
         if (!$forceRefresh) {
             $cached = $this->readJwksCache($cacheFile);
@@ -244,18 +245,45 @@ final class GoogleAuthService
 
         $jwks = $this->jsonDecode($json);
         $ttl = $this->jwksCacheTtl($http_response_header ?? []);
-        @file_put_contents(
+        $written = @file_put_contents(
             $cacheFile,
             json_encode(['expires_at' => time() + $ttl, 'jwks' => $jwks], JSON_THROW_ON_ERROR),
             LOCK_EX
         );
+        if ($written !== false) {
+            // Belt-and-suspenders on top of the 0700 cache directory: keep the
+            // file itself unreadable/unwritable by anyone but the app.
+            @chmod($cacheFile, 0600);
+        }
         $this->jwksMemoCache = $jwks;
 
         return $jwks;
     }
 
+    /**
+     * Resolves the JWKS cache file path, creating an app-owned, 0700
+     * directory for it on first use. This must NOT live in the shared system
+     * temp directory: on a multi-tenant host, another local account could
+     * pre-create a predictable cache path there with an attacker-controlled
+     * key and a far-future expiry, and we'd trust it as genuine.
+     */
+    private function jwksCacheFilePath(): string
+    {
+        if (!is_dir(self::JWKS_CACHE_DIR)) {
+            @mkdir(self::JWKS_CACHE_DIR, 0700, true);
+        }
+        @chmod(self::JWKS_CACHE_DIR, 0700);
+
+        return self::JWKS_CACHE_DIR . '/' . self::JWKS_CACHE_FILE;
+    }
+
     private function readJwksCache(string $cacheFile, bool $ignoreExpiry = false): ?array
     {
+        // Refuse a symlink outright — following one out of our app-owned
+        // cache directory would reintroduce the same untrusted-file risk.
+        if (is_link($cacheFile)) {
+            return null;
+        }
         $raw = @file_get_contents($cacheFile);
         if ($raw === false) {
             return null;

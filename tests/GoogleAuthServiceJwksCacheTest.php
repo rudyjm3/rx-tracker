@@ -68,4 +68,29 @@ assertTrue_($ttlDefault === 3600, 'jwksCacheTtl() should fall back to the defaul
 
 unlink($cacheFile);
 
+// The cache must live in an app-owned, non-world-writable directory — not the
+// shared system temp dir, where another local account on a shared host could
+// pre-plant a forged JWKS at a predictable path (P1 finding from PR #63 review).
+$resolvedPath = invokePrivate($reflection, $service, 'jwksCacheFilePath');
+assertTrue_(!str_starts_with($resolvedPath, sys_get_temp_dir()), 'JWKS cache file must not live under the shared system temp directory.');
+$resolvedDir = dirname($resolvedPath);
+assertTrue_(is_dir($resolvedDir), 'jwksCacheFilePath() should create its cache directory.');
+$dirPerms = fileperms($resolvedDir) & 0777;
+assertTrue_($dirPerms === 0700, "JWKS cache directory should be 0700, got " . decoct($dirPerms) . '.');
+if (is_file($resolvedPath)) {
+    unlink($resolvedPath);
+}
+rmdir($resolvedDir);
+
+// A symlinked cache path must be refused outright, even if it points at an
+// otherwise well-formed, non-expired cache document.
+$symlinkTarget = sys_get_temp_dir() . '/jwks_cache_test_target_' . bin2hex(random_bytes(6)) . '.json';
+$symlinkPath = sys_get_temp_dir() . '/jwks_cache_test_link_' . bin2hex(random_bytes(6)) . '.json';
+file_put_contents($symlinkTarget, json_encode(['expires_at' => time() + 3600, 'jwks' => $sampleJwks]));
+symlink($symlinkTarget, $symlinkPath);
+$viaSymlink = invokePrivate($reflection, $service, 'readJwksCache', [$symlinkPath, false]);
+assertTrue_($viaSymlink === null, 'readJwksCache() must refuse to follow a symlinked cache path.');
+unlink($symlinkPath);
+unlink($symlinkTarget);
+
 echo "GoogleAuthServiceJwksCacheTest passed: JWKS disk cache read/expiry/TTL logic behaves correctly.\n";

@@ -10,4 +10,5 @@
 *.log
 /vendor
 /uploads
+/storage
 .claude/
