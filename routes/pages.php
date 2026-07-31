@@ -372,7 +372,7 @@ $skippedCount = count(array_filter($todaySchedule, static fn(array $row): bool =
               <option value="supplement"   <?= (($editing['medication_type'] ?? '') === 'supplement')   ? 'selected' : '' ?>>Vitamin / Supplement</option>
             </select>
           </label>
-          <label>Start date <span class="field-optional">(optional — when you began taking this medication)</span>
+          <label>Start date <span class="field-optional">(defaults to today — set a future date if you haven't started taking this yet, so we won't log missed doses before then)</span>
             <input type="date" name="start_date" value="<?= e((string) ($editing['start_date'] ?? '')) ?>">
           </label>
           <label>Dose amount
