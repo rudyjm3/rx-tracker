@@ -168,3 +168,75 @@ assertTS('2026-07-20', (string) $afterCorrection[0]['scheduled_for_date'], 'Rema
 assertTS('I forgot to take it', (string) $afterCorrection[0]['note'], 'Remaining row keeps its original note');
 
 echo "TrackingStartTest (start date correction cleanup) passed.\n";
+
+// ── Test: unrelated edits must not collapse a precise onboarding timestamp ─────
+// activateOnboardingMedications() sets tracking_started_at to the exact moment
+// the user finished onboarding (e.g. 3pm), not midnight. The edit form always
+// re-posts the medication's existing start_date, so a later, unrelated edit
+// (e.g. changing the dose amount) must not overwrite that precise timestamp.
+
+$repo->createMedication(
+    'Onboarded Med',
+    '',
+    'fixed_times',
+    ['09:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-07-31'
+);
+$allOnboarded = $repo->activeMedications();
+$onboardedId = (int) array_values(array_filter($allOnboarded, static fn(array $r): bool => $r['name'] === 'Onboarded Med'))[0]['id'];
+
+// Simulate onboarding activation recording the precise activation time.
+$db->exec("UPDATE medications SET tracking_started_at = '2026-07-31 15:00:00' WHERE id = {$onboardedId}");
+
+// Morning dose (09:00) is before the 3pm activation and must stay excluded.
+$countBeforeEdit = $repo->missedDoseCount('2026-07-31', '23:59:00');
+assertTS(0, $countBeforeEdit, 'Onboarded med: morning slot excluded before activation time');
+
+// User edits an unrelated field (dose amount); the form re-submits the same
+// start_date ('2026-07-31') it was given.
+$repo->updateMedication(
+    $onboardedId,
+    'Onboarded Med',
+    '',
+    'fixed_times',
+    ['09:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    10.0,
+    'mg',
+    'tablet',
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-07-31'
+);
+
+$trackingAfterEdit = (string) $repo->findMedication($onboardedId)['tracking_started_at'];
+assertTS('2026-07-31 15:00:00', $trackingAfterEdit, 'Unrelated edit must not collapse the precise activation timestamp');
+
+// The morning slot must still be excluded — it must not have reappeared and
+// been auto-marked missed because of the edit.
+$countAfterEdit = $repo->missedDoseCount('2026-07-31', '23:59:00');
+assertTS(0, $countAfterEdit, 'Onboarded med: morning slot still excluded after unrelated edit');
+
+echo "TrackingStartTest (unrelated edit preserves onboarding timestamp) passed.\n";

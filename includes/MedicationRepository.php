@@ -954,6 +954,17 @@ final class MedicationRepository
             $canRebase = $refillStmt->fetchColumn() === false;
             $startChanged = $storedStart === null || abs($storedStart - $startingQuantity) > 0.0005;
 
+            // The edit form always posts the medication's current start_date, so
+            // without this check every save would collapse a precise
+            // tracking_started_at (e.g. set to the exact moment onboarding was
+            // activated) down to midnight. Only touch it when the start date
+            // itself actually changed.
+            $startDateStmt = $this->db->prepare('SELECT start_date FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
+            $startDateStmt->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
+            $storedStartDateRaw = $startDateStmt->fetchColumn();
+            $storedStartDate = $storedStartDateRaw !== false ? (string) $storedStartDateRaw : null;
+            $startDateChanged = $startDate !== null && $startDate !== $storedStartDate;
+
             $inventorySql = '';
             $inventoryParams = [];
             if ($canRebase) {
@@ -994,7 +1005,7 @@ final class MedicationRepository
                 'user_id' => $this->userId,
                 'name' => $name,
                 'start_date' => $startDate,
-                'tracking_started_at' => $startDate !== null ? $startDate . ' 00:00:00' : null,
+                'tracking_started_at' => $startDateChanged ? $startDate . ' 00:00:00' : null,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
@@ -1020,7 +1031,7 @@ final class MedicationRepository
             // slots were already auto-marked missed, those auto-marks are now
             // stale (the medication wasn't supposed to be tracked yet).
             // Manually-confirmed misses (no auto-marker note) are left intact.
-            if ($startDate !== null) {
+            if ($startDateChanged) {
                 $cleanupStatement = $this->db->prepare(
                     "DELETE FROM dose_logs
                      WHERE medication_id = :id AND status = 'missed' AND note = 'Auto-marked missed'
