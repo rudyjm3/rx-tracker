@@ -28,6 +28,7 @@ final class MedicationRepository
         $this->ensureStatusEventsTable();
         $this->ensureDoseChangesTable();
         $this->ensurePushActionNonceColumn();
+        $this->ensurePushDeliveryPostponedColumn();
         $this->ensureMedicationTypeColumn();
         $this->ensureDoseStructuredColumns();
         $this->ensureInventoryColumns();
@@ -2158,11 +2159,11 @@ final class MedicationRepository
         }
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
-            ? 'INSERT INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce)
-               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce)
-               ON CONFLICT(medication_id, scheduled_for_date, scheduled_time) DO NOTHING'
-            : 'INSERT IGNORE INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce)
-               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce)';
+            ? 'INSERT INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce, postponed_until)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce, :postponed_until)
+               ON CONFLICT(medication_id, scheduled_for_date, scheduled_time, postponed_until) DO NOTHING'
+            : 'INSERT IGNORE INTO push_delivery_log (medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce, postponed_until)
+               VALUES (:medication_id, :scheduled_for_date, :scheduled_time, :sent_at, :action_nonce, :postponed_until)';
         $statement = $this->db->prepare($sql);
         foreach ($items as $item) {
             $statement->execute([
@@ -2171,6 +2172,7 @@ final class MedicationRepository
                 'scheduled_time' => (string) ($item['scheduled_time'] ?? ''),
                 'sent_at' => $sentAt->format('Y-m-d H:i:s'),
                 'action_nonce' => (string) ($item['_nonce'] ?? ''),
+                'postponed_until' => (string) ($item['postponed_until'] ?? ''),
             ]);
         }
     }
@@ -2245,6 +2247,7 @@ final class MedicationRepository
              WHERE medication_id = :medication_id
                AND scheduled_for_date = :scheduled_for_date
                AND scheduled_time = :scheduled_time
+               AND postponed_until = :postponed_until
              LIMIT 1'
         );
         $unsent = [];
@@ -2253,6 +2256,7 @@ final class MedicationRepository
                 'medication_id' => (int) $item['medication_id'],
                 'scheduled_for_date' => (string) $item['scheduled_date'],
                 'scheduled_time' => (string) $item['scheduled_time'],
+                'postponed_until' => (string) ($item['postponed_until'] ?? ''),
             ]);
             if ($check->fetchColumn() === false) {
                 $unsent[] = $item;
@@ -3393,7 +3397,8 @@ final class MedicationRepository
                         scheduled_time TIME NOT NULL,
                         sent_at DATETIME NOT NULL,
                         action_nonce VARCHAR(64) NOT NULL DEFAULT '',
-                        UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time),
+                        postponed_until VARCHAR(19) NOT NULL DEFAULT '',
+                        UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time, postponed_until),
                         INDEX idx_push_nonce (action_nonce(32)),
                         CONSTRAINT fk_push_delivery_medication
                             FOREIGN KEY (medication_id) REFERENCES medications (id)
@@ -3445,7 +3450,8 @@ final class MedicationRepository
                         scheduled_time TEXT NOT NULL,
                         sent_at TEXT NOT NULL,
                         action_nonce TEXT NOT NULL DEFAULT '',
-                        UNIQUE (medication_id, scheduled_for_date, scheduled_time)
+                        postponed_until TEXT NOT NULL DEFAULT '',
+                        UNIQUE (medication_id, scheduled_for_date, scheduled_time, postponed_until)
                     )"
                 );
             }
@@ -3834,6 +3840,60 @@ final class MedicationRepository
                 if (!$hasColumn) {
                     $this->db->exec("ALTER TABLE push_delivery_log ADD COLUMN action_nonce TEXT NOT NULL DEFAULT ''");
                 }
+            }
+        } catch (Throwable) {
+            // Keep app booting even if migration fails; runtime errors will surface if unresolved.
+        }
+    }
+
+    private function ensurePushDeliveryPostponedColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM push_delivery_log LIKE 'postponed_until'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE push_delivery_log ADD COLUMN postponed_until VARCHAR(19) NOT NULL DEFAULT ''");
+                    $this->db->exec('ALTER TABLE push_delivery_log DROP INDEX uq_push_delivery');
+                    $this->db->exec('ALTER TABLE push_delivery_log ADD UNIQUE KEY uq_push_delivery (medication_id, scheduled_for_date, scheduled_time, postponed_until)');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(push_delivery_log)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'postponed_until') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if ($hasColumn) {
+                    return;
+                }
+                // SQLite can't alter a UNIQUE constraint in place, so rebuild the table.
+                $this->db->exec('ALTER TABLE push_delivery_log RENAME TO push_delivery_log_old');
+                $this->db->exec(
+                    "CREATE TABLE push_delivery_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        medication_id INTEGER NOT NULL,
+                        scheduled_for_date TEXT NOT NULL,
+                        scheduled_time TEXT NOT NULL,
+                        sent_at TEXT NOT NULL,
+                        action_nonce TEXT NOT NULL DEFAULT '',
+                        postponed_until TEXT NOT NULL DEFAULT '',
+                        UNIQUE (medication_id, scheduled_for_date, scheduled_time, postponed_until)
+                    )"
+                );
+                $this->db->exec(
+                    "INSERT INTO push_delivery_log (id, medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce, postponed_until)
+                     SELECT id, medication_id, scheduled_for_date, scheduled_time, sent_at, action_nonce, ''
+                     FROM push_delivery_log_old"
+                );
+                $this->db->exec('DROP TABLE push_delivery_log_old');
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails; runtime errors will surface if unresolved.
