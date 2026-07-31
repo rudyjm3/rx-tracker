@@ -44,13 +44,20 @@ architectural refactors are deferred (tracked below).
 | 5 | Missing `medications.user_id` index | **Fixed** — added to `schema.sql`, migration `011`, and runtime `ensure*` |
 | 7 | Google token `nbf`/`iat` | **Fixed** — added not-before / issued-at validation with clock-skew leeway |
 | 8 | Cross-tenant day-scoped reads | **Fixed** — `doseLogMapForDate`/`activePostponesForDate` scoped to the user |
-| 6 | Constructor runs migrations per request | **Deferred** — needs the migration-runner refactor (out of scope for a surgical fix) |
+| 6 | Constructor runs migrations per request | **Fixed** (`claude/schema-migration-perf-fix`) — gated behind a `schema_state` version check + in-process cache; the two per-user hybrid methods (mood-tag seeding, notes backfill) still run per user, everything else runs once per database |
 | 9 | God-files / triple JS escaper | **Deferred** — large refactor |
 | 10 | Interval run-out estimate vs schedule | **Deferred** — low-impact estimate discrepancy |
 | — | Google JWKS not cached | **Deferred** — perf-only; skipped to avoid cache-staleness complexity |
 
 Regression coverage for findings #1 and #2 was added in `tests/OwnershipTest.php`
 (multi-tenant group + schedule-rewrite authorization). All four test scripts pass.
+
+**Follow-up identified while fixing #6:** `database/schema.sql` (the fresh-install source of
+truth) is out of sync with the numbered migrations — e.g. migration `013`'s `mood_tags` table
+and migration `012`'s `tags` column on `standalone_pain_mood_logs` don't appear in `schema.sql`
+at all; they were only ever created by the runtime `ensure*()` methods. Not fixed here (out of
+scope for the perf fix), but `schema.sql` should be reconciled in a follow-up so it stops
+drifting from what the app actually creates.
 
 ### Priority remediation list
 

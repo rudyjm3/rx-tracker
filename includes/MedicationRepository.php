@@ -6,11 +6,105 @@ final class MedicationRepository
 {
     private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose, setup_status, dashboard_enabled, reminders_enabled, adherence_enabled, inventory_enabled, tracking_started_at, inventory_count_method, inventory_as_of';
 
+    // Generation number for the full schema sweep (`runFullSchemaSweep()`). Any new *global*
+    // schema-migration method added to that sweep MUST bump this constant, or it will silently
+    // never run against a database that already recorded a version >= this one — including every
+    // database that was already migrated by a prior version of this fix. Per-user logic (like
+    // `seedMoodTagsForUser()`/`backfillMedicationNotesForUser()`) is exempt: it runs unconditionally
+    // on every construction, so it doesn't need a version bump.
+    private const CURRENT_SCHEMA_VERSION = 1;
+
+    private static array $schemaSweepDone = [];
+
     public function __construct(
         private readonly PDO $db,
         private readonly int $userId = 0,
         private readonly ?int $profileId = null
     ) {
+        $this->ensureSchemaSweep();
+        $this->seedMoodTagsForUser();
+        $this->backfillMedicationNotesForUser();
+    }
+
+    // Runs the full 33-method schema-migration sweep at most once per database: cached in-process
+    // via a static keyed on the PDO connection, and across processes via the `schema_state` table.
+    private function ensureSchemaSweep(): void
+    {
+        $connKey = spl_object_id($this->db);
+        if (isset(self::$schemaSweepDone[$connKey])) {
+            return;
+        }
+
+        $version = 0;
+        try {
+            $stmt = $this->db->query('SELECT schema_version FROM schema_state WHERE id = 1');
+            if ($stmt !== false) {
+                $version = (int) $stmt->fetchColumn();
+            }
+        } catch (Throwable) {
+            // schema_state doesn't exist yet: fresh DB or a pre-upgrade production DB.
+            $version = 0;
+        }
+
+        if ($version < self::CURRENT_SCHEMA_VERSION) {
+            $this->runFullSchemaSweep();
+            $this->recordSchemaVersion(self::CURRENT_SCHEMA_VERSION);
+        }
+
+        self::$schemaSweepDone[$connKey] = true;
+    }
+
+    private function ensureSchemaStateTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    'CREATE TABLE IF NOT EXISTS schema_state (
+                        id             INT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1,
+                        schema_version INT UNSIGNED NOT NULL DEFAULT 0,
+                        updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB'
+                );
+            } elseif ($driver === 'sqlite') {
+                $this->db->exec(
+                    'CREATE TABLE IF NOT EXISTS schema_state (
+                        id             INTEGER PRIMARY KEY,
+                        schema_version INTEGER NOT NULL DEFAULT 0,
+                        updated_at     TEXT DEFAULT CURRENT_TIMESTAMP
+                    )'
+                );
+            }
+        } catch (Throwable) {
+            // Keep app booting even if this fails; ensureSchemaSweep() will simply re-run the
+            // full sweep on every subsequent construction until the table can be created.
+        }
+    }
+
+    private function recordSchemaVersion(int $version): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->prepare(
+                    'INSERT INTO schema_state (id, schema_version) VALUES (1, :v)
+                     ON DUPLICATE KEY UPDATE schema_version = :v2'
+                )->execute(['v' => $version, 'v2' => $version]);
+            } else {
+                $this->db->prepare(
+                    'INSERT INTO schema_state (id, schema_version) VALUES (1, :v)
+                     ON CONFLICT(id) DO UPDATE SET schema_version = :v2'
+                )->execute(['v' => $version, 'v2' => $version]);
+            }
+        } catch (Throwable) {
+            // Non-fatal — see ensureSchemaSweep()'s fail-safe: version stays unrecorded, so the
+            // full sweep (idempotent) simply runs again next construction.
+        }
+    }
+
+    private function runFullSchemaSweep(): void
+    {
+        $this->ensureSchemaStateTable();
         $this->ensureStartingPillCountColumn();
         $this->ensureTimeFormatColumn();
         $this->ensureSupportTables();
@@ -41,8 +135,8 @@ final class MedicationRepository
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
         $this->ensureStandaloneTagsColumn();
-        $this->ensureMoodTagsTable();
-        $this->ensureMedicationNotesTable();
+        $this->ensureMoodTagsTableSchema();
+        $this->ensureMedicationNotesTableSchema();
         $this->ensureOnboardingColumns();
     }
 
@@ -4512,7 +4606,7 @@ final class MedicationRepository
         }
     }
 
-    private function ensureMoodTagsTable(): void
+    private function ensureMoodTagsTableSchema(): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         try {
@@ -4543,53 +4637,69 @@ final class MedicationRepository
                         UNIQUE (user_id, name)
                     )"
                 );
-            } else {
-                return;
-            }
-
-            if ($this->userId > 0) {
-                $flagStmt = $this->db->prepare(
-                    'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
-                );
-                $flagStmt->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded']);
-                if (!$flagStmt->fetchColumn()) {
-                    $predefined = [
-                        'Annoyed', 'Anxious', 'Bored', 'Calm', 'Excited', 'Grateful',
-                        'Happy', 'In Love', 'Indifferent', 'Lonely', 'Productive', 'Sad',
-                        'Stressed', 'Tired',
-                    ];
-                    $insertTag = $this->db->prepare(
-                        'INSERT INTO mood_tags (user_id, name, always_show, sort_order)
-                         VALUES (:user_id, :name, 1, :sort_order)'
-                    );
-                    foreach ($predefined as $i => $name) {
-                        try {
-                            $insertTag->execute(['user_id' => $this->userId, 'name' => $name, 'sort_order' => $i]);
-                        } catch (Throwable) {
-                            // Ignore unique-constraint collisions (tag already exists for this user).
-                        }
-                    }
-                    if ($driver === 'mysql') {
-                        $this->db->prepare(
-                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
-                             VALUES (:user_id, :key, :insert_value)
-                             ON DUPLICATE KEY UPDATE setting_value = :update_value'
-                        )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'insert_value' => '1', 'update_value' => '1']);
-                    } else {
-                        $this->db->prepare(
-                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
-                             VALUES (:user_id, :key, :value)
-                             ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
-                        )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'value' => '1']);
-                    }
-                }
             }
         } catch (Throwable) {
             // Keep app booting even if migration fails.
         }
     }
 
-    private function ensureMedicationNotesTable(): void
+    // Per-user seed step: must run on every construction (not just once globally), since new
+    // users still need their predefined mood tags seeded. Kept cheap by the app_settings flag.
+    private function seedMoodTagsForUser(): void
+    {
+        if ($this->userId <= 0) {
+            return;
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver !== 'mysql' && $driver !== 'sqlite') {
+            return;
+        }
+
+        try {
+            $flagStmt = $this->db->prepare(
+                'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
+            );
+            $flagStmt->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded']);
+            if ($flagStmt->fetchColumn()) {
+                return;
+            }
+
+            $predefined = [
+                'Annoyed', 'Anxious', 'Bored', 'Calm', 'Excited', 'Grateful',
+                'Happy', 'In Love', 'Indifferent', 'Lonely', 'Productive', 'Sad',
+                'Stressed', 'Tired',
+            ];
+            $insertTag = $this->db->prepare(
+                'INSERT INTO mood_tags (user_id, name, always_show, sort_order)
+                 VALUES (:user_id, :name, 1, :sort_order)'
+            );
+            foreach ($predefined as $i => $name) {
+                try {
+                    $insertTag->execute(['user_id' => $this->userId, 'name' => $name, 'sort_order' => $i]);
+                } catch (Throwable) {
+                    // Ignore unique-constraint collisions (tag already exists for this user).
+                }
+            }
+            if ($driver === 'mysql') {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :insert_value)
+                     ON DUPLICATE KEY UPDATE setting_value = :update_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'insert_value' => '1', 'update_value' => '1']);
+            } else {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :value)
+                     ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'mood_tags_seeded', 'value' => '1']);
+            }
+        } catch (Throwable) {
+            // Keep app booting even if seeding fails.
+        }
+    }
+
+    private function ensureMedicationNotesTableSchema(): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         try {
@@ -4607,28 +4717,7 @@ final class MedicationRepository
                             ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
                 );
-                if ($this->userId > 0) {
-                    $flagStmt = $this->db->prepare(
-                        'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
-                    );
-                    $flagStmt->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done']);
-                    if (!$flagStmt->fetchColumn()) {
-                        $this->db->prepare(
-                            "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
-                             SELECT id, instructions, created_at, updated_at
-                             FROM medications
-                             WHERE user_id = :user_id AND instructions IS NOT NULL AND TRIM(instructions) <> ''"
-                        )->execute(['user_id' => $this->userId]);
-                        $this->db->prepare(
-                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
-                             VALUES (:user_id, :key, :insert_value)
-                             ON DUPLICATE KEY UPDATE setting_value = :update_value'
-                        )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'insert_value' => '1', 'update_value' => '1']);
-                    }
-                }
-                return;
-            }
-            if ($driver === 'sqlite') {
+            } elseif ($driver === 'sqlite') {
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS medication_notes (
                         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4639,28 +4728,56 @@ final class MedicationRepository
                         FOREIGN KEY (medication_id) REFERENCES medications (id) ON DELETE CASCADE
                     )"
                 );
-                if ($this->userId > 0) {
-                    $flagStmt = $this->db->prepare(
-                        'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
-                    );
-                    $flagStmt->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done']);
-                    if (!$flagStmt->fetchColumn()) {
-                        $this->db->prepare(
-                            "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
-                             SELECT id, instructions, created_at, updated_at
-                             FROM medications
-                             WHERE user_id = :user_id AND instructions IS NOT NULL AND TRIM(instructions) <> ''"
-                        )->execute(['user_id' => $this->userId]);
-                        $this->db->prepare(
-                            'INSERT INTO app_settings (user_id, setting_key, setting_value)
-                             VALUES (:user_id, :key, :value)
-                             ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
-                        )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'value' => '1']);
-                    }
-                }
             }
         } catch (Throwable) {
             // Keep app booting even if table setup fails.
+        }
+    }
+
+    // Per-user backfill step: must run on every construction (not just once globally), since new
+    // users still need their existing instructions backfilled. Kept cheap by the app_settings flag.
+    private function backfillMedicationNotesForUser(): void
+    {
+        if ($this->userId <= 0) {
+            return;
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver !== 'mysql' && $driver !== 'sqlite') {
+            return;
+        }
+
+        try {
+            $flagStmt = $this->db->prepare(
+                'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
+            );
+            $flagStmt->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done']);
+            if ($flagStmt->fetchColumn()) {
+                return;
+            }
+
+            $this->db->prepare(
+                "INSERT INTO medication_notes (medication_id, note, created_at, updated_at)
+                 SELECT id, instructions, created_at, updated_at
+                 FROM medications
+                 WHERE user_id = :user_id AND instructions IS NOT NULL AND TRIM(instructions) <> ''"
+            )->execute(['user_id' => $this->userId]);
+
+            if ($driver === 'mysql') {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :insert_value)
+                     ON DUPLICATE KEY UPDATE setting_value = :update_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'insert_value' => '1', 'update_value' => '1']);
+            } else {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :value)
+                     ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'notes_backfill_done', 'value' => '1']);
+            }
+        } catch (Throwable) {
+            // Keep app booting even if backfill fails.
         }
     }
 
