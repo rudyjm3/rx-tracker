@@ -611,12 +611,13 @@ try {
 
     if ($action === 'postpone_dose') {
         $delayMinutes = (int) post_string('postpone_minutes');
-        $repository->postponeDose(
-            (int) post_string('medication_id'),
-            post_string('scheduled_date'),
-            post_string('scheduled_time'),
-            $delayMinutes
-        );
+        $postponeMedId = (int) post_string('medication_id');
+        $postponeDate = post_string('scheduled_date');
+        $postponeTime = post_string('scheduled_time');
+        $repository->postponeDose($postponeMedId, $postponeDate, $postponeTime, $delayMinutes);
+        // Clear any stale delivery log so the background push cron re-sends once the
+        // postponed time arrives, matching the push_action handler in routes/api.php.
+        $repository->clearPushDeliveryLog($postponeMedId, $postponeDate, $postponeTime);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);

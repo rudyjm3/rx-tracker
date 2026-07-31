@@ -3822,15 +3822,15 @@ const notifyItems = (items) => {
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
-    // Show group alarm if first unseen item belongs to a group with 2+ members due
-    const firstGroupId = unseen[0]?.group_id;
-    if (firstGroupId) {
-      const groupItems = unseen.filter((i) => i.group_id === firstGroupId);
-      if (groupItems.length >= 2) {
-        showGroupAlarmOverlay(groupItems);
-      } else {
-        showAlarmOverlay(unseen[0]);
-      }
+    // Prioritize any due group (2+ members) over a plain individual item, regardless
+    // of which one happens to sort first in the schedule.
+    const dueGroupId = unseen.find((item) => {
+      if (!item.group_id) return false;
+      return unseen.filter((i) => i.group_id === item.group_id).length >= 2;
+    })?.group_id;
+    if (dueGroupId) {
+      const groupItems = unseen.filter((i) => i.group_id === dueGroupId);
+      showGroupAlarmOverlay(groupItems);
     } else {
       showAlarmOverlay(unseen[0]);
     }
