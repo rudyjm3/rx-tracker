@@ -852,9 +852,9 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id,
+                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, tracking_started_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :feedback_type, :set_id,
+                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :tracking_started_at, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :feedback_type, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
@@ -862,6 +862,10 @@ final class MedicationRepository
                 'profile_id' => $this->profileId,
                 'name' => $name,
                 'start_date' => $startDate ?? date('Y-m-d'),
+                // Only gate on tracking_started_at when the caller explicitly gave a
+                // start date. Leaving it null preserves today's behavior for the
+                // common case (no start date entered = assume tracking starts now).
+                'tracking_started_at' => $startDate !== null ? $startDate . ' 00:00:00' : null,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
@@ -965,6 +969,7 @@ final class MedicationRepository
                 'UPDATE medications
                  SET name = :name,
                      start_date = COALESCE(:start_date, start_date),
+                     tracking_started_at = COALESCE(:tracking_started_at, tracking_started_at),
                      instructions = :instructions,
                      schedule_mode = :schedule_mode,
                      time_format = :time_format,
@@ -989,6 +994,7 @@ final class MedicationRepository
                 'user_id' => $this->userId,
                 'name' => $name,
                 'start_date' => $startDate,
+                'tracking_started_at' => $startDate !== null ? $startDate . ' 00:00:00' : null,
                 'instructions' => $instructions,
                 'schedule_mode' => $scheduleMode,
                 'time_format' => '12h',
@@ -1009,6 +1015,20 @@ final class MedicationRepository
             ], $inventoryParams, $this->profileParam()));
 
             $this->replaceScheduleTimes($id, $doseTimes, $doseQtys);
+
+            // If the user pushed the start date into the future after some
+            // slots were already auto-marked missed, those auto-marks are now
+            // stale (the medication wasn't supposed to be tracked yet).
+            // Manually-confirmed misses (no auto-marker note) are left intact.
+            if ($startDate !== null) {
+                $cleanupStatement = $this->db->prepare(
+                    "DELETE FROM dose_logs
+                     WHERE medication_id = :id AND status = 'missed' AND note = 'Auto-marked missed'
+                       AND scheduled_for_date < :start_date"
+                );
+                $cleanupStatement->execute(['id' => $id, 'start_date' => $startDate]);
+            }
+
             $this->db->commit();
         } catch (Throwable $exception) {
             $this->db->rollBack();
