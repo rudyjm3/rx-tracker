@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rxtracker-v8';
+const CACHE_NAME = 'rxtracker-v9';
 const SHELL_URLS = [
   'index.php',
   'assets/css/styles.css',
