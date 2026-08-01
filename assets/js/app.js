@@ -3818,12 +3818,17 @@ alarmTakeBtn?.addEventListener('click', async () => {
     // or not, then every item is walked through the queue so each one gets a
     // chance at its own zero-pill interstitial (and feedback modal, for the
     // items that track it) — see processNextFeedbackQueueItem.
+    // Snapshot the items before hiding the overlay — hideAlarmOverlay() resets
+    // alarmGroupItems to [], so looping over the live variable afterward would
+    // silently iterate zero items (matching the sibling skip/snooze handlers,
+    // which already take this same snapshot).
+    const items = [...alarmGroupItems];
     stopAlarmAudio();
     hideAlarmOverlay();
 
     const failures = [];
     const committedItems = [];
-    for (const item of alarmGroupItems) {
+    for (const item of items) {
       const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
       if (!result.ok) {
         failures.push({ name: item.name, error: result.error });
