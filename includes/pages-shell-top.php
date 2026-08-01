@@ -518,6 +518,34 @@
     </div>
   </div>
 
+  <!-- Zero pill count interstitial -->
+  <div class="modal-overlay" data-zero-pill-modal>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="zero-pill-modal-title">
+      <div class="modal-header">
+        <h2 id="zero-pill-modal-title">Out of refills</h2>
+        <button type="button" class="modal-close-btn" data-close-zero-pill-modal aria-label="Close">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="modal-scroll">
+        <p data-zero-pill-message></p>
+        <div class="zero-pill-adjust">
+          <p class="pill-meta">Adjust count</p>
+          <div class="zero-pill-stepper">
+            <button type="button" class="zero-pill-step-btn" data-zero-pill-step="-1" aria-label="Decrease by 1">&minus;</button>
+            <input type="number" step="1" value="0" data-zero-pill-delta aria-label="Amount to add or remove">
+            <button type="button" class="zero-pill-step-btn" data-zero-pill-step="1" aria-label="Increase by 1">+</button>
+            <button type="button" class="secondary" data-zero-pill-apply>Apply</button>
+          </div>
+        </div>
+        <div class="zero-pill-actions modal-footer">
+          <button type="button" data-zero-pill-refill>Log refill</button>
+          <button type="button" class="button-link button-link--cancel" data-zero-pill-not-now>Not now</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Medication detail modal -->
   <div class="modal-overlay" data-med-detail-modal>
     <div class="modal-dialog med-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="med-detail-title">

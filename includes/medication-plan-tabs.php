@@ -189,9 +189,10 @@
             <?php
               $supplyPercent = min(100, (int) round($curQty / $startQty * 100));
               $supplyBarClass = $supplyPercent <= 25 ? ' pill-supply-bar-fill--critical' : ($supplyPercent <= 50 ? ' pill-supply-bar-fill--low' : '');
+              $supplyBarWidth = max(0, $supplyPercent);
             ?>
             <div class="pill-supply-bar" role="progressbar" aria-valuenow="<?= e((string) $supplyPercent) ?>" aria-valuemin="0" aria-valuemax="100" aria-label="<?= e((string) $supplyPercent) ?>% supply remaining">
-              <div class="pill-supply-bar-fill<?= $supplyBarClass ?>" style="width:<?= e((string) $supplyPercent) ?>%"></div>
+              <div class="pill-supply-bar-fill<?= $supplyBarClass ?>" style="width:<?= e((string) $supplyBarWidth) ?>%"></div>
             </div>
           <?php endif; ?>
           <?php if ($daysLeft !== null): ?>

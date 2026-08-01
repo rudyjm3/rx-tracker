@@ -109,11 +109,11 @@ const freeLogModal   = document.querySelector('[data-free-log-modal]');
 const freeLogTitle   = document.querySelector('[data-free-log-title]');
 const freeLogTimeEl  = document.querySelector('[data-free-log-time]');
 const freeLogConfirm = document.querySelector('[data-free-log-confirm]');
-let   freeLogState   = { sourceForm: null, trackFeedback: false, feedbackType: 'none' };
+let   freeLogState   = { medName: '', sourceForm: null, trackFeedback: false, feedbackType: 'none' };
 
 const openFreeLogModal = ({ medName, sourceForm, trackFeedback, feedbackType = 'none' }) => {
   if (!freeLogModal) return;
-  freeLogState = { sourceForm, trackFeedback, feedbackType };
+  freeLogState = { medName, sourceForm, trackFeedback, feedbackType };
   if (freeLogTitle) freeLogTitle.textContent = `Log dose for ${medName}`;
   if (freeLogTimeEl) freeLogTimeEl.value = serverNowTime();
   freeLogModal.classList.add('is-open');
@@ -134,23 +134,10 @@ freeLogModal?.addEventListener('click', (e) => {
 });
 
 freeLogConfirm?.addEventListener('click', async () => {
-  const { sourceForm, trackFeedback, feedbackType } = freeLogState;
+  const { medName, sourceForm, trackFeedback, feedbackType } = freeLogState;
   if (!sourceForm || !freeLogTimeEl) return;
   const takenTime = freeLogTimeEl.value;
   if (!takenTime) { freeLogTimeEl.focus(); return; }
-
-  if (trackFeedback) {
-    const dateStr = serverToday();
-    closeFreeLogModal();
-    openDoseFeedbackModal(
-      sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
-      dateStr,
-      takenTime + ':00',
-      feedbackType ?? 'pain',
-      false
-    );
-    return;
-  }
 
   if (freeLogConfirm) { freeLogConfirm.disabled = true; freeLogConfirm.textContent = 'Logging…'; }
   try {
@@ -161,7 +148,24 @@ freeLogConfirm?.addEventListener('click', async () => {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeFreeLogModal();
-    window.location.reload();
+    if (trackFeedback) {
+      continueAfterDoseRecorded({
+        medicationId: sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
+        medicationName: medName,
+        feedbackType: feedbackType ?? 'pain',
+        logId: data.log_id ?? null,
+        pillCount: data.pill_count ?? null,
+        ranOutOn: data.ran_out_on ?? null,
+      });
+    } else {
+      continueAfterDoseRecorded({
+        medicationId: sourceForm.querySelector('[name="medication_id"]')?.value ?? '',
+        medicationName: medName,
+        feedbackType: 'none',
+        pillCount: data.pill_count ?? null,
+        ranOutOn: data.ran_out_on ?? null,
+      });
+    }
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
     if (freeLogConfirm) { freeLogConfirm.disabled = false; freeLogConfirm.textContent = 'Log dose'; }
@@ -216,12 +220,13 @@ const missedDoseNoteSection  = document.querySelector('[data-missed-dose-note-se
 const missedDoseNoteHidden   = document.querySelector('[data-missed-dose-note-hidden]');
 const missedDoseNoteText     = document.querySelector('[data-missed-dose-note-text]');
 let   missedDosePainMode     = false;
+let   missedDoseMedName      = '';
 const slotLateQuestion  = document.querySelector('[data-slot-late-question]');
 const slotLateTime      = document.querySelector('[data-slot-late-time]');
 const slotLateTimeInput = document.querySelector('[data-slot-late-time-input]');
 const slotPickerConfirm = document.querySelector('[data-slot-picker-confirm]');
 
-let slotPickerState = { medicationId: null, selectedSlot: null, graceMinutes: 30, trackFeedback: false, feedbackType: 'none', sourceForm: null, today: '' };
+let slotPickerState = { medicationId: null, medName: '', selectedSlot: null, graceMinutes: 30, trackFeedback: false, feedbackType: 'none', sourceForm: null, today: '' };
 
 const slotTo12h = (hhmm) => {
   const [h, m] = hhmm.split(':').map(Number);
@@ -235,7 +240,7 @@ const openSlotPickerModal = ({ medicationId, medName, sourceForm, slots, graceMi
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const today = serverToday();
 
-  slotPickerState = { medicationId, selectedSlot: null, graceMinutes, trackFeedback, feedbackType, sourceForm, today };
+  slotPickerState = { medicationId, medName, selectedSlot: null, graceMinutes, trackFeedback, feedbackType, sourceForm, today };
 
   if (slotPickerTitle) slotPickerTitle.textContent = `Log dose for ${medName}`;
   if (slotPickerConfirm) slotPickerConfirm.disabled = true;
@@ -331,7 +336,7 @@ slotLateQuestion?.addEventListener('change', (e) => {
 });
 
 slotPickerConfirm?.addEventListener('click', async () => {
-  const { medicationId, selectedSlot, trackFeedback, feedbackType, sourceForm, today, graceMinutes } = slotPickerState;
+  const { medicationId, medName, selectedSlot, trackFeedback, feedbackType, sourceForm, today, graceMinutes } = slotPickerState;
 
   // When free-time section is visible (all slots logged), use its time input instead
   const usingFreeTime = slotFreeTime && !slotFreeTime.hidden;
@@ -347,7 +352,10 @@ slotPickerConfirm?.addEventListener('click', async () => {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
       closeSlotPickerModal();
-      window.location.reload();
+      continueAfterDoseRecorded({
+        medicationId, medicationName: medName, feedbackType: trackFeedback ? (feedbackType ?? 'pain') : 'none',
+        logId: data.log_id ?? null, pillCount: data.pill_count ?? null, ranOutOn: data.ran_out_on ?? null,
+      });
     } catch (err) {
       alert(err.message ?? 'Something went wrong.');
       if (slotPickerConfirm) { slotPickerConfirm.disabled = false; slotPickerConfirm.textContent = 'Log dose'; }
@@ -382,12 +390,6 @@ slotPickerConfirm?.addEventListener('click', async () => {
   }
   const lateTime = takenLate ? slotLateTimeInput.value : '';
 
-  if (trackFeedback) {
-    closeSlotPickerModal();
-    openDoseFeedbackModal(medicationId, today, selectedSlot + ':00', feedbackType ?? 'pain', false, lateTime);
-    return;
-  }
-
   const takenOnTime = isOverdueSlot ? !takenLate : true;
 
   if (slotPickerConfirm) { slotPickerConfirm.disabled = true; slotPickerConfirm.textContent = 'Logging…'; }
@@ -401,7 +403,10 @@ slotPickerConfirm?.addEventListener('click', async () => {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeSlotPickerModal();
-    window.location.reload();
+    continueAfterDoseRecorded({
+      medicationId, medicationName: medName, feedbackType: trackFeedback ? (feedbackType ?? 'pain') : 'none',
+      logId: data.log_id ?? null, pillCount: data.pill_count ?? null, ranOutOn: data.ran_out_on ?? null,
+    });
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
     if (slotPickerConfirm) { slotPickerConfirm.disabled = false; slotPickerConfirm.textContent = 'Log dose'; }
@@ -473,6 +478,7 @@ postponeModal?.addEventListener('click', (event) => {
 const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false, feedbackType = 'none', title = null }) => {
   if (!missedDoseModal) return;
   missedDosePainMode = trackFeedback;
+  missedDoseMedName = medicationName;
   const { pain: showPain, mood: showMood } = feedbackSectionsFor(feedbackType ?? (trackFeedback ? 'pain' : 'none'));
   if (missedDoseTitle) missedDoseTitle.textContent = title ?? `Log missed dose — ${medicationName}`;
   if (missedDoseMedId) missedDoseMedId.value = medicationId;
@@ -536,7 +542,16 @@ missedDoseModal?.querySelector('[data-missed-dose-confirm]')?.addEventListener('
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeMissedDoseModal();
-    window.location.reload();
+    // Pain/mood were already gathered in this same submission — no separate
+    // feedback step needed, just show the zero-pill interstitial (if any)
+    // before finishing.
+    continueAfterDoseRecorded({
+      medicationId: missedDoseMedId?.value ?? '',
+      medicationName: missedDoseMedName,
+      feedbackType: 'none',
+      pillCount: data.pill_count ?? null,
+      ranOutOn: data.ran_out_on ?? null,
+    });
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Log dose'; }
@@ -562,7 +577,7 @@ const logPastDoseMoodLevelEl     = document.querySelector('[data-log-past-dose-m
 const logPastDoseNoteEl          = document.querySelector('[data-log-past-dose-note]');
 const logPastDoseConfirm         = document.querySelector('[data-log-past-dose-confirm]');
 
-let logPastDoseState = { medicationId: null, hasFixedSlots: false, selectedSlot: null };
+let logPastDoseState = { medicationId: null, medicationName: '', hasFixedSlots: false, selectedSlot: null };
 
 const localDateStr = (d) => {
   const pad = (n) => String(n).padStart(2, '0');
@@ -620,7 +635,7 @@ const openLogPastDoseModal = ({ medicationId, medicationName, slots, scheduleMod
   if (!logPastDoseModal) return;
 
   logPastDoseForm?.reset();
-  logPastDoseState = { medicationId, hasFixedSlots: scheduleMode === 'fixed_times' && slots.length > 0, selectedSlot: null };
+  logPastDoseState = { medicationId, medicationName, hasFixedSlots: scheduleMode === 'fixed_times' && slots.length > 0, selectedSlot: null };
 
   const { pain: showPastPain, mood: showPastMood } = feedbackSectionsFor(feedbackType ?? (trackFeedback ? 'pain' : 'none'));
 
@@ -751,7 +766,16 @@ logPastDoseConfirm?.addEventListener('click', async () => {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Failed to log dose.');
     closeLogPastDoseModal();
-    window.location.reload();
+    // Pain/mood were already gathered in this same submission — no separate
+    // feedback step needed, just show the zero-pill interstitial (if any)
+    // before finishing.
+    continueAfterDoseRecorded({
+      medicationId: logPastDoseState.medicationId ?? '',
+      medicationName: logPastDoseState.medicationName ?? '',
+      feedbackType: 'none',
+      pillCount: data.pill_count ?? null,
+      ranOutOn: data.ran_out_on ?? null,
+    });
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
     if (logPastDoseConfirm) { logPastDoseConfirm.disabled = false; logPastDoseConfirm.textContent = 'Log dose'; }
@@ -759,15 +783,21 @@ logPastDoseConfirm?.addEventListener('click', async () => {
 });
 
 // ── Dose feedback modal ───────────────────────────────────────────────────────
+//
+// The dose itself is always already recorded by the time this modal opens —
+// see continueAfterDoseRecorded() below. This modal only ever *attaches*
+// pain/mood/note to that already-recorded dose_logs row (via editPainMoodLog),
+// it never performs the original mark_dose/log_dose_now commit.
 
-let feedbackAlarmContext = false;
-// When Take is pressed in Manage Each mode for a feedback-tracked med, this holds
-// the callback to call after the user submits (or skips) the feedback modal.
-let manageEachFeedbackMeta = null;
+// dose_logs.id to attach pain/mood/note to when the form is submitted or
+// skipped; null outside of an active feedback pass.
+let feedbackEditLogId = null;
+// Callback to run once feedback is attached (or skipped/cancelled) — e.g.
+// reload the page, advance a queue, or just close for a manage-each item.
+let feedbackEditOnFinish = null;
 
 const openDoseFeedbackModal = (medicationId, scheduledDate, scheduledTime, feedbackType = 'pain', fromAlarm = false, actualTakenTime = '') => {
   if (!doseFeedbackModal) return;
-  feedbackAlarmContext = fromAlarm;
   const { pain: showPain, mood: showMood } = feedbackSectionsFor(feedbackType);
   if (feedbackMedicationIdEl) feedbackMedicationIdEl.value = medicationId;
   if (feedbackScheduledDateEl) feedbackScheduledDateEl.value = scheduledDate;
@@ -795,15 +825,25 @@ const closeDoseFeedbackModal = (cancelQueue = false) => {
   doseFeedbackModal.classList.remove('is-open');
   // Restore alarm overlay if it was lowered for manage-each feedback.
   if (alarmOverlay) alarmOverlay.classList.remove('is-behind-modal');
-  if (manageEachFeedbackMeta && cancelQueue) {
-    manageEachFeedbackMeta = null;
-  }
   if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
   if (cancelQueue && feedbackQueueMode) {
     feedbackQueue = [];
     feedbackQueueMode = false;
+    feedbackEditLogId = null;
+    feedbackEditOnFinish = null;
     unlockBodyScroll();
     window.location.reload();
+    return;
+  }
+  if (cancelQueue) {
+    // Dismissed via the X button / click-outside without submitting feedback.
+    // The dose itself is already recorded — just drop the pending feedback
+    // edit and still run whatever the caller was waiting on (e.g. a reload).
+    const onFinish = feedbackEditOnFinish;
+    feedbackEditLogId = null;
+    feedbackEditOnFinish = null;
+    unlockBodyScroll();
+    if (onFinish) onFinish();
     return;
   }
   unlockBodyScroll();
@@ -825,72 +865,48 @@ document.querySelectorAll('.mood-level-btn').forEach((btn) => {
   });
 });
 
-const submitFeedbackAsAlarmAction = async () => {
-  const note = feedbackNoteEl?.value ?? '';
-  const painLevel = feedbackPainLevelEl?.value ?? '';
-  const moodLevel = feedbackMoodLevelEl?.value ?? '';
+// Attaches pain/mood/note to the dose already recorded at feedbackEditLogId,
+// then runs whatever the caller was waiting on. Used by every non-queue path
+// (plain schedule-tap, free-log, slot-picker, manage-each, single alarm) —
+// they all converge here since the dose commit already happened earlier.
+const finishFeedbackEdit = async (note, painLevel, moodLevel) => {
+  const logId = feedbackEditLogId;
+  const onFinish = feedbackEditOnFinish;
+  feedbackEditLogId = null;
+  feedbackEditOnFinish = null;
   closeDoseFeedbackModal();
-  hideAlarmOverlay();
-  await alarmAction('mark_dose', { status: 'taken', note, pain_level: painLevel, mood_level: moodLevel });
+  if (logId) {
+    const result = await editPainMoodLog({
+      source: 'dose',
+      id: logId,
+      painLevel: painLevel !== '' ? painLevel : null,
+      moodLevel: moodLevel !== '' ? moodLevel : null,
+      note,
+    });
+    if (!result.ok) {
+      alert(result.error || 'Failed to save feedback.');
+    }
+  }
+  if (onFinish) onFinish();
 };
 
 feedbackForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const note = feedbackNoteEl?.value ?? '';
+  const painLevel = feedbackPainLevelEl?.value ?? '';
+  const moodLevel = feedbackMoodLevelEl?.value ?? '';
   if (feedbackQueueMode) {
-    event.preventDefault();
-    const note = feedbackNoteEl?.value ?? '';
-    const painLevel = feedbackPainLevelEl?.value ?? '';
-    const moodLevel = feedbackMoodLevelEl?.value ?? '';
     await submitCurrentQueueItem(note, painLevel, moodLevel);
-  } else if (manageEachFeedbackMeta) {
-    event.preventDefault();
-    const note = feedbackNoteEl?.value ?? '';
-    const painLevel = feedbackPainLevelEl?.value ?? '';
-    const moodLevel = feedbackMoodLevelEl?.value ?? '';
-    const meta = manageEachFeedbackMeta;
-    manageEachFeedbackMeta = null;
-    closeDoseFeedbackModal();
-    const medId = feedbackMedicationIdEl?.value ?? '';
-    const date = feedbackScheduledDateEl?.value ?? '';
-    const time = feedbackScheduledTimeEl?.value ?? '';
-    const result = await postDose(medId, date, time, 'taken', note, painLevel, meta.groupId, moodLevel);
-    if (result.ok) {
-      meta.markDone('Taken ✓');
-    } else {
-      meta.markDone('Failed ✗');
-      alert(result.error || 'Failed to log dose.');
-    }
-  } else if (feedbackAlarmContext) {
-    event.preventDefault();
-    await submitFeedbackAsAlarmAction();
+  } else {
+    await finishFeedbackEdit(note, painLevel, moodLevel);
   }
 });
 
 skipFeedbackBtn?.addEventListener('click', async () => {
   if (feedbackQueueMode) {
     await submitCurrentQueueItem('', '');
-  } else if (manageEachFeedbackMeta) {
-    const meta = manageEachFeedbackMeta;
-    manageEachFeedbackMeta = null;
-    const medId = feedbackMedicationIdEl?.value ?? '';
-    const date = feedbackScheduledDateEl?.value ?? '';
-    const time = feedbackScheduledTimeEl?.value ?? '';
-    closeDoseFeedbackModal();
-    const result = await postDose(medId, date, time, 'taken', '', '', meta.groupId);
-    if (result.ok) {
-      meta.markDone('Taken ✓');
-    } else {
-      meta.markDone('Failed ✗');
-      alert(result.error || 'Failed to log dose.');
-    }
-  } else if (feedbackAlarmContext) {
-    closeDoseFeedbackModal();
-    await alarmAction('mark_dose', { status: 'taken', note: '' });
   } else {
-    if (feedbackMedicationIdEl && feedbackScheduledDateEl && feedbackScheduledTimeEl) {
-      if (feedbackPainLevelEl) feedbackPainLevelEl.value = '';
-      if (feedbackNoteEl) feedbackNoteEl.value = '';
-      feedbackForm?.submit();
-    }
+    await finishFeedbackEdit('', '', '');
   }
 });
 
@@ -906,6 +922,150 @@ doseFeedbackModal?.addEventListener('click', (event) => {
     closeDoseFeedbackModal(true);
   }
 });
+
+// ── Zero pill count interstitial ──────────────────────────────────────────────
+//
+// Shown right after a dose is recorded (never before — see
+// continueAfterDoseRecorded) when the medication's pill count is at or below
+// zero. Offers a quick inline adjust, a hop to the existing refill flow, or a
+// dismiss — any of the three then proceeds to the pain/mood feedback step (if
+// the medication tracks it) or finishes the logging action.
+
+const zeroPillModal = document.querySelector('[data-zero-pill-modal]');
+const zeroPillMessageEl = document.querySelector('[data-zero-pill-message]');
+const zeroPillDeltaInput = document.querySelector('[data-zero-pill-delta]');
+const zeroPillApplyBtn = document.querySelector('[data-zero-pill-apply]');
+const zeroPillRefillBtn = document.querySelector('[data-zero-pill-refill]');
+const zeroPillNotNowBtn = document.querySelector('[data-zero-pill-not-now]');
+const closeZeroPillModalButton = document.querySelector('[data-close-zero-pill-modal]');
+
+// { medicationId, medicationName, medicationDose, pillCount, onResolved }
+let zeroPillContext = null;
+// True while the refill modal was opened as a sub-flow of this interstitial —
+// tells the refill modal's submit/cancel handlers to resume the interstitial
+// flow instead of behaving like a standalone refill.
+let refillOpenedFromZeroPillContext = false;
+
+const formatZeroPillDate = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const openZeroPillModal = ({ medicationId, medicationName = '', medicationDose = '', pillCount, ranOutOn, onResolved }) => {
+  if (!zeroPillModal) { onResolved?.(); return; }
+  zeroPillContext = { medicationId, medicationName, medicationDose, pillCount, onResolved };
+  if (zeroPillMessageEl) {
+    const name = medicationName || 'This medication';
+    zeroPillMessageEl.textContent = ranOutOn
+      ? `${name} is out of refills. Ran out on ${formatZeroPillDate(ranOutOn)}.`
+      : `${name}'s pill count is at ${pillCount}.`;
+  }
+  if (zeroPillDeltaInput) zeroPillDeltaInput.value = '0';
+  zeroPillModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+// Resolves the pending interstitial (any of the three actions) and hands
+// control back to whatever continueAfterDoseRecorded queued up next.
+const resolveZeroPillModal = () => {
+  if (!zeroPillModal) return;
+  const ctx = zeroPillContext;
+  zeroPillContext = null;
+  zeroPillModal.classList.remove('is-open');
+  unlockBodyScroll();
+  ctx?.onResolved?.();
+};
+
+// Hides the modal without resolving it — used only when handing off to the
+// refill sub-flow, which will either resolve it on success or reopen it.
+const closeZeroPillModalOnly = () => {
+  if (!zeroPillModal) return;
+  zeroPillModal.classList.remove('is-open');
+  unlockBodyScroll();
+};
+
+document.querySelectorAll('[data-zero-pill-step]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (!zeroPillDeltaInput) return;
+    const step = parseInt(btn.dataset.zeroPillStep ?? '0', 10);
+    const current = parseInt(zeroPillDeltaInput.value || '0', 10) || 0;
+    zeroPillDeltaInput.value = String(current + step);
+  });
+});
+
+zeroPillApplyBtn?.addEventListener('click', async () => {
+  if (!zeroPillContext) return;
+  const delta = parseFloat(zeroPillDeltaInput?.value || '0') || 0;
+  const newCount = (zeroPillContext.pillCount ?? 0) + delta;
+  zeroPillApplyBtn.disabled = true;
+  try {
+    const params = new URLSearchParams({
+      csrf_token: getCsrfToken(),
+      json_response: '1',
+      action: 'adjust_quantity',
+      medication_id: zeroPillContext.medicationId,
+      new_count: String(newCount),
+      note: '',
+    });
+    const resp = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error ?? 'Failed to adjust quantity.');
+    resolveZeroPillModal();
+  } catch (err) {
+    alert(err.message || 'Failed to adjust quantity. Please try again.');
+  } finally {
+    if (zeroPillApplyBtn) zeroPillApplyBtn.disabled = false;
+  }
+});
+
+zeroPillRefillBtn?.addEventListener('click', () => {
+  if (!zeroPillContext) return;
+  const { medicationId, medicationName, medicationDose } = zeroPillContext;
+  refillOpenedFromZeroPillContext = true;
+  closeZeroPillModalOnly();
+  openRefillModal(medicationId, medicationName, medicationDose);
+});
+
+zeroPillNotNowBtn?.addEventListener('click', () => resolveZeroPillModal());
+
+closeZeroPillModalButton?.addEventListener('click', () => resolveZeroPillModal());
+
+zeroPillModal?.addEventListener('click', (event) => {
+  if (event.target === zeroPillModal) resolveZeroPillModal();
+});
+
+// Central continuation for every "a dose was just recorded" call site: shows
+// the zero-pill interstitial first if the medication is out (never blocking
+// the commit itself, which has already happened by the time this runs), then
+// opens the pain/mood feedback modal if the medication tracks it, then runs
+// onFinish (defaults to a full reload, matching the rest of the app's
+// end-of-action behavior).
+const continueAfterDoseRecorded = ({
+  medicationId, medicationName = '', medicationDose = '', feedbackType = 'none',
+  logId = null, pillCount = null, ranOutOn = null, onFinish,
+}) => {
+  const finish = onFinish || (() => window.location.reload());
+  const proceed = () => {
+    if (feedbackType && feedbackType !== 'none' && logId) {
+      feedbackEditLogId = logId;
+      feedbackEditOnFinish = finish;
+      openDoseFeedbackModal(medicationId, '', '', feedbackType, false);
+    } else {
+      finish();
+    }
+  };
+  if (pillCount !== null && pillCount !== undefined && pillCount <= 0) {
+    openZeroPillModal({ medicationId, medicationName, medicationDose, pillCount, ranOutOn, onResolved: proceed });
+  } else {
+    proceed();
+  }
+};
 
 // ── Medication actions "more" dropdown (mobile) ───────────────────────────────
 
@@ -1005,12 +1165,28 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       return;
     }
 
-    if (btn.dataset.trackDoseFeedback === '1') {
-      event.preventDefault();
-      const medicationId = btn.dataset.medicationId ?? '';
-      if (!medicationId || !scheduledDate || !scheduledTime) return;
-      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, btn.dataset.feedbackType ?? 'pain', false);
-    }
+    // Every on-time "Take" tap — feedback-tracked or not — must go through the
+    // commit-first continuation so the zero-pill interstitial gets a chance
+    // to run. Only trackFeedback varies what happens after the commit.
+    event.preventDefault();
+    const medicationId = btn.dataset.medicationId ?? '';
+    if (!medicationId || !scheduledDate || !scheduledTime) return;
+    const medicationName = btn.dataset.medicationName ?? '';
+    const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    const feedbackType = trackFeedback ? (btn.dataset.feedbackType ?? 'pain') : 'none';
+    const groupId = btn.closest('form')?.querySelector('[name="group_id"]')?.value ?? '';
+    btn.disabled = true;
+    postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId).then((result) => {
+      btn.disabled = false;
+      if (!result.ok) {
+        alert(result.error || 'Failed to log dose.');
+        return;
+      }
+      continueAfterDoseRecorded({
+        medicationId, medicationName, feedbackType,
+        logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn,
+      });
+    });
   });
 });
 
@@ -3364,6 +3540,7 @@ const showGroupAlarmOverlay = (groupItems) => {
       const li = document.createElement('li');
       li.className = 'alarm-group-list-item';
       li.dataset.medicationId = String(item.medication_id);
+      li.dataset.medicationName = String(item.name ?? '');
       li.dataset.scheduledDate = String(item.scheduled_date);
       li.dataset.scheduledTime = String(item.scheduled_time);
       li.dataset.groupId = String(item.group_id ?? '');
@@ -3393,13 +3570,18 @@ const hideAlarmOverlay = () => {
 const isAnyModalOpen = () =>
   [medicationModal, postponeModal, doseFeedbackModal, medPlanModal, painGraphModal, moodGraphModal,
    imageLightbox, medDetailModal, refillModal, refillHistoryModal, missedDoseModal, instructionsModal,
-   discontinueModal, resumeModal, adjustQtyModal]
+   discontinueModal, resumeModal, adjustQtyModal, zeroPillModal]
     .some((m) => m?.classList.contains('is-open')) ||
   (groupFormWrap != null && groupFormWrap.classList.contains('is-open')) ||
   (notifPanel != null && !notifPanel.hidden);
 
-const alarmAction = async (action, extra = {}) => {
+// autoFinish (default true) hides the alarm overlay and reloads once the
+// request resolves — pass { autoFinish: false } when the caller needs to run
+// the zero-pill interstitial / feedback continuation first and will finish
+// (hide + reload) itself once that's done.
+const alarmAction = async (action, extra = {}, { autoFinish = true } = {}) => {
   const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
+  const medicationName = alarmMedNameEl?.textContent ?? '';
   const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
   const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
 
@@ -3413,6 +3595,7 @@ const alarmAction = async (action, extra = {}) => {
     ...extra,
   });
 
+  let data = { ok: false };
   try {
     const resp = await window.fetch('index.php', {
       method: 'POST',
@@ -3420,17 +3603,25 @@ const alarmAction = async (action, extra = {}) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params.toString(),
     });
-    const data = await resp.json();
-    if (data.ok) {
-      hideAlarmOverlay();
-      if (!isAnyModalOpen()) window.location.reload();
-      return;
-    }
+    data = await resp.json();
   } catch {
     // fall through
   }
-  hideAlarmOverlay();
-  if (!isAnyModalOpen()) window.location.reload();
+
+  if (autoFinish) {
+    hideAlarmOverlay();
+    if (!isAnyModalOpen()) window.location.reload();
+  }
+
+  return {
+    ok: !!data.ok,
+    error: data.error ?? null,
+    logId: data.log_id ?? null,
+    pillCount: data.pill_count ?? null,
+    ranOutOn: data.ran_out_on ?? null,
+    medicationId,
+    medicationName,
+  };
 };
 
 // ── Sequential feedback queue ─────────────────────────────────────────────────
@@ -3462,9 +3653,15 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
       body: params.toString(),
     });
     const data = await res.json();
-    return { ok: !!data.ok, error: data.error ?? null };
+    return {
+      ok: !!data.ok,
+      error: data.error ?? null,
+      logId: data.log_id ?? null,
+      pillCount: data.pill_count ?? null,
+      ranOutOn: data.ran_out_on ?? null,
+    };
   } catch {
-    return { ok: false, error: null };
+    return { ok: false, error: null, logId: null, pillCount: null, ranOutOn: null };
   }
 };
 
@@ -3548,6 +3745,12 @@ const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMin
   }
 };
 
+// Every item in this queue is already committed (see the alarm "Take all"
+// handler below, which posts each item's dose immediately, feedback-tracked
+// or not, before queueing any of them) — this only walks each one through
+// the zero-pill interstitial (if needed) and then the pain/mood feedback
+// modal (if that item tracks it); items needing neither just advance through
+// silently so the batch still finishes in one pass.
 const processNextFeedbackQueueItem = () => {
   if (feedbackQueue.length === 0) {
     feedbackQueueMode = false;
@@ -3559,20 +3762,49 @@ const processNextFeedbackQueueItem = () => {
   const item = feedbackQueue[0];
   const total = item.totalInBatch;
   const pos = item.positionInBatch;
-  if (feedbackQueueProgressEl) {
-    feedbackQueueProgressEl.textContent = `${item.name} (${pos} of ${total})`;
-    feedbackQueueProgressEl.hidden = false;
-  }
-  feedbackQueueMode = true;
   const itemFeedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
-  openDoseFeedbackModal(item.medication_id, item.scheduled_date, item.scheduled_time, itemFeedbackType, false);
+
+  const openItemFeedback = () => {
+    if (!itemFeedbackType || itemFeedbackType === 'none') {
+      // Nothing left to gather for this item — advance to the next one.
+      feedbackQueue.shift();
+      processNextFeedbackQueueItem();
+      return;
+    }
+    if (feedbackQueueProgressEl) {
+      feedbackQueueProgressEl.textContent = `${item.name} (${pos} of ${total})`;
+      feedbackQueueProgressEl.hidden = false;
+    }
+    feedbackQueueMode = true;
+    feedbackEditLogId = item.logId ?? null;
+    openDoseFeedbackModal(item.medication_id, item.scheduled_date, item.scheduled_time, itemFeedbackType, false);
+  };
+
+  if (item.pillCount !== null && item.pillCount !== undefined && item.pillCount <= 0) {
+    openZeroPillModal({
+      medicationId: item.medication_id,
+      medicationName: item.name,
+      pillCount: item.pillCount,
+      ranOutOn: item.ranOutOn,
+      onResolved: openItemFeedback,
+    });
+  } else {
+    openItemFeedback();
+  }
 };
 
 const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
   const item = feedbackQueue.shift();
   if (!item) return;
-  const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', note, painLevel, item.group_id ?? '', moodLevel);
+  const result = await editPainMoodLog({
+    source: 'dose',
+    id: item.logId,
+    painLevel: painLevel !== '' ? painLevel : null,
+    moodLevel: moodLevel !== '' ? moodLevel : null,
+    note,
+  });
   if (!result.ok) feedbackQueueFailures.push({ name: item.name, error: result.error });
+  feedbackEditLogId = null;
   closeDoseFeedbackModal();
   if (feedbackQueueProgressEl) feedbackQueueProgressEl.hidden = true;
   processNextFeedbackQueueItem();
@@ -3582,45 +3814,58 @@ const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
 
 alarmTakeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
-    // Group mode: log non-feedback meds immediately, queue feedback meds
-    const nonFeedback = alarmGroupItems.filter((i) => !i.track_dose_feedback);
-    const withFeedback = alarmGroupItems.filter((i) => i.track_dose_feedback);
-
+    // Group mode: every item's dose is committed immediately, feedback-tracked
+    // or not, then every item is walked through the queue so each one gets a
+    // chance at its own zero-pill interstitial (and feedback modal, for the
+    // items that track it) — see processNextFeedbackQueueItem.
     stopAlarmAudio();
     hideAlarmOverlay();
 
     const failures = [];
-    for (const item of nonFeedback) {
+    const committedItems = [];
+    for (const item of alarmGroupItems) {
       const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
-      if (!result.ok) failures.push({ name: item.name, error: result.error });
+      if (!result.ok) {
+        failures.push({ name: item.name, error: result.error });
+        continue;
+      }
+      committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn });
     }
 
-    if (withFeedback.length === 0) {
+    if (committedItems.length === 0) {
       alertDoseFailures(failures);
       window.location.reload();
       return;
     }
 
     feedbackQueueFailures = failures;
-    feedbackQueue = withFeedback.map((item, idx) => ({
+    feedbackQueue = committedItems.map((item, idx) => ({
       ...item,
       positionInBatch: idx + 1,
-      totalInBatch: withFeedback.length,
+      totalInBatch: committedItems.length,
     }));
     processNextFeedbackQueueItem();
   } else {
-    // Single mode
+    // Single mode — commit immediately, then walk the zero-pill interstitial
+    // (if needed) and pain/mood feedback (if tracked) before finishing.
     const trackFeedback = alarmOverlay?.dataset.alarmTrackDoseFeedback === '1';
-    if (trackFeedback) {
-      const medicationId = alarmOverlay?.dataset.alarmMedicationId ?? '';
-      const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
-      const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
-      stopAlarmAudio();
-      hideAlarmOverlay();
-      openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, alarmOverlay?.dataset.alarmFeedbackType ?? 'pain', true);
-    } else {
-      alarmAction('mark_dose', { status: 'taken', note: '' });
+    const feedbackType = alarmOverlay?.dataset.alarmFeedbackType ?? (trackFeedback ? 'pain' : 'none');
+    stopAlarmAudio();
+    const result = await alarmAction('mark_dose', { status: 'taken', note: '' }, { autoFinish: false });
+    hideAlarmOverlay();
+    if (!result.ok) {
+      if (!isAnyModalOpen()) window.location.reload();
+      return;
     }
+    continueAfterDoseRecorded({
+      medicationId: result.medicationId,
+      medicationName: result.medicationName,
+      feedbackType,
+      logId: result.logId,
+      pillCount: result.pillCount,
+      ranOutOn: result.ranOutOn,
+      onFinish: () => { if (!isAnyModalOpen()) window.location.reload(); },
+    });
   }
 });
 
@@ -3673,6 +3918,7 @@ alarmIndividualBtn?.addEventListener('click', () => {
 
   alarmGroupListEl.querySelectorAll('.alarm-group-list-item').forEach((li) => {
     const medicationId = li.dataset.medicationId ?? '';
+    const medicationName = li.dataset.medicationName ?? '';
     const scheduledDate = li.dataset.scheduledDate ?? '';
     const scheduledTime = li.dataset.scheduledTime ?? '';
     const groupId = li.dataset.groupId ?? '';
@@ -3695,22 +3941,29 @@ alarmIndividualBtn?.addEventListener('click', () => {
     };
 
     takeBtn?.addEventListener('click', async () => {
+      const result = await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
+      if (!result.ok) {
+        markDone('Failed ✗');
+        alert(result.error || 'Failed to log dose.');
+        return;
+      }
+      markDone('Taken ✓');
       if (trackFeedback) {
         stopAlarmAudio();
         // Lower the alarm overlay so the feedback modal (z-index 1000) is visible.
         if (alarmOverlay) alarmOverlay.classList.add('is-behind-modal');
-        manageEachFeedbackMeta = { groupId, markDone };
-        openDoseFeedbackModal(medicationId, scheduledDate, scheduledTime, feedbackType, false);
-        // markDone is deferred until feedback is submitted or skipped.
-      } else {
-        const result = await postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId);
-        if (result.ok) {
-          markDone('Taken ✓');
-        } else {
-          markDone('Failed ✗');
-          alert(result.error || 'Failed to log dose.');
-        }
       }
+      continueAfterDoseRecorded({
+        medicationId,
+        medicationName,
+        feedbackType: trackFeedback ? feedbackType : 'none',
+        logId: result.logId,
+        pillCount: result.pillCount,
+        ranOutOn: result.ranOutOn,
+        // Manage-each doesn't reload after a single item — other items may
+        // still be pending in the same alarm overlay.
+        onFinish: () => {},
+      });
     });
 
     skipBtn?.addEventListener('click', async () => {
@@ -5166,17 +5419,31 @@ const openRefillModal = (medicationId, medicationName, medicationDose = '') => {
   lockBodyScroll();
 };
 
-const closeRefillModal = () => {
+// Re-shows the zero-pill interstitial with its preserved context (message,
+// pending resolution) after the user backs out of the refill sub-flow
+// without completing it.
+const reopenZeroPillModal = () => {
+  if (!zeroPillModal || !zeroPillContext) return;
+  zeroPillModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeRefillModal = ({ resumeZeroPill = true } = {}) => {
   if (!refillModal) return;
   if (!refillModal.classList.contains('is-open')) return;
   refillModal.classList.remove('is-open');
   unlockBodyScroll();
+  if (resumeZeroPill && refillOpenedFromZeroPillContext) {
+    refillOpenedFromZeroPillContext = false;
+    reopenZeroPillModal();
+  }
 };
 
 document.querySelectorAll('[data-open-refill-modal]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const { medicationId = '', medicationName = '', medicationDose = '' } = btn.dataset;
     if (!medicationId) return;
+    refillOpenedFromZeroPillContext = false;
     openRefillModal(medicationId, medicationName, medicationDose);
   });
 });
@@ -5400,8 +5667,15 @@ refillForm?.addEventListener('submit', async (event) => {
     });
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error ?? 'Failed to log refill.');
-    closeRefillModal();
-    window.location.reload();
+    closeRefillModal({ resumeZeroPill: false });
+    if (refillOpenedFromZeroPillContext) {
+      // Refill successfully resolved the zero-pill interstitial — proceed
+      // to whatever it was gating (feedback modal or finishing).
+      refillOpenedFromZeroPillContext = false;
+      resolveZeroPillModal();
+    } else {
+      window.location.reload();
+    }
   } catch (err) {
     alert(err.message || 'Failed to log refill. Please try again.');
     if (submitBtn) submitBtn.disabled = false;

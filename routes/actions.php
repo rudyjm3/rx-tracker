@@ -439,10 +439,12 @@ try {
                 }
             }
         }
-        $repository->recordDoseStatus((int) post_string('medication_id'), post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt, $moodLevel);
+        $markDoseMedId = (int) post_string('medication_id');
+        $logId = $repository->recordDoseStatus($markDoseMedId, post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt, $moodLevel);
         if ($jsonResponse) {
+            $pillStatus = pill_status_payload($repository, $markDoseMedId);
             header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            echo json_encode(['ok' => true, 'log_id' => $logId] + $pillStatus, JSON_THROW_ON_ERROR);
             exit;
         }
         redirect_home();
@@ -459,10 +461,11 @@ try {
         if ($medicationId <= 0) {
             throw new RuntimeException('Choose a medication first.');
         }
-        $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime, $actualTakenTime);
+        $logId = $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime, $actualTakenTime);
         if ($jsonResponse) {
+            $pillStatus = pill_status_payload($repository, $medicationId);
             header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            echo json_encode(['ok' => true, 'log_id' => $logId] + $pillStatus, JSON_THROW_ON_ERROR);
             exit;
         }
         redirect_home();
@@ -561,9 +564,6 @@ try {
             throw new RuntimeException('Corrected count is required.');
         }
         $newCount = (float) $newCountRaw;
-        if ($newCount < 0) {
-            throw new RuntimeException('Corrected count cannot be negative.');
-        }
         $repository->adjustQuantity($medicationId, $newCount, $note);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');

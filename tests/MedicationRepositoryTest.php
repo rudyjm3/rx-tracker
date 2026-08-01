@@ -278,8 +278,8 @@ $repo->createMedication('Empty Med', '', 'fixed_times', ['06:30:00'], null, null
 $allEmpty = $repo->activeMedications();
 $emptyId = (int) array_values(array_filter($allEmpty, static fn(array $r): bool => $r['name'] === 'Empty Med'))[0]['id'];
 $repo->recordDoseStatus($emptyId, $today, '06:30:00', 'taken', '');
-assertSameValue(0.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Deducting from 0 stays 0.');
+assertSameValue(-1.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Deducting from 0 should go negative, not clamp.');
 $repo->recordDoseStatus($emptyId, $today, '06:30:00', 'skipped', '');
-assertSameValue(0.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Reverting a dose that deducted nothing restores nothing.');
+assertSameValue(0.0, (float) $repo->findMedication($emptyId)['current_quantity'], 'Reverting a dose restores the full deducted amount, even if it went negative.');
 
 echo "MedicationRepository tests passed.\n";
