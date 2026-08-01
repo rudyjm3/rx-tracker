@@ -1165,26 +1165,28 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
       return;
     }
 
-    if (btn.dataset.trackDoseFeedback === '1') {
-      event.preventDefault();
-      const medicationId = btn.dataset.medicationId ?? '';
-      if (!medicationId || !scheduledDate || !scheduledTime) return;
-      const medicationName = btn.dataset.medicationName ?? '';
-      const feedbackType = btn.dataset.feedbackType ?? 'pain';
-      const groupId = btn.closest('form')?.querySelector('[name="group_id"]')?.value ?? '';
-      btn.disabled = true;
-      postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId).then((result) => {
-        btn.disabled = false;
-        if (!result.ok) {
-          alert(result.error || 'Failed to log dose.');
-          return;
-        }
-        continueAfterDoseRecorded({
-          medicationId, medicationName, feedbackType,
-          logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn,
-        });
+    // Every on-time "Take" tap — feedback-tracked or not — must go through the
+    // commit-first continuation so the zero-pill interstitial gets a chance
+    // to run. Only trackFeedback varies what happens after the commit.
+    event.preventDefault();
+    const medicationId = btn.dataset.medicationId ?? '';
+    if (!medicationId || !scheduledDate || !scheduledTime) return;
+    const medicationName = btn.dataset.medicationName ?? '';
+    const trackFeedback = btn.dataset.trackDoseFeedback === '1';
+    const feedbackType = trackFeedback ? (btn.dataset.feedbackType ?? 'pain') : 'none';
+    const groupId = btn.closest('form')?.querySelector('[name="group_id"]')?.value ?? '';
+    btn.disabled = true;
+    postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId).then((result) => {
+      btn.disabled = false;
+      if (!result.ok) {
+        alert(result.error || 'Failed to log dose.');
+        return;
+      }
+      continueAfterDoseRecorded({
+        medicationId, medicationName, feedbackType,
+        logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn,
       });
-    }
+    });
   });
 });
 
@@ -3743,10 +3745,12 @@ const postPostpone = async (medicationId, scheduledDate, scheduledTime, delayMin
   }
 };
 
-// Queue items are already committed (see the alarm "Take all" handler below,
-// which posts each item's dose immediately before queueing it) — this only
-// walks each one through the zero-pill interstitial (if needed) and then the
-// pain/mood feedback modal.
+// Every item in this queue is already committed (see the alarm "Take all"
+// handler below, which posts each item's dose immediately, feedback-tracked
+// or not, before queueing any of them) — this only walks each one through
+// the zero-pill interstitial (if needed) and then the pain/mood feedback
+// modal (if that item tracks it); items needing neither just advance through
+// silently so the batch still finishes in one pass.
 const processNextFeedbackQueueItem = () => {
   if (feedbackQueue.length === 0) {
     feedbackQueueMode = false;
@@ -3761,6 +3765,12 @@ const processNextFeedbackQueueItem = () => {
   const itemFeedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
 
   const openItemFeedback = () => {
+    if (!itemFeedbackType || itemFeedbackType === 'none') {
+      // Nothing left to gather for this item — advance to the next one.
+      feedbackQueue.shift();
+      processNextFeedbackQueueItem();
+      return;
+    }
     if (feedbackQueueProgressEl) {
       feedbackQueueProgressEl.textContent = `${item.name} (${pos} of ${total})`;
       feedbackQueueProgressEl.hidden = false;
@@ -3804,43 +3814,35 @@ const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
 
 alarmTakeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
-    // Group mode: every item's dose is committed immediately either way —
-    // non-feedback items are done at that point; feedback-tracked items are
-    // queued afterward, where each one gets its own zero-pill-interstitial +
-    // feedback-modal pass (see processNextFeedbackQueueItem).
-    const nonFeedback = alarmGroupItems.filter((i) => !i.track_dose_feedback);
-    const withFeedback = alarmGroupItems.filter((i) => i.track_dose_feedback);
-
+    // Group mode: every item's dose is committed immediately, feedback-tracked
+    // or not, then every item is walked through the queue so each one gets a
+    // chance at its own zero-pill interstitial (and feedback modal, for the
+    // items that track it) — see processNextFeedbackQueueItem.
     stopAlarmAudio();
     hideAlarmOverlay();
 
     const failures = [];
-    for (const item of nonFeedback) {
-      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
-      if (!result.ok) failures.push({ name: item.name, error: result.error });
-    }
-
-    const committedWithFeedback = [];
-    for (const item of withFeedback) {
+    const committedItems = [];
+    for (const item of alarmGroupItems) {
       const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
       if (!result.ok) {
         failures.push({ name: item.name, error: result.error });
         continue;
       }
-      committedWithFeedback.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn });
+      committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn });
     }
 
-    if (committedWithFeedback.length === 0) {
+    if (committedItems.length === 0) {
       alertDoseFailures(failures);
       window.location.reload();
       return;
     }
 
     feedbackQueueFailures = failures;
-    feedbackQueue = committedWithFeedback.map((item, idx) => ({
+    feedbackQueue = committedItems.map((item, idx) => ({
       ...item,
       positionInBatch: idx + 1,
-      totalInBatch: committedWithFeedback.length,
+      totalInBatch: committedItems.length,
     }));
     processNextFeedbackQueueItem();
   } else {

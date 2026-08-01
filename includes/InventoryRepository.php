@@ -222,22 +222,33 @@ final class InventoryRepository
     }
 
     /**
-     * Reconstructs a running balance as a single chronological ledger — the
-     * medication's starting quantity, every refill/adjustment delta, and
-     * every taken dose's deduction, all ordered by the date each actually
-     * applies (not insertion order) — and returns the date the balance first
-     * dropped to zero or below. Recomputed fresh on every call so it stays
-     * correct after later refills/adjustments, including backdated ones:
-     * a refill dated earlier than doses already logged against a negative
-     * count simply slots into the ledger at its own date and everything
-     * after it re-nets out. Same-day ties resolve refills/adjustments before
-     * doses, treating a same-day refill as having happened before that day's
-     * doses were taken.
+     * Reconstructs a running balance as a single chronological ledger — an
+     * opening balance, every refill/adjustment delta, and every taken dose's
+     * deduction, all ordered by the date each actually applies (not
+     * insertion order) — and returns the date of the most recent transition
+     * into a non-positive balance that is still in effect now. Recomputed
+     * fresh on every call so it stays correct after later refills/
+     * adjustments, including backdated ones: a refill dated earlier than
+     * doses already logged against a negative count simply slots into the
+     * ledger at its own date and everything after it re-nets out. Same-day
+     * ties resolve refills/adjustments before doses, treating a same-day
+     * refill as having happened before that day's doses were taken.
+     *
+     * The opening balance can't just be medications.starting_quantity: every
+     * logRefill() call overwrites that column with the refill amount, so
+     * once a medication has ever been refilled it no longer reflects the
+     * original starting count. Instead it's derived backward from the live,
+     * trusted current_quantity: opening balance = current_quantity minus the
+     * sum of every recorded refill/adjustment/dose delta since. That sum is
+     * built entirely from write-once data (medication_refills.amount,
+     * dose_logs.deducted_quantity), so it stays correct regardless of
+     * whether the earliest such event happened before or after other
+     * doses/refills in the ledger.
      */
     public function dateInventoryCrossedZero(int $medicationId): ?string
     {
         $medStmt = $this->db->prepare(
-            'SELECT starting_quantity, start_date, created_at
+            'SELECT current_quantity, start_date, created_at
              FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
         );
         $medStmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
@@ -247,11 +258,6 @@ final class InventoryRepository
         }
 
         $events = [];
-        $events[] = [
-            'date' => (string) ($med['start_date'] ?: substr((string) $med['created_at'], 0, 10)),
-            'delta' => (float) ($med['starting_quantity'] ?? 0),
-            'seq' => 0,
-        ];
 
         $refillStmt = $this->db->prepare(
             'SELECT refill_date, amount FROM medication_refills WHERE medication_id = :medication_id'
@@ -283,19 +289,38 @@ final class InventoryRepository
             $events[] = ['date' => (string) $dose['scheduled_for_date'], 'delta' => -$amount, 'seq' => 2];
         }
 
+        $recordedDeltaSum = array_sum(array_column($events, 'delta'));
+        $events[] = [
+            'date' => (string) ($med['start_date'] ?: substr((string) $med['created_at'], 0, 10)),
+            'delta' => (float) ($med['current_quantity'] ?? 0) - $recordedDeltaSum,
+            'seq' => 0,
+        ];
+
         usort($events, static function (array $a, array $b): int {
             return $a['date'] <=> $b['date'] ?: $a['seq'] <=> $b['seq'];
         });
 
+        // Track the most recent crossing into a non-positive balance that
+        // hasn't since been resolved by a refill/adjustment — not just the
+        // first time it ever happened, which could be a long-since-resolved
+        // dip (e.g. an initial zero balance before the first refill ever
+        // arrived).
         $balance = 0.0;
+        $inDeficit = false;
+        $lastCrossingDate = null;
         foreach ($events as $event) {
             $balance += $event['delta'];
             if ($balance <= 0) {
-                return $event['date'];
+                if (!$inDeficit) {
+                    $lastCrossingDate = $event['date'];
+                    $inDeficit = true;
+                }
+            } else {
+                $inDeficit = false;
             }
         }
 
-        return null;
+        return $lastCrossingDate;
     }
 
     public function restoreInventory(int $medicationId, ?float $quantityOverride = null): void

@@ -102,4 +102,56 @@ $repo->logRefill($backdatedId, '2026-01-05', 10.0, 'forgot to log this at the ti
 assertSameValue(10.0, (float) $repo->findMedication($backdatedId)['current_quantity'], 'Refill should add to the current ledger total regardless of its backdated date.');
 assertSameValue(null, $repo->dateInventoryCrossedZero($backdatedId), 'A backdated refill inserted before the depleting doses should fully reconcile the ledger and clear the ran-out date.');
 
+// ── Regression: a normal (non-backdated) refill in the middle of history ───
+// must not corrupt the reconstructed starting balance. logRefill() overwrites
+// medications.starting_quantity with the refill amount, so naively trusting
+// that column after a refill has happened would double-count.
+
+$repo->createMedication('Mid-History Refill Med', '', 'fixed_times', ['08:00:00'], null, null, false, 0, false, '', 'prescription', null, null, null, 'pills', 5.0, 1.0);
+$all = $repo->activeMedications();
+$midId = (int) array_values(array_filter($all, static fn(array $r): bool => $r['name'] === 'Mid-History Refill Med'))[0]['id'];
+$db->prepare('UPDATE medications SET start_date = :d WHERE id = :id')->execute(['d' => '2026-02-01', 'id' => $midId]);
+
+foreach (['2026-02-02', '2026-02-03', '2026-02-04', '2026-02-05', '2026-02-06'] as $date) {
+    $repo->recordDoseStatus($midId, $date, '08:00:00', 'taken', '');
+}
+assertSameValue(0.0, (float) $repo->findMedication($midId)['current_quantity'], 'Five doses against a starting count of 5 should land at exactly 0.');
+
+$repo->logRefill($midId, '2026-02-07', 10.0, 'routine refill');
+assertSameValue(10.0, (float) $repo->findMedication($midId)['current_quantity'], 'Refill should bring the count back up to 10.');
+
+foreach (['2026-02-08', '2026-02-09', '2026-02-10', '2026-02-11', '2026-02-12', '2026-02-13', '2026-02-14', '2026-02-15', '2026-02-16', '2026-02-17'] as $date) {
+    $repo->recordDoseStatus($midId, $date, '08:00:00', 'taken', '');
+}
+assertSameValue(0.0, (float) $repo->findMedication($midId)['current_quantity'], 'Ten more doses against the refilled count of 10 should land at exactly 0.');
+assertSameValue(
+    '2026-02-17',
+    $repo->dateInventoryCrossedZero($midId),
+    'Should report the most recent depleting dose, not null — a naive read of the (overwritten) starting_quantity column would wrongly reconstruct a positive balance and never find a crossing.'
+);
+
+// ── Regression: an initial zero balance resolved by a refill before any ────
+// dose was ever logged must not be reported as the "ran out on" date once a
+// later, real depletion happens — only the most recent unresolved crossing
+// should count.
+
+$repo->createMedication('Zero Then Refill Med', '', 'fixed_times', ['08:00:00'], null, null, false, 0, false, '', 'prescription', null, null, null, 'pills', 0.0, 1.0);
+$all = $repo->activeMedications();
+$zeroThenRefillId = (int) array_values(array_filter($all, static fn(array $r): bool => $r['name'] === 'Zero Then Refill Med'))[0]['id'];
+$db->prepare('UPDATE medications SET start_date = :d WHERE id = :id')->execute(['d' => '2026-03-01', 'id' => $zeroThenRefillId]);
+
+// Refilled right away, before ever taking a dose at the zero balance.
+$repo->logRefill($zeroThenRefillId, '2026-03-02', 5.0, 'initial fill logged late');
+assertSameValue(5.0, (float) $repo->findMedication($zeroThenRefillId)['current_quantity'], 'Refill should bring the count up to 5.');
+
+foreach (['2026-03-05', '2026-03-06', '2026-03-07', '2026-03-08', '2026-03-09'] as $date) {
+    $repo->recordDoseStatus($zeroThenRefillId, $date, '08:00:00', 'taken', '');
+}
+assertSameValue(0.0, (float) $repo->findMedication($zeroThenRefillId)['current_quantity'], 'Five doses against the refilled count of 5 should land at exactly 0.');
+assertSameValue(
+    '2026-03-09',
+    $repo->dateInventoryCrossedZero($zeroThenRefillId),
+    'Should report the real depletion date, not the medication\'s original (already-resolved) zero starting balance.'
+);
+
 echo "RanOutOnDateTest passed.\n";
