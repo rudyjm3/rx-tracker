@@ -216,6 +216,22 @@ function render_inactive_medication_row(array $medication): string
     return $html;
 }
 
+function pill_status_payload(MedicationRepository $repository, int $medicationId): array
+{
+    $medication = $repository->findMedication($medicationId);
+    if ($medication === null) {
+        return ['pill_count' => null, 'ran_out_on' => null, 'inventory_unit' => null];
+    }
+    $pillCount = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
+    $ranOutOn = $pillCount <= 0 ? $repository->dateInventoryCrossedZero($medicationId) : null;
+
+    return [
+        'pill_count' => $pillCount,
+        'ran_out_on' => $ranOutOn,
+        'inventory_unit' => (string) ($medication['inventory_unit'] ?? 'tablets'),
+    ];
+}
+
 function daysUntilRunout(array $medication): ?int
 {
     $qty = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);

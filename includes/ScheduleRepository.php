@@ -240,7 +240,7 @@ final class ScheduleRepository
         return $result;
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): int
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
@@ -318,6 +318,7 @@ final class ScheduleRepository
             }
 
             $takenAt = $customTakenAt ?? (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+            $logId = is_array($row) ? (int) $row['id'] : null;
 
             if (is_array($row)) {
                 // Track what this specific log actually removed from inventory so a
@@ -355,19 +356,22 @@ final class ScheduleRepository
                     'taken_at' => $takenAt,
                     'deducted_quantity' => $deducted,
                 ]);
+                $logId = (int) $this->db->lastInsertId();
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
             }
 
             $this->db->commit();
+
+            return $logId;
         } catch (Throwable $exception) {
             $this->db->rollBack();
             throw $exception;
         }
     }
 
-    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): void
+    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): int
     {
         $ownerCheck = $this->db->prepare(
             'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
@@ -449,6 +453,7 @@ final class ScheduleRepository
                     'deducted_quantity' => $deducted,
                     'id'       => (int) $row['id'],
                 ]);
+                $logId = (int) $row['id'];
             } else {
                 $insert = $this->db->prepare(
                     'INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at, deducted_quantity)
@@ -463,10 +468,13 @@ final class ScheduleRepository
                     'taken_at'           => $takenAt->format('Y-m-d H:i:s'),
                     'deducted_quantity'  => $deducted,
                 ]);
+                $logId = (int) $this->db->lastInsertId();
             }
 
             $this->clearPostponeForDose($medicationId, $date, $time);
             $this->db->commit();
+
+            return $logId;
         } catch (PDOException $exception) {
             $this->db->rollBack();
             if ((string) $exception->getCode() === '23000') {

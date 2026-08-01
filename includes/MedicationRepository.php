@@ -570,14 +570,19 @@ final class MedicationRepository
         return $this->scheduleRepo->scheduleTimesForMedication($medicationId);
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): void
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): int
     {
-        $this->scheduleRepo->recordDoseStatus($medicationId, $date, $time, $status, $note, $painLevel, $groupId, $customTakenAt, $moodLevel);
+        return $this->scheduleRepo->recordDoseStatus($medicationId, $date, $time, $status, $note, $painLevel, $groupId, $customTakenAt, $moodLevel);
     }
 
-    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): void
+    public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): int
     {
-        $this->scheduleRepo->logDoseNow($medicationId, $note, $scheduledTime, $takenOnTime, $actualTakenTime);
+        return $this->scheduleRepo->logDoseNow($medicationId, $note, $scheduledTime, $takenOnTime, $actualTakenTime);
+    }
+
+    public function dateInventoryCrossedZero(int $medicationId): ?string
+    {
+        return $this->inventoryRepo->dateInventoryCrossedZero($medicationId);
     }
 
     public function todaySchedule(string $date): array

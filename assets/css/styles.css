@@ -5245,6 +5245,39 @@ details.med-detail-section[open] .med-detail-section-title::after {
   margin-top: 0.8rem;
 }
 
+/* ── Zero pill count interstitial ─────────────────────────────────────────────── */
+
+.zero-pill-adjust {
+  margin-top: 1rem;
+}
+
+.zero-pill-stepper {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.zero-pill-step-btn {
+  border: 1px solid var(--rx-border);
+  border-radius: 6px;
+  font-weight: 700;
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+.zero-pill-stepper input[data-zero-pill-delta] {
+  text-align: center;
+  width: 4.5rem;
+}
+
+.zero-pill-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
 /* ── Refill history modal ────────────────────────────────────────────────────── */
 
 .refill-history-dialog {
