@@ -98,6 +98,7 @@ $csrfToken = csrf_token();
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
+  <script src="assets/js/onboarding-wizard.js?v=<?= filemtime(__DIR__ . '/../assets/js/onboarding-wizard.js') ?>" defer></script>
 </head>
 <body class="onboarding-body">
 

@@ -24,6 +24,9 @@
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
+  <script src="assets/js/side-effect-modal.js?v=<?= filemtime(__DIR__ . '/../assets/js/side-effect-modal.js') ?>" defer></script>
+  <script src="assets/js/export-pdf-feedback.js?v=<?= filemtime(__DIR__ . '/../assets/js/export-pdf-feedback.js') ?>" defer></script>
+  <script src="assets/js/timezone-detect.js?v=<?= filemtime(__DIR__ . '/../assets/js/timezone-detect.js') ?>" defer></script>
 </head>
 <body data-mood-chart-scheme="<?= e($moodChartScheme) ?>" data-server-today="<?= e($today) ?>" data-server-time="<?= e($currentTime) ?>" data-server-epoch-ms="<?= e((string) $serverNowMs) ?>" data-server-tz-offset-minutes="<?= e((string) $serverTzOffsetMinutes) ?>">
 <main class="app-shell">
