@@ -580,6 +580,11 @@ final class MedicationRepository
         return $this->scheduleRepo->logDoseNow($medicationId, $note, $scheduledTime, $takenOnTime, $actualTakenTime);
     }
 
+    public function revertTakenDose(int $logId): void
+    {
+        $this->scheduleRepo->revertTakenDose($logId);
+    }
+
     public function dateInventoryCrossedZero(int $medicationId): ?string
     {
         return $this->inventoryRepo->dateInventoryCrossedZero($medicationId);

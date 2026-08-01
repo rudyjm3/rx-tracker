@@ -371,6 +371,46 @@ final class ScheduleRepository
         }
     }
 
+    // Fully undoes a dose that was just marked taken — as opposed to
+    // recordDoseStatus()'s taken→skipped/missed transition, which still
+    // resolves the slot for the day, this removes the log entirely so the
+    // dose goes back to its normal pending state, exactly as if the user
+    // had never tapped Take. Used by the zero-pill interstitial's cancel
+    // flow, where "the dose brought the count to zero" turned out not to be
+    // something the user wanted to commit to after all.
+    public function revertTakenDose(int $logId): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT dl.id, dl.medication_id, dl.status, dl.deducted_quantity
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.id = :log_id AND m.user_id = :user_id ' . $this->profileSql('m')
+        );
+        $stmt->execute(array_merge(['log_id' => $logId, 'user_id' => $this->userId], $this->profileParam()));
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('Dose log not found.');
+        }
+        if ((string) $row['status'] !== 'taken') {
+            throw new RuntimeException('Only a taken dose can be reverted.');
+        }
+
+        $medicationId = (int) $row['medication_id'];
+        $deducted = $row['deducted_quantity'];
+
+        $this->db->beginTransaction();
+        try {
+            if ($deducted !== null) {
+                $this->inventoryRepo->restoreInventory($medicationId, (float) $deducted);
+            }
+            $this->db->prepare('DELETE FROM dose_logs WHERE id = :id')->execute(['id' => $logId]);
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            $this->db->rollBack();
+            throw $exception;
+        }
+    }
+
     public function logDoseNow(int $medicationId, string $note = '', ?string $scheduledTime = null, bool $takenOnTime = false, ?string $actualTakenTime = null): int
     {
         $ownerCheck = $this->db->prepare(
