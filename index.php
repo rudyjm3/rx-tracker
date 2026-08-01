@@ -127,4 +127,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require __DIR__ . '/routes/actions.php';
 }
 
-require __DIR__ . '/routes/pages.php';
+// Post-login pages, one file per page (mirrors the $authPages dispatch above).
+$pageRoutes = [
+    'dashboard'      => 'dashboard.php',
+    'medications'    => 'medications.php',
+    'pain-tracking'  => 'pain_tracking.php',
+    'mood-wellbeing' => 'mood_wellbeing.php',
+    'settings'       => 'settings.php',
+    'calendar'       => 'calendar.php',
+    'export'         => 'export.php',
+    'help'           => 'help.php',
+    'onboarding'     => 'onboarding.php',
+];
+require __DIR__ . '/routes/' . ($pageRoutes[$page] ?? $pageRoutes['dashboard']);
