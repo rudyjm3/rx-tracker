@@ -1,5 +1,8 @@
 const apiProxy = (url) => `api-proxy.php?url=${encodeURIComponent(url)}`;
 
+const escHtml = (str) =>
+  String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 document.querySelectorAll('[data-confirm]').forEach((form) => {
   form.addEventListener('submit', (event) => {
     const message = form.getAttribute('data-confirm');
@@ -1298,12 +1301,7 @@ const painLevelColor = (level) => {
   return '#c9213c';
 };
 
-const escSvg = (str) => String(str)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
+const escSvg = (str) => escHtml(str).replace(/'/g, '&#39;');
 
 const formatGraphDay = (d) =>
   new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -2034,7 +2032,7 @@ if (painPageBody) {
     const mod       = painScoreMod(level);
     const dateStr   = entry.date ? formatGraphDay(entry.date) : '';
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
-    const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const noteEsc   = escHtml(entry.note ?? '');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose log entry';
     const medHtml = source === 'dose' && painPageMedName?.textContent
@@ -2745,7 +2743,7 @@ if (moodPageBody) {
     const mod       = moodScoreMod(level);
     const dateStr   = entry.date ? formatGraphDay(entry.date) : '';
     const timeStr   = entry.time ? slotTo12h(entry.time.slice(0, 5)) : '';
-    const noteEsc   = (entry.note ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const noteEsc   = escHtml(entry.note ?? '');
     const sourceCls = source === 'standalone' ? 'history-entry-source--standalone' : 'history-entry-source--dose';
     const sourceLbl = source === 'standalone' ? 'Standalone' : 'Dose log entry';
     const medHtml = source === 'dose' && moodPageMedName?.textContent
@@ -4506,14 +4504,9 @@ const getOfdaField = (data, ...fields) => {
   return null;
 };
 
-const safeHtml = (str) => String(str ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;');
-
 const textBlock = (raw) => {
   if (!raw) return '';
-  return raw.trim().split(/\n{2,}/).map((p) => `<p>${safeHtml(p.trim())}</p>`).join('');
+  return raw.trim().split(/\n{2,}/).map((p) => `<p>${escHtml(p.trim())}</p>`).join('');
 };
 
 const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
@@ -4521,8 +4514,8 @@ const renderDetailContent = (name, setId, ofda, productLabelUrl) => {
 
   if (productLabelUrl) {
     sections.push(`<div class="med-detail-images">
-      <figure class="med-detail-image-wrap" data-detail-img-url="${safeHtml(productLabelUrl)}">
-        <img src="${safeHtml(productLabelUrl)}" alt="${safeHtml(name)} product label" loading="lazy">
+      <figure class="med-detail-image-wrap" data-detail-img-url="${escHtml(productLabelUrl)}">
+        <img src="${escHtml(productLabelUrl)}" alt="${escHtml(name)} product label" loading="lazy">
         <figcaption>Product label</figcaption>
       </figure>
     </div>`);
@@ -4869,9 +4862,6 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
     return;
   }
 });
-
-const escHtml = (str) =>
-  String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const buildMedOptions = (ungrouped) =>
   ungrouped.map((m) => {
@@ -6780,8 +6770,6 @@ document.querySelector('[data-notif-panel-body]')?.addEventListener('click', (ev
       </div>`;
     return el;
   };
-
-  const escHtml = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
   if (addMedBtn) {
     addMedBtn.addEventListener('click', async () => {
