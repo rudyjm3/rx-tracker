@@ -994,19 +994,33 @@ const resolveZeroPillModal = () => {
 // longer exists. Triggered only by the X button and the dedicated cancel
 // button — "Not now" and the backdrop click keep resolveZeroPillModal()'s
 // non-destructive behavior (the dose stays recorded).
+//
+// The modal/context are only torn down *after* the revert actually succeeds —
+// on failure the dose is still 'taken' server-side, so closing the modal
+// here would let the UI silently disagree with the database with no way to
+// retry. Keep it open (context intact) so the same button can be tapped
+// again, same as zeroPillApplyBtn's handler above.
 const cancelZeroPillModal = async () => {
-  if (!zeroPillModal) return;
+  if (!zeroPillModal || !zeroPillContext) return;
   const ctx = zeroPillContext;
-  zeroPillContext = null;
-  zeroPillModal.classList.remove('is-open');
-  unlockBodyScroll();
-  if (ctx?.logId) {
-    const result = await postRevertDose(ctx.logId);
-    if (!result.ok) {
-      alert(result.error || 'Failed to cancel this dose. Please try again from Today’s schedule.');
+  if (closeZeroPillModalButton) closeZeroPillModalButton.disabled = true;
+  if (zeroPillCancelDoseBtn) zeroPillCancelDoseBtn.disabled = true;
+  try {
+    if (ctx.logId) {
+      const result = await postRevertDose(ctx.logId);
+      if (!result.ok) {
+        alert(result.error || 'Failed to cancel this dose. Please try again.');
+        return;
+      }
     }
+    zeroPillContext = null;
+    zeroPillModal.classList.remove('is-open');
+    unlockBodyScroll();
+    ctx.onCancelled?.();
+  } finally {
+    if (closeZeroPillModalButton) closeZeroPillModalButton.disabled = false;
+    if (zeroPillCancelDoseBtn) zeroPillCancelDoseBtn.disabled = false;
   }
-  ctx?.onCancelled?.();
 };
 
 // Hides the modal without resolving it — used only when handing off to the

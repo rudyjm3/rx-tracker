@@ -31,10 +31,12 @@ function assertThrows(callable $fn, string $message): void
 /**
  * Regression coverage for the zero-pill interstitial's "cancel this dose"
  * flow: MedicationRepository::revertTakenDose() must fully undo a take —
- * restore the inventory it deducted and delete the dose_logs row entirely
- * (not just flip its status) — so the dose returns to its normal pending
- * state, matching a request to make cancelling from the interstitial behave
- * as if Take was never tapped.
+ * restore the inventory it deducted, and either delete the dose_logs row
+ * entirely (if the take created it fresh) or restore it to whatever it was
+ * before the take (if it pre-existed, e.g. an auto-marked 'missed' slot
+ * taken retroactively) — never destroying history that predates the take
+ * being undone. It must also be safe against being invoked twice for the
+ * same log (a proxy for two racing requests — see Scenario 5).
  */
 
 function freshRepo(): array
@@ -126,5 +128,46 @@ assertThrows(
     static fn () => $repo3->revertTakenDose(999999),
     'Reverting a nonexistent dose log id must throw.'
 );
+
+// ── Scenario 4: reverting a retroactive missed→taken restores the missed record ──
+[$db4, $repo4] = freshRepo();
+$repo4->createMedication('Lisinopril', '', 'fixed_times', ['07:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$lisId = (int) findByName($repo4->activeMedications(), 'Lisinopril')['id'];
+
+// Simulate finalizeMissedDoses() auto-marking the slot missed, then the user
+// retroactively tapping Take on it via the missed-dose modal.
+$missedLogId = $repo4->recordDoseStatus($lisId, $today, '07:00:00', 'missed', 'Auto-marked missed');
+$takenLogId = $repo4->recordDoseStatus($lisId, $today, '07:00:00', 'taken', 'Marked taken (was missed)');
+assertSameValue($missedLogId, $takenLogId, 'The retroactive take should update the existing missed row, not insert a second one.');
+assertFloatEquals(29.0, (float) $repo4->findMedication($lisId)['current_quantity'], 'Sanity check: the retroactive take should still decrement inventory.');
+
+$repo4->revertTakenDose($takenLogId);
+
+assertFloatEquals(30.0, (float) $repo4->findMedication($lisId)['current_quantity'], 'Reverting the retroactive take must restore the inventory it deducted.');
+$restoredRow = $db4->query("SELECT status, note, deducted_quantity, pre_take_status, pre_take_note, pre_take_taken_at FROM dose_logs WHERE id = {$takenLogId}")->fetch(PDO::FETCH_ASSOC);
+assertSameValue(1, is_array($restoredRow) ? 1 : 0, 'The original missed row must still exist after revert — not deleted.');
+assertSameValue('missed', (string) $restoredRow['status'], 'Reverting must restore the row to its pre-take status (missed), not delete history that predates the take.');
+assertSameValue('Auto-marked missed', (string) $restoredRow['note'], 'Reverting must restore the pre-take note.');
+assertSameValue(null, $restoredRow['deducted_quantity'], 'A restored missed row must not carry a deducted_quantity.');
+assertSameValue(null, $restoredRow['pre_take_status'], 'The snapshot columns must be cleared once restored, so a future take snapshots fresh.');
+
+// ── Scenario 5: reverting the same log twice must not double-credit inventory ──
+// A single-threaded test can't reproduce true concurrent transactions, but it
+// can confirm the guarded UPDATE/DELETE's outcome: once the first call has
+// changed the row, a second call for the same log id must be rejected rather
+// than restoring inventory a second time.
+[$db5, $repo5] = freshRepo();
+$repo5->createMedication('Atorvastatin', '', 'fixed_times', ['21:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$atoId = (int) findByName($repo5->activeMedications(), 'Atorvastatin')['id'];
+$atoLogId = $repo5->recordDoseStatus($atoId, $today, '21:00:00', 'taken', '', null, null);
+
+$repo5->revertTakenDose($atoLogId);
+assertFloatEquals(30.0, (float) $repo5->findMedication($atoId)['current_quantity'], 'First revert should restore inventory once.');
+
+assertThrows(
+    static fn () => $repo5->revertTakenDose($atoLogId),
+    'A second revert of the same (already-reverted) log id must throw rather than silently no-op.'
+);
+assertFloatEquals(30.0, (float) $repo5->findMedication($atoId)['current_quantity'], 'A rejected second revert must not restore inventory again.');
 
 echo "RevertDoseTest passed.\n";

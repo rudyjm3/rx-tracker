@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 1;
+    private const CURRENT_SCHEMA_VERSION = 2;
 
     private static array $schemaSweepDone = [];
 
@@ -140,6 +140,7 @@ final class SchemaInstaller
         $this->ensureStartDateColumn();
         $this->ensureStandalonePainMoodLogsTable();
         $this->ensureFeedbackEditedAtColumn();
+        $this->ensurePreTakeSnapshotColumns();
         $this->ensureStandaloneTagsColumn();
         $this->ensureMoodTagsTableSchema();
         $this->ensureMedicationNotesTableSchema();
@@ -1397,6 +1398,47 @@ final class SchemaInstaller
                 }
                 if (!$hasColumn) {
                     $this->db->exec('ALTER TABLE dose_logs ADD COLUMN feedback_edited_at TEXT NULL');
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    // Snapshot of a dose_logs row's status/note/taken_at from just before it was
+    // flipped to 'taken' — set only when that flip overwrote a pre-existing
+    // non-taken row (e.g. an auto-marked 'missed' slot taken retroactively).
+    // Lets revertTakenDose() restore the original record instead of deleting
+    // history that predates the take it's undoing.
+    private function ensurePreTakeSnapshotColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $columns = [
+            'pre_take_status' => ['mysql' => 'VARCHAR(20) NULL', 'sqlite' => 'TEXT NULL'],
+            'pre_take_note' => ['mysql' => 'VARCHAR(255) NULL', 'sqlite' => 'TEXT NULL'],
+            'pre_take_taken_at' => ['mysql' => 'TIMESTAMP NULL DEFAULT NULL', 'sqlite' => 'TEXT NULL'],
+        ];
+        try {
+            if ($driver === 'mysql') {
+                foreach ($columns as $name => $types) {
+                    $check = $this->db->query("SHOW COLUMNS FROM dose_logs LIKE '{$name}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE dose_logs ADD COLUMN {$name} {$types['mysql']}");
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(dose_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $existing = array_column($check->fetchAll(), 'name');
+                foreach ($columns as $name => $types) {
+                    if (!in_array($name, $existing, true)) {
+                        $this->db->exec("ALTER TABLE dose_logs ADD COLUMN {$name} {$types['sqlite']}");
+                    }
                 }
             }
         } catch (Throwable) {
