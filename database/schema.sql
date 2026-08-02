@@ -475,3 +475,12 @@ CREATE TABLE IF NOT EXISTS mood_tags (
     INDEX idx_mood_tags_user (user_id),
     CONSTRAINT fk_mood_tags_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- Migration 014: Snapshot of a dose_logs row's status/note/taken_at from just
+-- before it was flipped to 'taken' (e.g. an auto-marked 'missed' slot taken
+-- retroactively). Lets reverting a take restore the prior record instead of
+-- deleting history that predates it.
+ALTER TABLE dose_logs
+    ADD COLUMN IF NOT EXISTS pre_take_status VARCHAR(20) NULL,
+    ADD COLUMN IF NOT EXISTS pre_take_note VARCHAR(255) NULL,
+    ADD COLUMN IF NOT EXISTS pre_take_taken_at TIMESTAMP NULL DEFAULT NULL;

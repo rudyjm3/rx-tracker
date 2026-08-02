@@ -542,6 +542,10 @@
           <button type="button" data-zero-pill-refill>Log refill</button>
           <button type="button" class="button-link button-link--cancel" data-zero-pill-not-now>Not now</button>
         </div>
+        <div class="zero-pill-cancel-row">
+          <button type="button" class="secondary zero-pill-cancel-btn" data-zero-pill-cancel-dose>Cancel &mdash; don&rsquo;t log this dose</button>
+          <p class="zero-pill-cancel-hint">This won&rsquo;t be recorded as taken and your pill count won&rsquo;t change.</p>
+        </div>
       </div>
     </div>
   </div>

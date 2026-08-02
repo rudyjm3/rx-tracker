@@ -284,7 +284,7 @@ final class ScheduleRepository
         try {
             // Fetch existing record first so we can skip the interval check for missed→taken updates.
             $existing = $this->db->prepare(
-                'SELECT id, status, deducted_quantity
+                'SELECT id, status, note, taken_at, deducted_quantity, pre_take_status, pre_take_note, pre_take_taken_at
                  FROM dose_logs
                  WHERE medication_id = :medication_id
                    AND scheduled_for_date = :scheduled_for_date
@@ -325,17 +325,41 @@ final class ScheduleRepository
                 // later revert restores that exact amount, even if quantity_per_dose
                 // or a group/slot override has been edited in the meantime.
                 $newDeducted = $row['deducted_quantity'];
+                // Preserve any existing snapshot by default (e.g. a duplicate
+                // taken→taken resubmit must not lose the original missed/skipped
+                // record it's still standing in for).
+                $newPreTakeStatus = $row['pre_take_status'];
+                $newPreTakeNote = $row['pre_take_note'];
+                $newPreTakeTakenAt = $row['pre_take_taken_at'];
                 if ((string) $row['status'] !== 'taken' && $status === 'taken') {
                     $newDeducted = $this->inventoryRepo->deductInventory($medicationId, $doseQtyOverride);
+                    // Snapshot what this row was before the flip so a later revert
+                    // (see revertTakenDose()) can restore it instead of deleting
+                    // history that predates this take — e.g. an auto-marked
+                    // 'missed' slot taken retroactively.
+                    $newPreTakeStatus = $row['status'];
+                    $newPreTakeNote = $row['note'];
+                    $newPreTakeTakenAt = $row['taken_at'];
                 } elseif ((string) $row['status'] === 'taken' && $status !== 'taken') {
                     $storedDeducted = $row['deducted_quantity'];
                     // Logs from before deducted_quantity existed fall back to the
                     // currently configured amount.
                     $this->inventoryRepo->restoreInventory($medicationId, $storedDeducted !== null ? (float) $storedDeducted : $doseQtyOverride);
                     $newDeducted = null;
+                    // No longer 'taken', so revertTakenDose() (which only ever acts
+                    // on 'taken' rows) can't reach this row again — clear the stale
+                    // snapshot rather than leave it lingering.
+                    $newPreTakeStatus = null;
+                    $newPreTakeNote = null;
+                    $newPreTakeTakenAt = null;
                 }
-                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at, deducted_quantity = :deducted_quantity WHERE id = :id');
-                $update->execute(['status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel, 'taken_at' => $takenAt, 'deducted_quantity' => $newDeducted, 'id' => (int) $row['id']]);
+                $update = $this->db->prepare('UPDATE dose_logs SET status = :status, note = :note, pain_level = :pain_level, mood_level = :mood_level, taken_at = :taken_at, deducted_quantity = :deducted_quantity, pre_take_status = :pre_take_status, pre_take_note = :pre_take_note, pre_take_taken_at = :pre_take_taken_at WHERE id = :id');
+                $update->execute([
+                    'status' => $status, 'note' => $note, 'pain_level' => $painLevel, 'mood_level' => $moodLevel,
+                    'taken_at' => $takenAt, 'deducted_quantity' => $newDeducted,
+                    'pre_take_status' => $newPreTakeStatus, 'pre_take_note' => $newPreTakeNote, 'pre_take_taken_at' => $newPreTakeTakenAt,
+                    'id' => (int) $row['id'],
+                ]);
                 if (in_array($status, ['taken', 'skipped', 'missed'], true)) {
                     $this->clearPostponeForDose($medicationId, $date, $time);
                 }
@@ -367,6 +391,85 @@ final class ScheduleRepository
             return $logId;
         } catch (Throwable $exception) {
             $this->db->rollBack();
+            throw $exception;
+        }
+    }
+
+    // Fully undoes a dose that was just marked taken — as opposed to
+    // recordDoseStatus()'s taken→skipped/missed transition, which still
+    // resolves the slot for the day, this removes the log entirely so the
+    // dose goes back to its normal pending state, exactly as if the user
+    // had never tapped Take. Used by the zero-pill interstitial's cancel
+    // flow, where "the dose brought the count to zero" turned out not to be
+    // something the user wanted to commit to after all.
+    public function revertTakenDose(int $logId): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT dl.id, dl.medication_id, dl.status, dl.deducted_quantity,
+                    dl.pre_take_status, dl.pre_take_note, dl.pre_take_taken_at
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.id = :log_id AND m.user_id = :user_id ' . $this->profileSql('m')
+        );
+        $stmt->execute(array_merge(['log_id' => $logId, 'user_id' => $this->userId], $this->profileParam()));
+        $row = $stmt->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('Dose log not found.');
+        }
+        if ((string) $row['status'] !== 'taken') {
+            throw new RuntimeException('Only a taken dose can be reverted.');
+        }
+
+        $medicationId = (int) $row['medication_id'];
+        $deducted = $row['deducted_quantity'];
+        $preTakeStatus = $row['pre_take_status'];
+
+        $this->db->beginTransaction();
+        try {
+            // The guarded UPDATE/DELETE below (status = 'taken' in the WHERE) is
+            // the concurrency guard: if two revert requests race, only the one
+            // that actually changes a row proceeds to restore inventory — the
+            // other's rowCount() comes back 0 and it bails out, so inventory is
+            // never restored twice for the same take.
+            if ($preTakeStatus !== null) {
+                // This row pre-existed (e.g. an auto-marked 'missed' slot taken
+                // retroactively) — restore it instead of deleting history that
+                // predates the take being undone.
+                $restore = $this->db->prepare(
+                    'UPDATE dose_logs
+                     SET status = :pre_take_status, note = :pre_take_note, taken_at = :pre_take_taken_at,
+                         deducted_quantity = NULL, pre_take_status = NULL, pre_take_note = NULL, pre_take_taken_at = NULL
+                     WHERE id = :id AND status = \'taken\''
+                );
+                $restore->execute([
+                    'pre_take_status' => $preTakeStatus,
+                    'pre_take_note' => $row['pre_take_note'],
+                    'pre_take_taken_at' => $row['pre_take_taken_at'],
+                    'id' => $logId,
+                ]);
+                $changed = $restore->rowCount();
+            } else {
+                // Fresh insert — nothing predates this take, so fully remove it.
+                $delete = $this->db->prepare("DELETE FROM dose_logs WHERE id = :id AND status = 'taken'");
+                $delete->execute(['id' => $logId]);
+                $changed = $delete->rowCount();
+            }
+
+            if ($changed === 0) {
+                // Another request already reverted or otherwise changed this
+                // exact log between our SELECT and this statement.
+                $this->db->rollBack();
+                throw new RuntimeException('This dose was already updated elsewhere. Please refresh and try again.');
+            }
+
+            if ($deducted !== null) {
+                $this->inventoryRepo->restoreInventory($medicationId, (float) $deducted);
+            }
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
             throw $exception;
         }
     }

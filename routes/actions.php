@@ -440,9 +440,14 @@ try {
             }
         }
         $markDoseMedId = (int) post_string('medication_id');
+        // Captured before the dose is recorded — deductInventory() decrements
+        // unconditionally, so this is the only way to tell "already out before
+        // this dose" apart from "this dose is what emptied it" afterward.
+        $preDoseMed = $repository->findMedication($markDoseMedId);
+        $preDoseQuantity = $preDoseMed !== null ? (float) ($preDoseMed['current_quantity'] ?? $preDoseMed['pill_count'] ?? 0) : null;
         $logId = $repository->recordDoseStatus($markDoseMedId, post_string('scheduled_date'), post_string('scheduled_time'), post_string('status'), post_string('note'), $painLevel, $groupId, $customTakenAt, $moodLevel);
         if ($jsonResponse) {
-            $pillStatus = pill_status_payload($repository, $markDoseMedId);
+            $pillStatus = pill_status_payload($repository, $markDoseMedId, $preDoseQuantity);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true, 'log_id' => $logId] + $pillStatus, JSON_THROW_ON_ERROR);
             exit;
@@ -461,11 +466,27 @@ try {
         if ($medicationId <= 0) {
             throw new RuntimeException('Choose a medication first.');
         }
+        $preDoseMedNow = $repository->findMedication($medicationId);
+        $preDoseQuantityNow = $preDoseMedNow !== null ? (float) ($preDoseMedNow['current_quantity'] ?? $preDoseMedNow['pill_count'] ?? 0) : null;
         $logId = $repository->logDoseNow($medicationId, post_string('note'), $scheduledTime, $takenOnTime, $actualTakenTime);
         if ($jsonResponse) {
-            $pillStatus = pill_status_payload($repository, $medicationId);
+            $pillStatus = pill_status_payload($repository, $medicationId, $preDoseQuantityNow);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['ok' => true, 'log_id' => $logId] + $pillStatus, JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'revert_dose') {
+        $logId = (int) post_string('log_id');
+        if ($logId <= 0) {
+            throw new RuntimeException('Invalid dose log.');
+        }
+        $repository->revertTakenDose($logId);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
             exit;
         }
         redirect_home();

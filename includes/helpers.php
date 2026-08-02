@@ -216,11 +216,11 @@ function render_inactive_medication_row(array $medication): string
     return $html;
 }
 
-function pill_status_payload(MedicationRepository $repository, int $medicationId): array
+function pill_status_payload(MedicationRepository $repository, int $medicationId, ?float $preActionQuantity = null): array
 {
     $medication = $repository->findMedication($medicationId);
     if ($medication === null) {
-        return ['pill_count' => null, 'ran_out_on' => null, 'inventory_unit' => null];
+        return ['pill_count' => null, 'ran_out_on' => null, 'inventory_unit' => null, 'already_out_before_dose' => false];
     }
     $pillCount = (float) ($medication['current_quantity'] ?? $medication['pill_count'] ?? 0);
     $ranOutOn = $pillCount <= 0 ? $repository->dateInventoryCrossedZero($medicationId) : null;
@@ -229,6 +229,10 @@ function pill_status_payload(MedicationRepository $repository, int $medicationId
         'pill_count' => $pillCount,
         'ran_out_on' => $ranOutOn,
         'inventory_unit' => (string) ($medication['inventory_unit'] ?? 'tablets'),
+        // Only true when the medication was already out *before* this action ran —
+        // distinguishes "already empty" (show the refill/adjust prompt) from "this
+        // exact dose is what emptied it" (just commit, no interstitial).
+        'already_out_before_dose' => $preActionQuantity !== null && $preActionQuantity <= 0,
     ];
 }
 
