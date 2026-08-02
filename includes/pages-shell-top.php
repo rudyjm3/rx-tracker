@@ -504,9 +504,10 @@
             <label data-inv-liquid-label style="display:none">Bottle amount
               <span class="input-with-unit">
                 <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e((string) ($wz['bottle_amount'] ?? '')) ?>">
+                <?php $wzBottleUnit = (string) ($wz['bottle_unit'] ?? 'mL'); ?>
                 <select name="bottle_unit" data-bottle-unit-select>
-                  <option value="mL">mL</option>
-                  <option value="oz">oz</option>
+                  <option value="mL" <?= $wzBottleUnit === 'mL' ? 'selected' : '' ?>>mL</option>
+                  <option value="oz" <?= $wzBottleUnit === 'oz' ? 'selected' : '' ?>>oz</option>
                 </select>
               </span>
             </label>

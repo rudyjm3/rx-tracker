@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class ScheduleRepository
 {
 
-    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose, setup_status, dashboard_enabled, reminders_enabled, adherence_enabled, inventory_enabled, tracking_started_at, inventory_count_method, inventory_as_of';
+    private const MEDICATION_COLUMNS = 'id, name, dose, start_date, end_date, created_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id, medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose, setup_status, dashboard_enabled, reminders_enabled, adherence_enabled, inventory_enabled, tracking_started_at, inventory_count_method, inventory_as_of';
 
     public function __construct(
         private readonly PDO $db,
@@ -605,6 +605,13 @@ final class ScheduleRepository
             $trackingStartedAt = isset($medication['tracking_started_at']) && $medication['tracking_started_at'] !== null
                 ? new DateTimeImmutable((string) $medication['tracking_started_at'])
                 : null;
+            $endDate = !empty($medication['end_date']) ? (string) $medication['end_date'] : null;
+            // Once past the medication's end date, stop generating slots entirely — this
+            // feeds the dashboard, both missed-dose finalization paths, and push reminders
+            // (see ScheduleRepository::todaySchedule() callers), so one check here is enough.
+            if ($endDate !== null && $date > $endDate) {
+                continue;
+            }
             foreach ($times as $time) {
                 // Skip slots that occurred before tracking was activated for this medication
                 if ($trackingStartedAt !== null) {

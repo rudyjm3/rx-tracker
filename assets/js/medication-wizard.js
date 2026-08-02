@@ -171,6 +171,13 @@
     // No page reload happens for a brand-new (non-draft) add, so reset the wizard back to a
     // clean slate in case the same modal is reopened later in this page's lifetime.
     form.reset();
+    // form.reset() restores values but doesn't fire `change`, and app.js drives the
+    // schedule-mode/dose-form visibility toggles off `change` listeners — dispatch synthetic
+    // events so those handlers recompute visibility against the reset values.
+    ['schedule_mode', 'dose_form', 'bottle_unit'].forEach((name) => {
+      const field = form.querySelector(`[name="${name}"]`);
+      field?.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     furthestStep = 1;
     showStep(1);
     if (addEndDateBtn) addEndDateBtn.hidden = false;
