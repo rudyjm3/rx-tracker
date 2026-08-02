@@ -3681,6 +3681,23 @@ button.danger:hover {
     width: 100%;
   }
 
+  /* The wizard footer can show up to 4 items (Cancel, Back, Save draft,
+     Next/Save Medication) — let them wrap onto a second line instead of
+     overflowing the modal on narrow phones. */
+  .med-wizard-footer {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .med-wizard-footer > button:not(.button-link) {
+    flex: 1 1 auto;
+  }
+
+  .med-wizard-progress {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
   .alarm-dialog {
     max-height: calc(100dvh - 2rem);
     overflow-y: auto;
