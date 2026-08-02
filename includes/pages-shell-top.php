@@ -24,6 +24,7 @@
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="manifest" href="manifest.json">
   <script src="assets/js/app.js?v=<?= filemtime(__DIR__ . '/../assets/js/app.js') ?>" defer></script>
+  <script src="assets/js/medication-wizard.js?v=<?= filemtime(__DIR__ . '/../assets/js/medication-wizard.js') ?>" defer></script>
   <script src="assets/js/side-effect-modal.js?v=<?= filemtime(__DIR__ . '/../assets/js/side-effect-modal.js') ?>" defer></script>
   <script src="assets/js/export-pdf-feedback.js?v=<?= filemtime(__DIR__ . '/../assets/js/export-pdf-feedback.js') ?>" defer></script>
   <script src="assets/js/timezone-detect.js?v=<?= filemtime(__DIR__ . '/../assets/js/timezone-detect.js') ?>" defer></script>
@@ -231,7 +232,7 @@
   <?php if ($notice !== null): ?><div class="notice"><?= e($notice) ?></div><?php endif; ?>
   <?php if ($error !== null): ?><div class="alert"><?= e($error) ?></div><?php endif; ?>
 
-  <div class="modal-overlay<?= $editing ? ' is-open' : '' ?>" data-medication-modal>
+  <div class="modal-overlay<?= ($editing || $draftMedication) ? ' is-open' : '' ?>" data-medication-modal>
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-modal-title">
       <div class="modal-header">
         <h2 id="medication-modal-title"><?= $editing ? 'Edit medication' : 'Add medication' ?></h2>
@@ -240,9 +241,10 @@
         </button>
       </div>
       <div class="modal-scroll">
+      <?php if ($editing): ?>
       <form class="medication-form" method="post" action="index.php">
         <?= csrf_field() ?>
-        <input type="hidden" name="action" value="<?= $editing ? 'update_medication' : 'add_medication' ?>">
+        <input type="hidden" name="action" value="update_medication">
         <input type="hidden" name="medication_id" value="<?= e((string) ($editing['id'] ?? 0)) ?>">
         <input type="hidden" name="set_id" data-set-id-input value="<?= e((string) ($editing['set_id'] ?? '')) ?>">
         <input type="hidden" name="redirect_page" value="<?= e($page) ?>">
@@ -394,9 +396,226 @@
           </select>
         </label>
         <div class="modal-footer">
-          <button type="submit"><?= $editing ? 'Save changes' : 'Add medication' ?></button>
+          <button type="submit">Save changes</button>
         </div>
       </form>
+      <?php else: ?>
+      <?php
+        $wz = $draftMedication ?? [];
+        $wzGroupId = (int) ($wz['group_id'] ?? 0);
+        $wzTimes = $wz['dose_times'] ?? [];
+        $wzQtys  = $wz['dose_qtys'] ?? [];
+        $wzInitialStep = max(1, min(4, (int) ($wz['current_step'] ?? 1)));
+        $wzFurthestStep = max($wzInitialStep, min(4, (int) ($wz['furthest_step'] ?? 1)));
+      ?>
+      <div class="med-wizard-progress" data-med-wizard-progress data-med-wizard-furthest="<?= e((string) $wzFurthestStep) ?>">
+        <button type="button" class="med-wizard-seg" data-med-wizard-step-nav="1">
+          <span class="med-wizard-seg-fill"></span>
+          <span class="med-wizard-seg-label">Medication Info</span>
+        </button>
+        <button type="button" class="med-wizard-seg" data-med-wizard-step-nav="2">
+          <span class="med-wizard-seg-fill"></span>
+          <span class="med-wizard-seg-label">Inventory</span>
+        </button>
+        <button type="button" class="med-wizard-seg" data-med-wizard-step-nav="3">
+          <span class="med-wizard-seg-fill"></span>
+          <span class="med-wizard-seg-label">Schedule</span>
+        </button>
+        <button type="button" class="med-wizard-seg" data-med-wizard-step-nav="4">
+          <span class="med-wizard-seg-fill"></span>
+          <span class="med-wizard-seg-label">Feedback</span>
+        </button>
+      </div>
+      <form class="medication-form med-wizard-form" method="post" action="index.php" data-med-wizard-initial-step="<?= e((string) $wzInitialStep) ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="add_medication">
+        <input type="hidden" name="medication_id" value="0">
+        <input type="hidden" name="set_id" data-set-id-input value="">
+        <input type="hidden" name="redirect_page" value="<?= e($page) ?>">
+        <input type="hidden" name="draft_id" data-med-wizard-draft-id value="<?= e((string) ($wz['draft_id'] ?? '')) ?>">
+
+        <div class="med-wizard-step" data-med-wizard-step="1">
+          <label class="autocomplete-wrap">Name
+            <input name="name" required autocomplete="off" data-med-name-input value="<?= e((string) ($wz['name'] ?? '')) ?>">
+            <ul class="autocomplete-dropdown" data-autocomplete-dropdown hidden></ul>
+          </label>
+
+          <fieldset class="form-section">
+            <legend>Dose info</legend>
+            <label>Dose amount
+              <input type="number" step="0.001" min="0" name="dose_amount" data-dailymed-dose-amount value="<?= e((string) ($wz['dose_amount'] ?? '')) ?>">
+            </label>
+            <label>Dose unit
+              <select name="dose_unit" data-dailymed-dose-unit>
+                <?php
+                $wzDoseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
+                $wzSelectedDoseUnit = (string) ($wz['dose_unit'] ?? 'mg');
+                foreach ($wzDoseUnits as $u): ?>
+                <option value="<?= e($u) ?>" <?= $wzSelectedDoseUnit === $u ? 'selected' : '' ?>><?= e($u) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <label>Dose form <span class="field-optional">(optional)</span>
+              <select name="dose_form" data-dailymed-dose-form>
+                <?php
+                $wzDoseForms = ['', 'tablet', 'capsule', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'];
+                $wzDoseFormLabels = ['' => '-- select --', 'tablet' => 'Tablet', 'capsule' => 'Capsule', 'liquid' => 'Liquid', 'inhaler' => 'Inhaler', 'injection' => 'Injection', 'patch' => 'Patch', 'drops' => 'Drops', 'other' => 'Other'];
+                $wzSelectedDoseForm = (string) ($wz['dose_form'] ?? '');
+                foreach ($wzDoseForms as $f): ?>
+                <option value="<?= e($f) ?>" <?= $wzSelectedDoseForm === $f ? 'selected' : '' ?>><?= e($wzDoseFormLabels[$f]) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <label>Medication type
+              <select name="medication_type">
+                <option value="prescription" <?= (($wz['medication_type'] ?? 'prescription') === 'prescription') ? 'selected' : '' ?>>Prescription</option>
+                <option value="otc"          <?= (($wz['medication_type'] ?? '') === 'otc')          ? 'selected' : '' ?>>OTC Medication</option>
+                <option value="supplement"   <?= (($wz['medication_type'] ?? '') === 'supplement')   ? 'selected' : '' ?>>Vitamin / Supplement</option>
+              </select>
+            </label>
+            <label>Start date <span class="field-optional">(defaults to today — set a future date if you haven't started taking this yet, so we won't log missed doses before then)</span>
+              <input type="date" name="start_date" value="<?= e((string) ($wz['start_date'] ?? '')) ?>">
+            </label>
+          </fieldset>
+
+          <?php $wzHasEndDate = trim((string) ($wz['end_date'] ?? '')) !== ''; ?>
+          <button type="button" class="btn-text" data-add-end-date<?= $wzHasEndDate ? ' hidden' : '' ?>>+ Add End Date</button>
+          <label data-end-date-field<?= $wzHasEndDate ? '' : ' hidden' ?>>End date
+            <input type="date" name="end_date" value="<?= e((string) ($wz['end_date'] ?? '')) ?>">
+          </label>
+
+          <?php $wzHasNotes = trim((string) ($wz['instructions'] ?? '')) !== ''; ?>
+          <button type="button" class="btn-text" data-add-notes<?= $wzHasNotes ? ' hidden' : '' ?>>+ Add Notes</button>
+          <label data-notes-field<?= $wzHasNotes ? '' : ' hidden' ?>>Instructions and Notes
+            <textarea name="instructions" rows="3"><?= e((string) ($wz['instructions'] ?? '')) ?></textarea>
+          </label>
+        </div>
+
+        <div class="med-wizard-step" data-med-wizard-step="2" hidden>
+          <fieldset class="form-section" data-inventory-section>
+            <legend>Inventory</legend>
+            <label data-inv-qty-label>Starting quantity
+              <span class="input-with-unit">
+                <input type="number" step="0.001" min="0" name="starting_quantity" value="<?= e((string) ($wz['starting_quantity'] ?? '0')) ?>">
+                <span data-inv-unit-label>tablets</span>
+              </span>
+            </label>
+
+            <label data-inv-liquid-label style="display:none">Bottle amount
+              <span class="input-with-unit">
+                <input type="number" step="0.001" min="0" name="bottle_amount" data-bottle-amount-input value="<?= e((string) ($wz['bottle_amount'] ?? '')) ?>">
+                <?php $wzBottleUnit = (string) ($wz['bottle_unit'] ?? 'mL'); ?>
+                <select name="bottle_unit" data-bottle-unit-select>
+                  <option value="mL" <?= $wzBottleUnit === 'mL' ? 'selected' : '' ?>>mL</option>
+                  <option value="oz" <?= $wzBottleUnit === 'oz' ? 'selected' : '' ?>>oz</option>
+                </select>
+              </span>
+            </label>
+
+            <label>Dose reduces inventory by
+              <span class="input-with-unit">
+                <input type="number" step="0.001" min="0.001" name="quantity_per_dose" value="<?= e((string) ($wz['quantity_per_dose'] ?? '1')) ?>">
+                <span data-inv-unit-label>tablets</span>
+              </span>
+            </label>
+
+            <label>Low supply alert at
+              <span class="input-with-unit">
+                <input type="number" step="0.001" min="0" name="low_supply_threshold" value="<?= e((string) ($wz['low_supply_threshold'] ?? '0')) ?>">
+                <span data-inv-unit-label>tablets</span>
+              </span>
+            </label>
+          </fieldset>
+        </div>
+
+        <div class="med-wizard-step" data-med-wizard-step="3" hidden>
+          <label>Schedule type
+            <select name="schedule_mode">
+              <option value="fixed_times" <?= (($wz['schedule_mode'] ?? '') === 'fixed_times') ? 'selected' : '' ?>>Fixed times</option>
+              <option value="interval" <?= (($wz['schedule_mode'] ?? '') === 'interval') ? 'selected' : '' ?>>Every X hours</option>
+            </select>
+          </label>
+          <div data-dose-times-section>
+            <div class="dose-times-label">Dose times <span class="field-optional">(one per row)</span></div>
+            <div data-dose-time-rows>
+            <?php if ($wzTimes === []): ?>
+              <div class="dose-time-row">
+                <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off">
+                <input type="number" name="dose_qtys[]" min="0.001" step="any" placeholder="Qty (default)" class="dose-qty-field">
+                <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
+              </div>
+            <?php else: ?>
+              <?php foreach ($wzTimes as $wzi => $wzt): ?>
+              <div class="dose-time-row">
+                <input type="text" name="dose_times[]" placeholder="8:00 AM" class="dose-time-field" autocomplete="off" value="<?= e((string) $wzt) ?>">
+                <input type="number" name="dose_qtys[]" min="0.001" step="any" placeholder="Qty (default)" class="dose-qty-field" value="<?= e((string) ($wzQtys[$wzi] ?? '')) ?>">
+                <button type="button" class="btn-icon remove-dose-time" aria-label="Remove time">−</button>
+              </div>
+              <?php endforeach; ?>
+            <?php endif; ?>
+            </div>
+            <button type="button" class="btn-text" data-add-dose-time>+ Add time</button>
+          </div>
+          <label>Interval hours
+            <input type="number" min="1" max="24" name="interval_hours" value="<?= e((string) ($wz['interval_hours'] ?? '')) ?>">
+          </label>
+          <label>First dose time
+            <input name="first_dose_time" placeholder="8:00 AM" value="<?= e((string) ($wz['first_dose_time'] ?? '')) ?>">
+          </label>
+          <label>As needed (PRN)
+            <select name="as_needed">
+              <option value="0" <?= ((int) ($wz['as_needed'] ?? 0) === 0) ? 'selected' : '' ?>>No</option>
+              <option value="1" <?= ((int) ($wz['as_needed'] ?? 0) === 1) ? 'selected' : '' ?>>Yes</option>
+            </select>
+            <small class="field-hint">If Yes, excluded from the dashboard's required dose count.</small>
+          </label>
+          <label>Medication group <span class="field-optional">(optional)</span>
+            <select name="group_id">
+              <option value="0"<?= $wzGroupId === 0 ? ' selected' : '' ?>>No group (individual)</option>
+              <?php foreach ($groups as $grp): ?>
+                <option value="<?= e((string) $grp['id']) ?>"<?= $wzGroupId === (int) $grp['id'] ? ' selected' : '' ?>><?= e($grp['name']) ?> &mdash; <?= e(to12h($grp['scheduled_time'])) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+        </div>
+
+        <div class="med-wizard-step" data-med-wizard-step="4" hidden>
+          <?php $wzFeedbackType = (string) ($wz['feedback_type'] ?? 'none'); ?>
+          <label>Track dose feedback
+            <select name="feedback_type">
+              <option value="none" <?= $wzFeedbackType === 'none' ? 'selected' : '' ?>>No tracking</option>
+              <option value="mood" <?= $wzFeedbackType === 'mood' ? 'selected' : '' ?>>Mood level</option>
+              <option value="pain" <?= $wzFeedbackType === 'pain' ? 'selected' : '' ?>>Pain level</option>
+              <option value="both" <?= $wzFeedbackType === 'both' ? 'selected' : '' ?>>Both pain and mood</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="modal-footer med-wizard-footer">
+          <button type="button" class="button-link button-link--cancel" data-med-wizard-cancel>Cancel</button>
+          <button type="button" class="secondary" data-med-wizard-back hidden>Back</button>
+          <button type="button" class="secondary" data-med-wizard-save-draft>Save draft</button>
+          <button type="button" data-med-wizard-next>Next</button>
+          <button type="submit" data-med-wizard-submit hidden>Save Medication</button>
+        </div>
+      </form>
+      <?php endif; ?>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exit-without-saving confirmation for the Add medication wizard -->
+  <div class="modal-overlay" data-med-wizard-exit-modal>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="med-wizard-exit-title">
+      <div class="modal-header">
+        <h2 id="med-wizard-exit-title">Discard this medication?</h2>
+      </div>
+      <div class="modal-scroll">
+        <p>Your progress won&rsquo;t be saved. Use &ldquo;Save draft&rdquo; first if you want to come back to it later.</p>
+        <div class="modal-footer">
+          <button type="button" class="danger" data-med-wizard-exit-confirm>Discard and exit</button>
+          <button type="button" class="button-link button-link--cancel" data-med-wizard-exit-cancel>Keep editing</button>
+        </div>
       </div>
     </div>
   </div>

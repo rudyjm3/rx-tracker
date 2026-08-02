@@ -439,10 +439,19 @@ const closeMedicationModal = () => {
   }
 };
 
+// Exposed so assets/js/medication-wizard.js can close the modal the same way once its own
+// exit-confirmation flow (if any) has resolved.
+window.closeMedicationModal = closeMedicationModal;
+
 document.querySelectorAll('[data-open-medication-modal]').forEach((btn) => {
   btn.addEventListener('click', openMedicationModal);
 });
-closeMedicationModalButton?.addEventListener('click', closeMedicationModal);
+closeMedicationModalButton?.addEventListener('click', () => {
+  // The medication wizard (assets/js/medication-wizard.js) may want to confirm before
+  // discarding unsaved changes; give it a chance to intercept this close.
+  if (window.medWizardInterceptClose?.()) return;
+  closeMedicationModal();
+});
 
 const openPostponeModal = (medicationId, scheduledDate, scheduledTime) => {
   if (!postponeModal) return;

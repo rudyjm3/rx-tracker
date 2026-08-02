@@ -101,12 +101,18 @@ try {
 
         $startDateRaw = post_string('start_date');
         $startDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDateRaw) ? $startDateRaw : null;
+        $endDateRaw = post_string('end_date');
+        $endDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDateRaw) ? $endDateRaw : null;
 
         if ($action === 'add_medication') {
-            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate, $feedbackType);
+            $repository->createMedication($name, $instructions, $scheduleMode, $doseTimes, $intervalHours, $firstDoseTime, $asNeeded, $lowSupplyThreshold, $trackDoseFeedback, $setId, $medicationType, $doseAmount, $doseUnit, $doseForm, $inventoryType, $startingQuantity, $quantityPerDose, $doseQtys, $startDate, $feedbackType, $endDate);
             $newMedicationId = $repository->lastInsertedMedicationId();
             if ($groupIdRaw > 0) {
                 $repository->addMedicationToGroup($groupIdRaw, $newMedicationId);
+            }
+            $draftIdRaw = (int) post_string('draft_id');
+            if ($draftIdRaw > 0) {
+                $repository->deleteMedicationDraft($draftIdRaw);
             }
         } else {
             $existingMed = $repository->findMedication($id);
@@ -130,6 +136,42 @@ try {
             }
         }
 
+        $redirectPage = post_string('redirect_page');
+        if ($redirectPage === 'medications') {
+            header('Location: index.php?page=medications');
+            exit;
+        }
+        redirect_home();
+    }
+
+    if ($action === 'save_medication_draft') {
+        $draftName = trim(post_string('name'));
+        header('Content-Type: application/json; charset=utf-8');
+        if ($draftName === '') {
+            echo json_encode(['ok' => false, 'error' => 'Enter a medication name before saving a draft.'], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        $draftId = (int) post_string('draft_id');
+        $currentStep = max(1, min(4, (int) post_string('current_step')));
+        $furthestStep = max($currentStep, min(4, (int) post_string('furthest_step')));
+        $formData = $_POST;
+        unset($formData['csrf_token'], $formData['action'], $formData['json_response'], $formData['draft_id'], $formData['current_step'], $formData['furthest_step']);
+        $newDraftId = $repository->saveMedicationDraft($draftId > 0 ? $draftId : null, $formData, $currentStep, $furthestStep);
+        echo json_encode(['ok' => true, 'draft_id' => $newDraftId], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'discard_medication_draft') {
+        $draftId = (int) post_string('draft_id');
+        if ($draftId <= 0) {
+            throw new RuntimeException('Invalid draft.');
+        }
+        $repository->deleteMedicationDraft($draftId);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
         $redirectPage = post_string('redirect_page');
         if ($redirectPage === 'medications') {
             header('Location: index.php?page=medications');

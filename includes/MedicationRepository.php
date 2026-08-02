@@ -13,6 +13,7 @@ require_once __DIR__ . '/AdherenceRepository.php';
 require_once __DIR__ . '/MoodTagRepository.php';
 require_once __DIR__ . '/MedicationNoteRepository.php';
 require_once __DIR__ . '/UserSettingsRepository.php';
+require_once __DIR__ . '/MedicationDraftRepository.php';
 
 final class MedicationRepository
 {
@@ -27,6 +28,7 @@ final class MedicationRepository
     private readonly MoodTagRepository $moodTagRepo;
     private readonly MedicationNoteRepository $noteRepo;
     private readonly UserSettingsRepository $settingsRepo;
+    private readonly MedicationDraftRepository $medicationDraftRepo;
 
     public function __construct(
         private readonly PDO $db,
@@ -46,6 +48,27 @@ final class MedicationRepository
         $this->moodTagRepo           = new MoodTagRepository($db, $userId, $profileId);
         $this->noteRepo              = new MedicationNoteRepository($db, $userId, $profileId);
         $this->settingsRepo          = new UserSettingsRepository($db, $userId, $profileId);
+        $this->medicationDraftRepo   = new MedicationDraftRepository($db, $userId, $profileId);
+    }
+
+    public function listMedicationDrafts(): array
+    {
+        return $this->medicationDraftRepo->listDrafts();
+    }
+
+    public function findMedicationDraft(int $id): ?array
+    {
+        return $this->medicationDraftRepo->findDraft($id);
+    }
+
+    public function saveMedicationDraft(?int $id, array $formData, int $currentStep, int $furthestStep): int
+    {
+        return $this->medicationDraftRepo->saveDraft($id, $formData, $currentStep, $furthestStep);
+    }
+
+    public function deleteMedicationDraft(int $id): void
+    {
+        $this->medicationDraftRepo->deleteDraft($id);
     }
 
     private function profileSql(string $alias = 'm'): string
@@ -81,7 +104,8 @@ final class MedicationRepository
         float $quantityPerDose = 1.0,
         array $doseQtys = [],
         ?string $startDate = null,
-        string $feedbackType = 'none'
+        string $feedbackType = 'none',
+        ?string $endDate = null
     ): void {
         $this->validateScheduleInputs($scheduleMode, $doseTimes, $intervalHours, $firstDoseTime);
         $this->validateMedicationType($medicationType);
@@ -98,9 +122,9 @@ final class MedicationRepository
         $this->db->beginTransaction();
         try {
             $statement = $this->db->prepare(
-                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, tracking_started_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id,
+                'INSERT INTO medications (user_id, profile_id, name, dose, start_date, end_date, tracking_started_at, instructions, schedule_mode, time_format, interval_hours, first_dose_time, as_needed, starting_pill_count, pill_count, low_supply_threshold, track_dose_feedback, feedback_type, set_id,
                                           medication_type, dose_amount, dose_unit, dose_form, inventory_type, inventory_unit, starting_quantity, current_quantity, quantity_per_dose)
-                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :tracking_started_at, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :feedback_type, :set_id,
+                 VALUES (:user_id, :profile_id, :name, \'\', :start_date, :end_date, :tracking_started_at, :instructions, :schedule_mode, :time_format, :interval_hours, :first_dose_time, :as_needed, 0, 0, :low_supply_threshold, :track_dose_feedback, :feedback_type, :set_id,
                          :medication_type, :dose_amount, :dose_unit, :dose_form, :inventory_type, :inventory_unit, :starting_quantity, :current_quantity, :quantity_per_dose)'
             );
             $statement->execute([
@@ -108,6 +132,7 @@ final class MedicationRepository
                 'profile_id' => $this->profileId,
                 'name' => $name,
                 'start_date' => $startDate ?? date('Y-m-d'),
+                'end_date' => $endDate,
                 // Only gate on tracking_started_at when the caller explicitly gave a
                 // start date. Leaving it null preserves today's behavior for the
                 // common case (no start date entered = assume tracking starts now).
