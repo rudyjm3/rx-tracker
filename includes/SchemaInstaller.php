@@ -145,6 +145,8 @@ final class SchemaInstaller
         $this->ensureMoodTagsTableSchema();
         $this->ensureMedicationNotesTableSchema();
         $this->ensureOnboardingColumns();
+        $this->ensureMedicationDraftsTable();
+        $this->ensureEndDateColumn();
     }
 
     private function ensureGroupTables(): void
@@ -1772,6 +1774,81 @@ final class SchemaInstaller
         } catch (Throwable) {
             $this->schemaSweepFailed = true;
             // Non-fatal: new columns/tables added progressively.
+        }
+    }
+
+    // Staging table for the multi-step "Add medication" wizard's "Save draft" action.
+    // Deliberately separate from setup_status/profile_onboarding (the first-run onboarding
+    // flow's own draft mechanism) so the two can't collide.
+    private function ensureMedicationDraftsTable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_drafts (
+                        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        user_id        INT UNSIGNED NOT NULL,
+                        profile_id     INT UNSIGNED NULL,
+                        form_data      TEXT NOT NULL,
+                        current_step   TINYINT UNSIGNED NOT NULL DEFAULT 1,
+                        furthest_step  TINYINT UNSIGNED NOT NULL DEFAULT 1,
+                        created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_medication_drafts_user (user_id, profile_id),
+                        CONSTRAINT fk_medication_drafts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+                );
+            } elseif ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS medication_drafts (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id        INTEGER NOT NULL,
+                        profile_id     INTEGER NULL,
+                        form_data      TEXT NOT NULL,
+                        current_step   INTEGER NOT NULL DEFAULT 1,
+                        furthest_step  INTEGER NOT NULL DEFAULT 1,
+                        created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if table setup fails.
+        }
+    }
+
+    private function ensureEndDateColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medications LIKE 'end_date'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN end_date DATE NULL AFTER start_date");
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medications)");
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'end_date') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec("ALTER TABLE medications ADD COLUMN end_date TEXT NULL");
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
         }
     }
 }

@@ -34,7 +34,48 @@
     </div>
   </div>
   <div class="medication-list">
-    <?php if ($medicationPlanCount === 0): ?>
+    <?php foreach (($medicationDrafts ?? []) as $draft): ?>
+      <div class="medication-row medication-row-plan medication-row--draft" data-draft-id="<?= e((string) $draft['id']) ?>">
+        <span aria-hidden="true"></span>
+        <div class="medication-content">
+          <div class="med-top-row">
+            <div class="med-top-left">
+              <div class="med-title"><strong><?= e($draft['name'] !== '' ? $draft['name'] : 'Untitled draft') ?></strong><span class="med-type-badge med-type-badge--draft">Draft</span></div>
+              <p class="med-dose">Step <?= e((string) $draft['furthest_step']) ?> of 4 &mdash; not yet saved</p>
+            </div>
+            <div class="med-top-right">
+              <div class="med-actions-menu" data-med-actions-menu>
+                <button
+                  type="button"
+                  class="icon-button med-actions-trigger"
+                  data-med-actions-trigger
+                  aria-label="More actions for this draft"
+                  aria-expanded="false"
+                  aria-haspopup="true"
+                ><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></button>
+                <div class="med-actions-dropdown" data-med-actions-dropdown hidden>
+                  <a href="index.php?page=medications&draft=<?= e((string) $draft['id']) ?>" class="med-actions-item">
+                    <i class="fa-solid fa-pen" aria-hidden="true"></i>
+                    Resume
+                  </a>
+                  <form method="post" action="index.php" data-confirm="Discard this draft medication? This can't be undone.">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="discard_medication_draft">
+                    <input type="hidden" name="draft_id" value="<?= e((string) $draft['id']) ?>">
+                    <input type="hidden" name="redirect_page" value="medications">
+                    <button type="submit" class="med-actions-item med-actions-item--danger">
+                      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                      Discard draft
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <?php endforeach; ?>
+    <?php if ($medicationPlanCount === 0 && ($medicationDrafts ?? []) === []): ?>
       <div class="empty-state"><p>No active medications yet.</p></div>
     <?php endif; ?>
     <?php foreach ($medications as $medication): ?>

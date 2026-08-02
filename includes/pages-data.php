@@ -85,6 +85,11 @@ foreach ($nextDoseWindow as $heroRow) {
 $editId = (int) ($_GET['edit'] ?? 0);
 $editing = $editId > 0 ? $repository->findMedication($editId) : null;
 $editingGroupId = $editing ? (($repository->groupForMedication((int) $editing['id']))['id'] ?? 0) : 0;
+
+$draftId = (int) ($_GET['draft'] ?? 0);
+$draftMedication = $draftId > 0 ? $repository->findMedicationDraft($draftId) : null;
+$medicationDrafts = $repository->listMedicationDrafts();
+
 $groups = $repository->allGroups();
 $ungroupedMedications = $repository->ungroupedActiveMedications();
 
