@@ -1518,6 +1518,10 @@ button.medications-overview-row:active {
   grid-column: 1 / -1;
 }
 
+.med-wizard-step [hidden] {
+  display: none;
+}
+
 .med-wizard-progress {
   display: flex;
   gap: 0.6rem;
@@ -1527,16 +1531,26 @@ button.medications-overview-row:active {
 .med-wizard-seg {
   background: none;
   border: none;
+  box-shadow: none;
   cursor: pointer;
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 0.35rem;
   padding: 0;
+  transform: none;
+}
+
+.med-wizard-seg:hover {
+  background: none;
+  box-shadow: none;
+  transform: none;
 }
 
 .med-wizard-seg:disabled,
 .med-wizard-seg.is-locked {
+  background: none;
+  box-shadow: none;
   cursor: not-allowed;
 }
 
