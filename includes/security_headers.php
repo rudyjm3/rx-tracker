@@ -24,7 +24,7 @@ function send_security_headers(): void
         "Content-Security-Policy: " .
         "default-src 'self'; " .
         "script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdnjs.cloudflare.com; " .
-        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " .
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://accounts.google.com; " .
         "img-src 'self' data: https:; " .
         "font-src 'self' data: https://cdnjs.cloudflare.com; " .
         "connect-src 'self' https://accounts.google.com; " .

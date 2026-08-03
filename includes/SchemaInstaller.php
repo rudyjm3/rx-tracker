@@ -1260,14 +1260,12 @@ final class SchemaInstaller
                             FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB"
                 );
-                $this->db->exec(
-                    "ALTER TABLE medications
-                     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id"
-                );
-                $this->db->exec(
-                    "ALTER TABLE medication_groups
-                     ADD COLUMN IF NOT EXISTS profile_id INT UNSIGNED NULL AFTER user_id"
-                );
+                foreach (['medications', 'medication_groups'] as $table) {
+                    $check = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'profile_id'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE {$table} ADD COLUMN profile_id INT UNSIGNED NULL AFTER user_id");
+                    }
+                }
                 return;
             }
             if ($driver === 'sqlite') {
@@ -1664,17 +1662,25 @@ final class SchemaInstaller
         try {
             $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
             if ($driver === 'mysql') {
-                $this->db->exec(
-                    "ALTER TABLE medications
-                        ADD COLUMN IF NOT EXISTS setup_status ENUM('draft','ready','active') NOT NULL DEFAULT 'active',
-                        ADD COLUMN IF NOT EXISTS dashboard_enabled TINYINT(1) NOT NULL DEFAULT 1,
-                        ADD COLUMN IF NOT EXISTS reminders_enabled TINYINT(1) NOT NULL DEFAULT 1,
-                        ADD COLUMN IF NOT EXISTS adherence_enabled TINYINT(1) NOT NULL DEFAULT 1,
-                        ADD COLUMN IF NOT EXISTS inventory_enabled TINYINT(1) NOT NULL DEFAULT 0,
-                        ADD COLUMN IF NOT EXISTS tracking_started_at DATETIME NULL,
-                        ADD COLUMN IF NOT EXISTS inventory_count_method ENUM('counted','estimated','unknown') NOT NULL DEFAULT 'unknown',
-                        ADD COLUMN IF NOT EXISTS inventory_as_of DATETIME NULL"
-                );
+                // Per-column existence checks rather than a single "ADD COLUMN IF NOT EXISTS"
+                // statement — that syntax requires MySQL 8.0.29+ and throws a hard syntax error
+                // on older MySQL/MariaDB, silently skipping every column below it once caught.
+                $onboardingColumns = [
+                    'setup_status'           => "ENUM('draft','ready','active') NOT NULL DEFAULT 'active'",
+                    'dashboard_enabled'      => 'TINYINT(1) NOT NULL DEFAULT 1',
+                    'reminders_enabled'      => 'TINYINT(1) NOT NULL DEFAULT 1',
+                    'adherence_enabled'      => 'TINYINT(1) NOT NULL DEFAULT 1',
+                    'inventory_enabled'      => 'TINYINT(1) NOT NULL DEFAULT 0',
+                    'tracking_started_at'    => 'DATETIME NULL',
+                    'inventory_count_method' => "ENUM('counted','estimated','unknown') NOT NULL DEFAULT 'unknown'",
+                    'inventory_as_of'        => 'DATETIME NULL',
+                ];
+                foreach ($onboardingColumns as $col => $def) {
+                    $check = $this->db->query("SHOW COLUMNS FROM medications LIKE '{$col}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE medications ADD COLUMN {$col} {$def}");
+                    }
+                }
                 $this->db->exec(
                     "CREATE TABLE IF NOT EXISTS profile_onboarding (
                         id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -1713,11 +1719,16 @@ final class SchemaInstaller
                         CONSTRAINT fk_inv_tx_medication FOREIGN KEY (medication_id) REFERENCES medications(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
                 );
-                $this->db->exec(
-                    "ALTER TABLE medication_refills
-                        ADD COLUMN IF NOT EXISTS started_using_at DATETIME NULL,
-                        ADD COLUMN IF NOT EXISTS carryover_quantity DECIMAL(10,3) NOT NULL DEFAULT 0"
-                );
+                $refillColumns = [
+                    'started_using_at'    => 'DATETIME NULL',
+                    'carryover_quantity'  => 'DECIMAL(10,3) NOT NULL DEFAULT 0',
+                ];
+                foreach ($refillColumns as $col => $def) {
+                    $check = $this->db->query("SHOW COLUMNS FROM medication_refills LIKE '{$col}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE medication_refills ADD COLUMN {$col} {$def}");
+                    }
+                }
             } elseif ($driver === 'sqlite') {
                 // Add onboarding columns to medications if missing (SQLite has no IF NOT EXISTS on ALTER TABLE)
                 $existing = $this->db->query("SELECT name FROM pragma_table_info('medications')")->fetchAll(PDO::FETCH_COLUMN);
