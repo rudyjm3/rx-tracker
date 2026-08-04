@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 2;
+    private const CURRENT_SCHEMA_VERSION = 3;
 
     private static array $schemaSweepDone = [];
 
