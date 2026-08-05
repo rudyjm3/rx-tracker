@@ -2462,8 +2462,20 @@ if (painPageBody) {
 
   // Replace click with pointerup + drag guard for mobile touch support
   let painPagePointerMoved = false;
-  painPageBody.addEventListener('pointerdown', () => { painPagePointerMoved = false; });
-  painPageBody.addEventListener('pointermove', () => { painPagePointerMoved = true; });
+  let painPagePointerStartX = 0;
+  let painPagePointerStartY = 0;
+  const PAIN_PAGE_DRAG_THRESHOLD = 8;
+  painPageBody.addEventListener('pointerdown', (event) => {
+    painPagePointerMoved = false;
+    painPagePointerStartX = event.clientX;
+    painPagePointerStartY = event.clientY;
+  });
+  painPageBody.addEventListener('pointermove', (event) => {
+    if (painPagePointerMoved) return;
+    const dx = event.clientX - painPagePointerStartX;
+    const dy = event.clientY - painPagePointerStartY;
+    if (Math.hypot(dx, dy) > PAIN_PAGE_DRAG_THRESHOLD) painPagePointerMoved = true;
+  });
   painPageBody.addEventListener('pointerup', async (event) => {
     if (painPagePointerMoved) return;
     const entryDot = event.target.closest('circle[data-entry-id]');
@@ -3179,8 +3191,20 @@ if (moodPageBody) {
 
   // Replace click with pointerup + drag guard for mobile touch support
   let moodPagePointerMoved = false;
-  moodPageBody.addEventListener('pointerdown', () => { moodPagePointerMoved = false; });
-  moodPageBody.addEventListener('pointermove', () => { moodPagePointerMoved = true; });
+  let moodPagePointerStartX = 0;
+  let moodPagePointerStartY = 0;
+  const MOOD_PAGE_DRAG_THRESHOLD = 8;
+  moodPageBody.addEventListener('pointerdown', (event) => {
+    moodPagePointerMoved = false;
+    moodPagePointerStartX = event.clientX;
+    moodPagePointerStartY = event.clientY;
+  });
+  moodPageBody.addEventListener('pointermove', (event) => {
+    if (moodPagePointerMoved) return;
+    const dx = event.clientX - moodPagePointerStartX;
+    const dy = event.clientY - moodPagePointerStartY;
+    if (Math.hypot(dx, dy) > MOOD_PAGE_DRAG_THRESHOLD) moodPagePointerMoved = true;
+  });
   moodPageBody.addEventListener('pointerup', async (event) => {
     if (moodPagePointerMoved) return;
     const entryDot = event.target.closest('circle[data-entry-id]');
