@@ -1492,6 +1492,16 @@ button.medications-overview-row:active {
   grid-column: 1 / -1;
 }
 
+/* Grid items default to min-width: auto, which pins them to their content's
+   intrinsic width — a <select> or dose-time row can then blow out the track
+   and get silently clipped by .modal-scroll's mobile overflow-x: hidden.
+   Real-device font metrics (Roboto, etc.) make this worse than desktop
+   devtools emulation shows, so guard every direct child explicitly. */
+.medication-form > *,
+.form-section > * {
+  min-width: 0;
+}
+
 .form-section {
   border: none;
   border-top: 1px solid var(--rx-border);
