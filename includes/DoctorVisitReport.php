@@ -47,6 +47,12 @@ final class DoctorVisitReport
 
     private function renderPdfFromHtml(string $html): string
     {
+        if (!class_exists(Options::class)) {
+            throw new RuntimeException(
+                'PDF library (Dompdf) is not installed. Run "composer install" in the project root and try again.'
+            );
+        }
+
         $options = new Options();
         $options->set('isRemoteEnabled', false);
         $options->set('defaultFont', 'DejaVu Sans');
