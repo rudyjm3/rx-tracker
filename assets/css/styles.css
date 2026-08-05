@@ -1672,16 +1672,16 @@ details[open] .form-disclosure-toggle::before {
 .dose-time-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.6rem;
 }
 
 .dose-time-field {
-  flex: 1 1 8rem;
+  flex: 1 1 6rem;
   min-width: 0;
 }
 
 .dose-qty-field {
-  flex: 0 0 7rem;
+  flex: 0 1 6rem;
   min-width: 0;
 }
 
@@ -1691,6 +1691,7 @@ details[open] .form-disclosure-toggle::before {
   border-radius: var(--rx-radius-sm);
   color: var(--rx-text-muted);
   cursor: pointer;
+  flex-shrink: 0;
   font-size: 1rem;
   line-height: 1;
   padding: 0.3rem 0.55rem;
