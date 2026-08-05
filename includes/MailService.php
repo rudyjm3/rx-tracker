@@ -2,16 +2,37 @@
 
 declare(strict_types=1);
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception as PHPMailerException;
+
 final class MailService
 {
-    private readonly string $apiKey;
+    private readonly string $mailer;
+
+    private readonly string $smtpHost;
+    private readonly int $smtpPort;
+    private readonly string $smtpEncryption;
+    private readonly string $smtpUsername;
+    private readonly string $smtpPassword;
+
+    private readonly string $resendApiKey;
+
     private readonly string $fromAddress;
     private readonly string $fromName;
     private readonly string $appUrl;
 
     public function __construct()
     {
-        $this->apiKey      = env_value('RESEND_API_KEY', '');
+        $this->mailer = strtolower(env_value('MAIL_MAILER', 'smtp')) === 'resend' ? 'resend' : 'smtp';
+
+        $this->smtpHost       = env_value('SMTP_HOST', '');
+        $this->smtpPort       = (int) env_value('SMTP_PORT', '587');
+        $this->smtpEncryption = env_value('SMTP_ENCRYPTION', 'tls');
+        $this->smtpUsername   = env_value('SMTP_USERNAME', '');
+        $this->smtpPassword   = env_value('SMTP_PASSWORD', '');
+
+        $this->resendApiKey = env_value('RESEND_API_KEY', '');
+
         $this->fromAddress = env_value('MAIL_FROM_ADDRESS', '');
         $this->fromName    = env_value('MAIL_FROM_NAME', 'RxTracker');
         $this->appUrl      = rtrim(env_value('APP_URL', ''), '/');
@@ -19,57 +40,81 @@ final class MailService
 
     public function sendPasswordReset(string $toEmail, string $token): void
     {
-        if ($this->apiKey === '') {
-            throw new RuntimeException('RESEND_API_KEY is not configured.');
-        }
-        if ($this->fromAddress === '') {
-            throw new RuntimeException('MAIL_FROM_ADDRESS is not configured.');
-        }
-
         $resetLink = $this->appUrl . '/index.php?page=reset-password&token=' . urlencode($token);
 
-        $payload = json_encode([
-            'from'    => $this->fromName . ' <' . $this->fromAddress . '>',
-            'to'      => [$toEmail],
-            'subject' => 'Reset your RxTracker password',
-            'html'    => $this->buildResetHtml($toEmail, $resetLink),
-        ], JSON_THROW_ON_ERROR);
-
-        $ch = curl_init('https://api.resend.com/emails');
-        curl_setopt_array($ch, [
-            CURLOPT_POST          => true,
-            CURLOPT_POSTFIELDS    => $payload,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER    => [
-                'Authorization: Bearer ' . $this->apiKey,
-                'Content-Type: application/json',
-            ],
-        ]);
-        curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($httpCode < 200 || $httpCode >= 300) {
-            throw new RuntimeException('Failed to send password reset email (HTTP ' . $httpCode . ').');
-        }
+        $this->sendHtmlMail(
+            $toEmail,
+            'Reset your RxTracker password',
+            $this->buildResetHtml($toEmail, $resetLink)
+        );
     }
 
     public function sendVerificationEmail(string $toEmail, string $token): void
     {
-        if ($this->apiKey === '') {
-            throw new RuntimeException('RESEND_API_KEY is not configured.');
-        }
+        $verifyLink = $this->appUrl . '/index.php?page=verify-email&token=' . urlencode($token);
+
+        $this->sendHtmlMail(
+            $toEmail,
+            'Verify your RxTracker email address',
+            $this->buildVerificationHtml($toEmail, $verifyLink)
+        );
+    }
+
+    private function sendHtmlMail(string $toEmail, string $subject, string $html): void
+    {
         if ($this->fromAddress === '') {
             throw new RuntimeException('MAIL_FROM_ADDRESS is not configured.');
         }
 
-        $verifyLink = $this->appUrl . '/index.php?page=verify-email&token=' . urlencode($token);
+        if ($this->mailer === 'resend') {
+            $this->sendViaResend($toEmail, $subject, $html);
+        } else {
+            $this->sendViaSmtp($toEmail, $subject, $html);
+        }
+    }
+
+    private function sendViaSmtp(string $toEmail, string $subject, string $html): void
+    {
+        if ($this->smtpHost === '' || $this->smtpUsername === '' || $this->smtpPassword === '') {
+            throw new RuntimeException('SMTP_HOST, SMTP_USERNAME, and SMTP_PASSWORD must be configured.');
+        }
+
+        $mail = new PHPMailer(true);
+
+        try {
+            $mail->isSMTP();
+            $mail->Host       = $this->smtpHost;
+            $mail->Port       = $this->smtpPort;
+            $mail->SMTPAuth   = true;
+            $mail->Username   = $this->smtpUsername;
+            $mail->Password   = $this->smtpPassword;
+            $mail->SMTPSecure = $this->smtpEncryption === 'ssl'
+                ? PHPMailer::ENCRYPTION_SMTPS
+                : PHPMailer::ENCRYPTION_STARTTLS;
+
+            $mail->setFrom($this->fromAddress, $this->fromName);
+            $mail->addAddress($toEmail);
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body    = $html;
+
+            $mail->send();
+        } catch (PHPMailerException $e) {
+            throw new RuntimeException('Failed to send email via SMTP: ' . $mail->ErrorInfo, 0, $e);
+        }
+    }
+
+    private function sendViaResend(string $toEmail, string $subject, string $html): void
+    {
+        if ($this->resendApiKey === '') {
+            throw new RuntimeException('RESEND_API_KEY is not configured.');
+        }
 
         $payload = json_encode([
             'from'    => $this->fromName . ' <' . $this->fromAddress . '>',
             'to'      => [$toEmail],
-            'subject' => 'Verify your RxTracker email address',
-            'html'    => $this->buildVerificationHtml($toEmail, $verifyLink),
+            'subject' => $subject,
+            'html'    => $html,
         ], JSON_THROW_ON_ERROR);
 
         $ch = curl_init('https://api.resend.com/emails');
@@ -78,7 +123,7 @@ final class MailService
             CURLOPT_POSTFIELDS     => $payload,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HTTPHEADER     => [
-                'Authorization: Bearer ' . $this->apiKey,
+                'Authorization: Bearer ' . $this->resendApiKey,
                 'Content-Type: application/json',
             ],
         ]);
@@ -87,7 +132,7 @@ final class MailService
         curl_close($ch);
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            throw new RuntimeException('Failed to send verification email (HTTP ' . $httpCode . ').');
+            throw new RuntimeException('Failed to send email via Resend (HTTP ' . $httpCode . ').');
         }
     }
 
