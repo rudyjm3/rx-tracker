@@ -1554,6 +1554,18 @@ const escSvg = (str) => escHtml(str).replace(/'/g, '&#39;');
 const formatGraphDay = (d) =>
   new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
+// Pick which of n evenly-spaced x-axis points should get a label, based on
+// how much chart width is actually available. Always includes the first and
+// last point, and spaces the rest evenly (rather than skipping by a fixed
+// modulo step, which can leave the last couple of labels bunched together).
+const pickLabelIndices = (n, chartW, minSpacingPx = 38) => {
+  if (n <= 1) return [0].slice(0, n);
+  const maxLabels = Math.max(2, Math.min(n, Math.floor(chartW / minSpacingPx) + 1));
+  if (n <= maxLabels) return Array.from({ length: n }, (_, i) => i);
+  const indices = Array.from({ length: maxLabels }, (_, j) => Math.round((j * (n - 1)) / (maxLabels - 1)));
+  return [...new Set(indices)];
+};
+
 const renderPainChart = (container, data) => {
   const W = 500, H = 200;
   const ml = 44, mr = 12, mt = 12, mb = 36;
@@ -1583,11 +1595,10 @@ const renderPainChart = (container, data) => {
     gridLines += `<text x="${ml - 4}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="#94a3b8">${v}</text>`;
   });
 
-  // X-axis date labels — show at most 6, evenly spaced
+  // X-axis date labels — evenly spaced, as many as fit the chart width
   let xLabels = '';
-  const step = Math.max(1, Math.ceil(n / 6));
-  byDate.forEach(({ date }, i) => {
-    if (i % step !== 0 && i !== n - 1) return;
+  pickLabelIndices(n, chartW).forEach((i) => {
+    const date = byDate[i].date;
     const x = xScale(i).toFixed(1);
     const label = date.slice(5); // MM-DD
     xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${label}</text>`;
@@ -1606,7 +1617,7 @@ const renderPainChart = (container, data) => {
     const fill   = allStandalone ? '#fff'   : color;
     const stroke = allStandalone ? color    : '#fff';
     const sw     = allStandalone ? '2.5'    : '1.5';
-    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
+    const tipLines = pts.map((p) => `${escSvg(slotTo12h(p.time.slice(0, 5)))}: Pain ${escSvg(p.pain_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
     circles += `<circle cx="${x}" cy="${y}" r="20" fill="transparent" data-date="${escSvg(date)}" style="cursor:pointer"/>`;
     circles += `<circle cx="${x}" cy="${y}" r="5" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" data-date="${escSvg(date)}" style="cursor:pointer"><title>${escSvg(date)}&#10;${tipLines}&#10;Click to view this day</title></circle>`;
   });
@@ -1643,11 +1654,10 @@ const renderPainChartToday = (container, data) => {
   });
 
   let xLabels = '';
-  const step = Math.max(1, Math.ceil(n / 6));
-  data.forEach((d, i) => {
-    if (i % step !== 0 && i !== n - 1) return;
+  pickLabelIndices(n, chartW).forEach((i) => {
+    const d = data[i];
     const x = xScale(i).toFixed(1);
-    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(d.time.slice(0, 5))}</text>`;
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(slotTo12h(d.time.slice(0, 5)))}</text>`;
   });
 
   const points = data.map((d, i) => `${xScale(i).toFixed(1)},${yScale(parseInt(d.pain_level, 10)).toFixed(1)}`).join(' ');
@@ -1661,7 +1671,7 @@ const renderPainChartToday = (container, data) => {
     const fill   = isStandalone ? '#fff'  : color;
     const stroke = isStandalone ? color   : '#fff';
     const sw     = isStandalone ? '2.5'   : '1.5';
-    const tip = `${escSvg(d.time.slice(0, 5))}: Pain ${escSvg(d.pain_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
+    const tip = `${escSvg(slotTo12h(d.time.slice(0, 5)))}: Pain ${escSvg(d.pain_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
     const entryId = d.source && d.id ? `${d.source}-${d.id}` : null;
     const entryAttr = entryId ? ` data-entry-id="${escSvg(entryId)}"` : '';
     circles += `<circle cx="${x}" cy="${y}" r="20" fill="transparent"${entryAttr} style="cursor:pointer"/>`;
@@ -1791,9 +1801,8 @@ const renderMoodChart = (container, data) => {
   });
 
   let xLabels = '';
-  const step = Math.max(1, Math.ceil(n / 6));
-  byDate.forEach(({ date }, i) => {
-    if (i % step !== 0 && i !== n - 1) return;
+  pickLabelIndices(n, chartW).forEach((i) => {
+    const date = byDate[i].date;
     const x = xScale(i).toFixed(1);
     const label = date.slice(5);
     xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${label}</text>`;
@@ -1801,7 +1810,7 @@ const renderMoodChart = (container, data) => {
 
   const points = byDate.map(({ date, level, pts }, i) => {
     const allStandalone = pts.every((p) => p.source === 'standalone');
-    const tipLines = pts.map((p) => `${escSvg(p.time.slice(0, 5))}: Mood ${escSvg(p.mood_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
+    const tipLines = pts.map((p) => `${escSvg(slotTo12h(p.time.slice(0, 5)))}: Mood ${escSvg(p.mood_level)}/10${p.note ? ' — ' + escSvg(p.note) : ''}${p.source === 'standalone' ? ' (standalone)' : ''}`).join('&#10;');
     return {
       x: xScale(i),
       y: yScale(level),
@@ -1836,17 +1845,16 @@ const renderMoodChartToday = (container, data) => {
   });
 
   let xLabels = '';
-  const step = Math.max(1, Math.ceil(n / 6));
-  data.forEach((d, i) => {
-    if (i % step !== 0 && i !== n - 1) return;
+  pickLabelIndices(n, chartW).forEach((i) => {
+    const d = data[i];
     const x = xScale(i).toFixed(1);
-    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(d.time.slice(0, 5))}</text>`;
+    xLabels += `<text x="${x}" y="${H - mb + 14}" text-anchor="middle" font-size="9" fill="#94a3b8">${escSvg(slotTo12h(d.time.slice(0, 5)))}</text>`;
   });
 
   const points = data.map((d, i) => {
     const level = parseInt(d.mood_level, 10);
     const isStandalone = d.source === 'standalone';
-    const tip = `${escSvg(d.time.slice(0, 5))}: Mood ${escSvg(d.mood_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
+    const tip = `${escSvg(slotTo12h(d.time.slice(0, 5)))}: Mood ${escSvg(d.mood_level)}/10${d.note ? ' — ' + escSvg(d.note) : ''}${isStandalone ? ' (standalone)' : ''}`;
     const entryId = d.source && d.id ? `${d.source}-${d.id}` : null;
     return { x: xScale(i), y: yScale(level), color: moodLevelColor(level), tip, isStandalone, entryId };
   });
