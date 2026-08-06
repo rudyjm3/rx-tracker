@@ -213,20 +213,26 @@ final class OnboardingDraftRepository
     public function upsertOnboardingProgress(string $status, string $currentStep): void
     {
         $profileId = $this->profileId ?? 0;
+        // completed_at still comes from MySQL's NOW() (same clock as started_at's
+        // CURRENT_TIMESTAMP) rather than PHP's date() — the app's PHP timezone can differ
+        // from the DB session timezone, which would otherwise skew completed_at vs started_at.
+        // The CASE WHEN compares an int flag (not a string) so it can never hit the
+        // "Illegal mix of collations" (utf8mb4_general_ci vs utf8mb4_unicode_ci) error that a
+        // string-literal comparison triggered here on some production databases.
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
              VALUES (:user_id, :profile_id, :ins_status, :ins_step)
              ON DUPLICATE KEY UPDATE status = :upd_status, current_step = :upd_step,
-             completed_at = CASE WHEN :chk_status = \'completed\' THEN NOW() ELSE NULL END'
+             completed_at = CASE WHEN :is_completed = 1 THEN NOW() ELSE NULL END'
         );
         $statement->execute([
-            'user_id'    => $this->userId,
-            'profile_id' => $profileId,
-            'ins_status' => $status,
-            'ins_step'   => $currentStep,
-            'upd_status' => $status,
-            'upd_step'   => $currentStep,
-            'chk_status' => $status,
+            'user_id'      => $this->userId,
+            'profile_id'   => $profileId,
+            'ins_status'   => $status,
+            'ins_step'     => $currentStep,
+            'upd_status'   => $status,
+            'upd_step'     => $currentStep,
+            'is_completed' => $status === 'completed' ? 1 : 0,
         ]);
     }
 
