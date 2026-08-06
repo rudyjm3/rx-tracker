@@ -534,6 +534,20 @@ try {
         redirect_home();
     }
 
+    if ($action === 'delete_dose_log') {
+        $logId = (int) post_string('log_id');
+        if ($logId <= 0) {
+            throw new RuntimeException('Invalid dose log.');
+        }
+        $repository->deleteDoseLog($logId);
+        if ($jsonResponse) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
+            exit;
+        }
+        redirect_home();
+    }
+
     if ($action === 'deactivate_medication') {
         $medId = (int) post_string('medication_id');
         $reason = post_string('reason');

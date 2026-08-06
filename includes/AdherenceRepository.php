@@ -15,7 +15,7 @@ final class AdherenceRepository
     {
         $sql = 'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.taken_at, dose_logs.note, dose_logs.pain_level, dose_logs.mood_level, dose_logs.status,
                        dose_logs.scheduled_for_date, dose_logs.scheduled_time,
-                       medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed
+                       medications.name, medications.dose_amount, medications.dose_unit, medications.as_needed, medications.active
                 FROM dose_logs
                 INNER JOIN medications ON medications.id = dose_logs.medication_id
                 WHERE medications.user_id = :user_id ' . $this->profileSql('medications');

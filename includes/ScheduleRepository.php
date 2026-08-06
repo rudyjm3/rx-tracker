@@ -306,13 +306,17 @@ final class ScheduleRepository
                 // Skip the interval check for snoozed doses — the snooze itself is
                 // explicit user intent to take the dose later, so the original slot
                 // time should not block it. Also skip for missed→taken retroactive
-                // updates, and for backfilling a prior calendar day (e.g. via "Log
-                // past dose") — the interval gate exists to stop a live double-dose,
-                // not to validate history being entered after the fact.
+                // updates, for backfilling a prior calendar day (e.g. via "Log past
+                // dose"), and for editing a row that is already 'taken' and staying
+                // 'taken' (e.g. correcting its note/time from history) — none of
+                // these are a live double-dose, which is what the interval gate
+                // exists to stop. latestTakenScheduledAt() would otherwise anchor
+                // on the very row being edited and reject it as "too early".
                 $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
                 $isMissedRetroactive = is_array($row) && (string) $row['status'] === 'missed';
                 $isPastDayBackfill = $date < (new DateTimeImmutable('today'))->format('Y-m-d');
-                if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill) {
+                $isEditingExistingTaken = is_array($row) && (string) $row['status'] === 'taken';
+                if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill && !$isEditingExistingTaken) {
                     $this->assertIntervalAllowed($medicationId, $scheduledAt, true);
                 }
             }
@@ -401,8 +405,37 @@ final class ScheduleRepository
     // dose goes back to its normal pending state, exactly as if the user
     // had never tapped Take. Used by the zero-pill interstitial's cancel
     // flow, where "the dose brought the count to zero" turned out not to be
-    // something the user wanted to commit to after all.
+    // something the user wanted to commit to after all. A thin wrapper over
+    // deleteDoseLog() that additionally enforces "only a taken dose", since
+    // that flow only ever fires right after a take.
     public function revertTakenDose(int $logId): void
+    {
+        $stmt = $this->db->prepare(
+            'SELECT dl.status
+             FROM dose_logs dl
+             INNER JOIN medications m ON m.id = dl.medication_id
+             WHERE dl.id = :log_id AND m.user_id = :user_id ' . $this->profileSql('m')
+        );
+        $stmt->execute(array_merge(['log_id' => $logId, 'user_id' => $this->userId], $this->profileParam()));
+        $status = $stmt->fetchColumn();
+        if ($status === false) {
+            throw new RuntimeException('Dose log not found.');
+        }
+        if ((string) $status !== 'taken') {
+            throw new RuntimeException('Only a taken dose can be reverted.');
+        }
+
+        $this->deleteDoseLog($logId);
+    }
+
+    // General-purpose deletion of a dose log entry, for any date and any
+    // status — used by the edit/delete history controls (unlike
+    // revertTakenDose(), which is scoped to the immediate zero-pill undo
+    // flow). Skipped/missed logs carry no inventory impact and are removed
+    // outright; taken logs restore whatever inventory they deducted, and
+    // restore a pre-existing row (e.g. an auto-marked 'missed' slot taken
+    // retroactively) instead of deleting history that predates the take.
+    public function deleteDoseLog(int $logId): void
     {
         $stmt = $this->db->prepare(
             'SELECT dl.id, dl.medication_id, dl.status, dl.deducted_quantity,
@@ -416,8 +449,11 @@ final class ScheduleRepository
         if (!is_array($row)) {
             throw new RuntimeException('Dose log not found.');
         }
+
         if ((string) $row['status'] !== 'taken') {
-            throw new RuntimeException('Only a taken dose can be reverted.');
+            $delete = $this->db->prepare('DELETE FROM dose_logs WHERE id = :id');
+            $delete->execute(['id' => $logId]);
+            return;
         }
 
         $medicationId = (int) $row['medication_id'];
@@ -427,7 +463,7 @@ final class ScheduleRepository
         $this->db->beginTransaction();
         try {
             // The guarded UPDATE/DELETE below (status = 'taken' in the WHERE) is
-            // the concurrency guard: if two revert requests race, only the one
+            // the concurrency guard: if two delete requests race, only the one
             // that actually changes a row proceeds to restore inventory — the
             // other's rowCount() comes back 0 and it bails out, so inventory is
             // never restored twice for the same take.
@@ -456,15 +492,17 @@ final class ScheduleRepository
             }
 
             if ($changed === 0) {
-                // Another request already reverted or otherwise changed this
+                // Another request already deleted or otherwise changed this
                 // exact log between our SELECT and this statement.
                 $this->db->rollBack();
                 throw new RuntimeException('This dose was already updated elsewhere. Please refresh and try again.');
             }
 
-            if ($deducted !== null) {
-                $this->inventoryRepo->restoreInventory($medicationId, (float) $deducted);
-            }
+            // Legacy rows predating the deducted_quantity column carry no
+            // recorded amount — restoreInventory() falls back to the
+            // medication's current quantity_per_dose in that case, same as
+            // the taken→skipped/missed transition in recordDoseStatus().
+            $this->inventoryRepo->restoreInventory($medicationId, $deducted !== null ? (float) $deducted : null);
             $this->db->commit();
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
@@ -701,9 +739,10 @@ final class ScheduleRepository
     public function calendarLogsForMonth(string $start, string $end): array
     {
         $statement = $this->db->prepare(
-            'SELECT dose_logs.medication_id, dose_logs.status,
+            'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.status,
                     dose_logs.scheduled_for_date, dose_logs.scheduled_time, dose_logs.taken_at,
-                    medications.name, medications.dose_amount, medications.dose_unit, medications.dose_form
+                    dose_logs.note, dose_logs.pain_level, dose_logs.mood_level,
+                    medications.name, medications.dose_amount, medications.dose_unit, medications.dose_form, medications.active
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
              WHERE medications.user_id = :user_id

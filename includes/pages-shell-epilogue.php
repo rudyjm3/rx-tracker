@@ -145,9 +145,19 @@
         <li class="history-empty">No doses logged today yet.</li>
       <?php endif; ?>
       <?php foreach ($recentLogs as $log): ?>
-        <li data-sort-time="<?= e((string) $log['scheduled_for_date'] . ' ' . (string) $log['scheduled_time']) ?>">
+        <li data-sort-time="<?= e((string) $log['scheduled_for_date'] . ' ' . (string) $log['scheduled_time']) ?>"
+            data-history-entry
+            data-log-id="<?= e((string) $log['id']) ?>"
+            data-med-id="<?= e((string) $log['medication_id']) ?>"
+            data-status="<?= e((string) $log['status']) ?>"
+            data-scheduled-date="<?= e((string) $log['scheduled_for_date']) ?>"
+            data-scheduled-time="<?= e((string) $log['scheduled_time']) ?>"
+            data-taken-at="<?= e((string) $log['taken_at']) ?>"
+            data-note="<?= e((string) $log['note']) ?>"
+            data-pain-level="<?= e((string) ($log['pain_level'] ?? '')) ?>"
+            data-mood-level="<?= e((string) ($log['mood_level'] ?? '')) ?>">
           <span><span class="history-time"><?= e(to12h((string) $log['scheduled_time'])) ?></span></span>
-          <div>
+          <div class="history-entry-body">
             <strong><?= e((string) $log['name']) ?></strong><?php if (formattedDose($log) !== ''): ?> <span class="dose-inline"><?= e(formattedDose($log)) ?></span><?php endif; ?>
             <p>
               <?php if ((string) $log['status'] === 'taken'): ?>
@@ -172,6 +182,12 @@
             <?php if ((string) $log['note'] !== '' && (string) $log['note'] !== 'Skipped dose' && (string) $log['note'] !== 'Logged now'): ?>
               <small class="history-note"><span class="history-note-label">Comments:</span> <?= e((string) $log['note']) ?></small>
             <?php endif; ?>
+            <div class="history-entry-actions">
+              <?php if (!empty($log['active'])): ?>
+                <button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>
+              <?php endif; ?>
+              <button type="button" class="history-entry-delete-btn" data-history-delete-btn>Delete</button>
+            </div>
           </div>
         </li>
       <?php endforeach; ?>

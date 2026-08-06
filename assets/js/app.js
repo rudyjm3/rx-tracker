@@ -3313,6 +3313,138 @@ historySort?.addEventListener('click', () => {
   items.forEach((item) => historyList.appendChild(item));
 });
 
+// ── History entry edit/delete ─────────────────────────────────────────────────
+
+// General-purpose delete of a dose log entry (any status, any date) — as
+// opposed to postRevertDose, which only undoes the dose just taken via the
+// zero-pill interstitial.
+const postDeleteDoseLog = async (logId) => {
+  const params = new URLSearchParams({
+    csrf_token: getCsrfToken(),
+    json_response: '1',
+    action: 'delete_dose_log',
+    log_id: String(logId),
+  });
+  try {
+    const res = await window.fetch('index.php', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await res.json();
+    return { ok: !!data.ok, error: data.error ?? null };
+  } catch {
+    return { ok: false, error: null };
+  }
+};
+
+const historyStatusOptions = ['taken', 'skipped', 'missed'];
+
+const buildHistoryEditFormHtml = (entry) => {
+  const options = historyStatusOptions.map((s) =>
+    `<option value="${s}"${s === entry.status ? ' selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+  ).join('');
+  const timeValue = entry.takenAt ? entry.takenAt.slice(11, 16) : '';
+  return `<form class="history-entry-edit-form">
+  <label class="stacked-label">Status
+    <select name="status">${options}</select>
+  </label>
+  <label class="stacked-label history-edit-time-field" data-history-edit-time-field${entry.status === 'taken' ? '' : ' hidden'}>Time taken
+    <input type="time" name="taken_time" value="${escHtml(timeValue)}">
+  </label>
+  <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+    <textarea name="note" rows="2" maxlength="255"></textarea>
+  </label>
+  <p class="history-entry-edit-error" hidden></p>
+  <div class="feedback-actions">
+    <button type="submit" class="button primary small">Save</button>
+    <button type="button" class="button secondary small history-entry-edit-cancel">Cancel</button>
+  </div>
+</form>`;
+};
+
+// Shared by the dashboard's "Today's history" list and the calendar day
+// modal — both render <li data-log-id ...> entries with the same data-*
+// fields and Edit/Delete buttons; contentSelector picks out the swappable
+// content element within each entry (the rest of the <li> — time, status
+// pill — stays fixed).
+const wireDoseLogEntryActions = (container, contentSelector) => {
+  container?.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('[data-history-delete-btn]');
+    if (deleteBtn) {
+      const li = deleteBtn.closest('li[data-log-id]');
+      const logId = li?.dataset.logId;
+      if (!logId) return;
+      if (!window.confirm('Delete this dose entry? This cannot be undone.')) return;
+      deleteBtn.disabled = true;
+      const result = await postDeleteDoseLog(logId);
+      if (!result.ok) {
+        deleteBtn.disabled = false;
+        alert(result.error || 'Could not delete this entry. Please try again.');
+        return;
+      }
+      window.location.reload();
+      return;
+    }
+
+    const editBtn = e.target.closest('[data-history-edit-btn]');
+    if (!editBtn) return;
+    const li = editBtn.closest('li[data-log-id]');
+    const content = li?.querySelector(contentSelector);
+    if (!li || !content || content.querySelector('form.history-entry-edit-form')) return;
+
+    const originalHtml = content.innerHTML;
+    const entry = {
+      status: li.dataset.status ?? 'taken',
+      takenAt: li.dataset.takenAt ?? '',
+    };
+    content.innerHTML = buildHistoryEditFormHtml(entry);
+    const noteTA = content.querySelector('textarea[name="note"]');
+    if (noteTA) noteTA.value = li.dataset.note ?? '';
+
+    const statusSelect = content.querySelector('select[name="status"]');
+    const timeField = content.querySelector('[data-history-edit-time-field]');
+    statusSelect?.addEventListener('change', () => {
+      if (timeField) timeField.hidden = statusSelect.value !== 'taken';
+    });
+
+    content.querySelector('.history-entry-edit-cancel')?.addEventListener('click', () => {
+      content.innerHTML = originalHtml;
+    });
+
+    content.querySelector('form.history-entry-edit-form')?.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const newStatus = statusSelect?.value ?? 'taken';
+      const timeInput = content.querySelector('input[name="taken_time"]');
+      const newTime = newStatus === 'taken' ? (timeInput?.value ?? '') : '';
+      const newNote = (content.querySelector('textarea[name="note"]')?.value ?? '').trim();
+      const saveBtn = content.querySelector('[type="submit"]');
+      if (saveBtn) saveBtn.disabled = true;
+      const result = await postDose(
+        li.dataset.medId,
+        li.dataset.scheduledDate,
+        li.dataset.scheduledTime,
+        newStatus,
+        newNote,
+        li.dataset.painLevel || '',
+        '',
+        li.dataset.moodLevel || '',
+        newTime
+      );
+      if (!result.ok) {
+        if (saveBtn) saveBtn.disabled = false;
+        const errEl = content.querySelector('.history-entry-edit-error');
+        if (errEl) { errEl.textContent = result.error || 'Could not save. Please try again.'; errEl.hidden = false; }
+        return;
+      }
+      window.location.reload();
+    });
+  });
+};
+
+wireDoseLogEntryActions(historyList, '.history-entry-body');
+
 // ── Calendar day modal ────────────────────────────────────────────────────────
 
 const calendarDayModal      = document.querySelector('[data-calendar-day-modal]');
@@ -3324,6 +3456,8 @@ const closeCalendarDayModal = () => {
   calendarDayModal.classList.remove('is-open');
   unlockBodyScroll();
 };
+
+wireDoseLogEntryActions(calendarDayModalBody, '.cal-day-slot-inner');
 
 document.querySelectorAll('[data-close-calendar-day-modal]')
   .forEach((btn) => btn.addEventListener('click', closeCalendarDayModal));
@@ -3361,7 +3495,30 @@ function buildCalendarDayHtml(meds) {
       } else if (slot.status === 'missed') {
         badge = '<span class="alert-pill">Missed</span>';
       }
-      return `<li class="cal-day-slot-row"><span class="cal-day-slot-time">${escHtml(slot.displayTime)}</span>${badge}</li>`;
+      // Editing goes through mark_dose, which requires the medication to
+      // still be active — omit Edit (but keep Delete, which has no such
+      // restriction) for entries belonging to a discontinued medication.
+      const editBtn = slot.isActive
+        ? '<button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>'
+        : '';
+      const actions = slot.logId ? `<div class="cal-day-slot-actions">
+          ${editBtn}
+          <button type="button" class="history-entry-delete-btn" data-history-delete-btn>Delete</button>
+        </div>` : '';
+      return `<li class="cal-day-slot-row"
+          data-log-id="${slot.logId ?? ''}"
+          data-med-id="${slot.medicationId ?? ''}"
+          data-status="${escHtml(slot.status)}"
+          data-scheduled-date="${escHtml(slot.scheduledDate ?? '')}"
+          data-scheduled-time="${escHtml(slot.scheduledTime ?? '')}"
+          data-taken-at="${escHtml(slot.takenAt ?? '')}"
+          data-note="${escHtml(slot.note ?? '')}"
+          data-pain-level="${slot.painLevel ?? ''}"
+          data-mood-level="${slot.moodLevel ?? ''}">
+        <div class="cal-day-slot-inner">
+          <span class="cal-day-slot-time">${escHtml(slot.displayTime)}</span>${badge}${actions}
+        </div>
+      </li>`;
     }).join('');
     return `<li class="cal-day-med-item">
       <div class="cal-day-med-name"><strong>${escHtml(med.name)}</strong>${doseStr}</div>
@@ -3731,7 +3888,7 @@ let feedbackQueueMode = false;
 let feedbackQueueFailures = [];
 const feedbackQueueProgressEl = document.querySelector('[data-feedback-queue-progress]');
 
-const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '', groupId = '', moodLevel = '') => {
+const postDose = async (medicationId, scheduledDate, scheduledTime, status, note, painLevel = '', groupId = '', moodLevel = '', actualTakenTime = '') => {
   const params = new URLSearchParams({
     csrf_token: getCsrfToken(),
     json_response: '1',
@@ -3745,6 +3902,7 @@ const postDose = async (medicationId, scheduledDate, scheduledTime, status, note
     mood_level: moodLevel,
   });
   if (groupId) params.set('group_id', String(groupId));
+  if (actualTakenTime) params.set('actual_taken_time', actualTakenTime);
   try {
     const res = await window.fetch('index.php', {
       method: 'POST',
