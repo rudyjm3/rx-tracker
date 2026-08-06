@@ -23,8 +23,6 @@ final class MailService
 
     public function __construct()
     {
-        $this->mailer = strtolower(env_value('MAIL_MAILER', 'smtp')) === 'resend' ? 'resend' : 'smtp';
-
         $this->smtpHost       = env_value('SMTP_HOST', '');
         $this->smtpPort       = (int) env_value('SMTP_PORT', '587');
         $this->smtpEncryption = env_value('SMTP_ENCRYPTION', 'tls');
@@ -36,6 +34,20 @@ final class MailService
         $this->fromAddress = env_value('MAIL_FROM_ADDRESS', '');
         $this->fromName    = env_value('MAIL_FROM_NAME', 'RxTracker');
         $this->appUrl      = rtrim(env_value('APP_URL', ''), '/');
+
+        $mailerEnv = strtolower(trim(env_value('MAIL_MAILER', '')));
+
+        if ($mailerEnv === 'smtp' || $mailerEnv === 'resend') {
+            $this->mailer = $mailerEnv;
+        } else {
+            $hasSmtpConfig   = $this->smtpHost !== '' && $this->smtpUsername !== '' && $this->smtpPassword !== '';
+            $hasResendConfig = $this->resendApiKey !== '';
+
+            // MAIL_MAILER not set — likely a legacy .env predating SMTP support.
+            // Keep working Resend-only deployments on Resend instead of silently
+            // switching them to an unconfigured SMTP transport.
+            $this->mailer = (!$hasSmtpConfig && $hasResendConfig) ? 'resend' : 'smtp';
+        }
     }
 
     public function sendPasswordReset(string $toEmail, string $token): void
