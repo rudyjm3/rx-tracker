@@ -2,10 +2,6 @@
 
 declare(strict_types=1);
 
-// TEMP DEBUG — remove after diagnosing the family-profile-switch 500.
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
 require __DIR__ . '/config/database.php';
 require __DIR__ . '/includes/security_headers.php';
 require __DIR__ . '/includes/helpers.php';

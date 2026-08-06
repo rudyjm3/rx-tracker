@@ -213,20 +213,25 @@ final class OnboardingDraftRepository
     public function upsertOnboardingProgress(string $status, string $currentStep): void
     {
         $profileId = $this->profileId ?? 0;
+        // Compute the completed_at branch in PHP rather than a SQL `CASE WHEN :param = 'literal'`
+        // comparison — some production databases have a column/connection collation mismatch
+        // (utf8mb4_general_ci vs utf8mb4_unicode_ci) that makes MySQL reject that comparison
+        // with "Illegal mix of collations" on the very first INSERT for a profile.
+        $completedAt = $status === 'completed' ? date('Y-m-d H:i:s') : null;
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
              VALUES (:user_id, :profile_id, :ins_status, :ins_step)
              ON DUPLICATE KEY UPDATE status = :upd_status, current_step = :upd_step,
-             completed_at = CASE WHEN :chk_status = \'completed\' THEN NOW() ELSE NULL END'
+             completed_at = :upd_completed_at'
         );
         $statement->execute([
-            'user_id'    => $this->userId,
-            'profile_id' => $profileId,
-            'ins_status' => $status,
-            'ins_step'   => $currentStep,
-            'upd_status' => $status,
-            'upd_step'   => $currentStep,
-            'chk_status' => $status,
+            'user_id'          => $this->userId,
+            'profile_id'       => $profileId,
+            'ins_status'       => $status,
+            'ins_step'         => $currentStep,
+            'upd_status'       => $status,
+            'upd_step'         => $currentStep,
+            'upd_completed_at' => $completedAt,
         ]);
     }
 
