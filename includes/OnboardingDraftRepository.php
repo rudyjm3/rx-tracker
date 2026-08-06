@@ -213,25 +213,26 @@ final class OnboardingDraftRepository
     public function upsertOnboardingProgress(string $status, string $currentStep): void
     {
         $profileId = $this->profileId ?? 0;
-        // Compute the completed_at branch in PHP rather than a SQL `CASE WHEN :param = 'literal'`
-        // comparison — some production databases have a column/connection collation mismatch
-        // (utf8mb4_general_ci vs utf8mb4_unicode_ci) that makes MySQL reject that comparison
-        // with "Illegal mix of collations" on the very first INSERT for a profile.
-        $completedAt = $status === 'completed' ? date('Y-m-d H:i:s') : null;
+        // completed_at still comes from MySQL's NOW() (same clock as started_at's
+        // CURRENT_TIMESTAMP) rather than PHP's date() — the app's PHP timezone can differ
+        // from the DB session timezone, which would otherwise skew completed_at vs started_at.
+        // The CASE WHEN compares an int flag (not a string) so it can never hit the
+        // "Illegal mix of collations" (utf8mb4_general_ci vs utf8mb4_unicode_ci) error that a
+        // string-literal comparison triggered here on some production databases.
         $statement = $this->db->prepare(
             'INSERT INTO profile_onboarding (user_id, profile_id, status, current_step)
              VALUES (:user_id, :profile_id, :ins_status, :ins_step)
              ON DUPLICATE KEY UPDATE status = :upd_status, current_step = :upd_step,
-             completed_at = :upd_completed_at'
+             completed_at = CASE WHEN :is_completed = 1 THEN NOW() ELSE NULL END'
         );
         $statement->execute([
-            'user_id'          => $this->userId,
-            'profile_id'       => $profileId,
-            'ins_status'       => $status,
-            'ins_step'         => $currentStep,
-            'upd_status'       => $status,
-            'upd_step'         => $currentStep,
-            'upd_completed_at' => $completedAt,
+            'user_id'      => $this->userId,
+            'profile_id'   => $profileId,
+            'ins_status'   => $status,
+            'ins_step'     => $currentStep,
+            'upd_status'   => $status,
+            'upd_step'     => $currentStep,
+            'is_completed' => $status === 'completed' ? 1 : 0,
         ]);
     }
 
