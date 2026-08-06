@@ -3495,8 +3495,14 @@ function buildCalendarDayHtml(meds) {
       } else if (slot.status === 'missed') {
         badge = '<span class="alert-pill">Missed</span>';
       }
+      // Editing goes through mark_dose, which requires the medication to
+      // still be active — omit Edit (but keep Delete, which has no such
+      // restriction) for entries belonging to a discontinued medication.
+      const editBtn = slot.isActive
+        ? '<button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>'
+        : '';
       const actions = slot.logId ? `<div class="cal-day-slot-actions">
-          <button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>
+          ${editBtn}
           <button type="button" class="history-entry-delete-btn" data-history-delete-btn>Delete</button>
         </div>` : '';
       return `<li class="cal-day-slot-row"

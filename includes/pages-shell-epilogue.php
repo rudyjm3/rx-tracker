@@ -183,7 +183,9 @@
               <small class="history-note"><span class="history-note-label">Comments:</span> <?= e((string) $log['note']) ?></small>
             <?php endif; ?>
             <div class="history-entry-actions">
-              <button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>
+              <?php if (!empty($log['active'])): ?>
+                <button type="button" class="history-entry-edit-btn" data-history-edit-btn>Edit</button>
+              <?php endif; ?>
               <button type="button" class="history-entry-delete-btn" data-history-delete-btn>Delete</button>
             </div>
           </div>

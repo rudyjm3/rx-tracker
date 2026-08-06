@@ -171,4 +171,19 @@ assertThrows(
 );
 assertFloatEquals(30.0, (float) $repo6->findMedication($losId)['current_quantity'], 'A rejected second delete must not restore inventory again.');
 
+// ── Scenario 7: deleting a legacy taken log with a NULL deducted_quantity still restores inventory ──
+// Rows created before the deducted_quantity column existed have it NULL.
+// deleteDoseLog() must still credit back a dose (falling back to the
+// medication's current quantity_per_dose), not silently skip restoration.
+[$db7, $repo7] = freshRepo();
+$repo7->createMedication('Simvastatin', '', 'fixed_times', ['22:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$simId = (int) findByName($repo7->activeMedications(), 'Simvastatin')['id'];
+$db7->exec("UPDATE medications SET current_quantity = 29.0 WHERE id = {$simId}");
+$db7->exec("INSERT INTO dose_logs (medication_id, scheduled_for_date, scheduled_time, status, note, taken_at, deducted_quantity) VALUES ({$simId}, '{$yesterday}', '22:00:00', 'taken', '', '{$yesterday} 22:00:00', NULL)");
+$legacyLogId = (int) $db7->lastInsertId();
+
+$repo7->deleteDoseLog($legacyLogId);
+
+assertFloatEquals(30.0, (float) $repo7->findMedication($simId)['current_quantity'], 'Deleting a legacy taken log with a NULL deducted_quantity must still restore inventory, falling back to quantity_per_dose.');
+
 echo "DeleteDoseLogTest passed.\n";

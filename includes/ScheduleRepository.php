@@ -306,13 +306,17 @@ final class ScheduleRepository
                 // Skip the interval check for snoozed doses — the snooze itself is
                 // explicit user intent to take the dose later, so the original slot
                 // time should not block it. Also skip for missed→taken retroactive
-                // updates, and for backfilling a prior calendar day (e.g. via "Log
-                // past dose") — the interval gate exists to stop a live double-dose,
-                // not to validate history being entered after the fact.
+                // updates, for backfilling a prior calendar day (e.g. via "Log past
+                // dose"), and for editing a row that is already 'taken' and staying
+                // 'taken' (e.g. correcting its note/time from history) — none of
+                // these are a live double-dose, which is what the interval gate
+                // exists to stop. latestTakenScheduledAt() would otherwise anchor
+                // on the very row being edited and reject it as "too early".
                 $isSnoozed = $this->activePostponeForDose($medicationId, $date, $time) !== null;
                 $isMissedRetroactive = is_array($row) && (string) $row['status'] === 'missed';
                 $isPastDayBackfill = $date < (new DateTimeImmutable('today'))->format('Y-m-d');
-                if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill) {
+                $isEditingExistingTaken = is_array($row) && (string) $row['status'] === 'taken';
+                if (!$isSnoozed && !$isMissedRetroactive && !$isPastDayBackfill && !$isEditingExistingTaken) {
                     $this->assertIntervalAllowed($medicationId, $scheduledAt, true);
                 }
             }
@@ -494,9 +498,11 @@ final class ScheduleRepository
                 throw new RuntimeException('This dose was already updated elsewhere. Please refresh and try again.');
             }
 
-            if ($deducted !== null) {
-                $this->inventoryRepo->restoreInventory($medicationId, (float) $deducted);
-            }
+            // Legacy rows predating the deducted_quantity column carry no
+            // recorded amount — restoreInventory() falls back to the
+            // medication's current quantity_per_dose in that case, same as
+            // the taken→skipped/missed transition in recordDoseStatus().
+            $this->inventoryRepo->restoreInventory($medicationId, $deducted !== null ? (float) $deducted : null);
             $this->db->commit();
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
@@ -736,7 +742,7 @@ final class ScheduleRepository
             'SELECT dose_logs.id, dose_logs.medication_id, dose_logs.status,
                     dose_logs.scheduled_for_date, dose_logs.scheduled_time, dose_logs.taken_at,
                     dose_logs.note, dose_logs.pain_level, dose_logs.mood_level,
-                    medications.name, medications.dose_amount, medications.dose_unit, medications.dose_form
+                    medications.name, medications.dose_amount, medications.dose_unit, medications.dose_form, medications.active
              FROM dose_logs
              INNER JOIN medications ON medications.id = dose_logs.medication_id
              WHERE medications.user_id = :user_id

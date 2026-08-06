@@ -58,6 +58,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
             'note'          => (string) $log['note'],
             'painLevel'     => $log['pain_level'] !== null ? (int) $log['pain_level'] : null,
             'moodLevel'     => $log['mood_level'] !== null ? (int) $log['mood_level'] : null,
+            'isActive'      => (bool) $log['active'],
             'displayTime'   => to12h((string) $log['scheduled_time']),
             'status'        => $cdStatus,
             'isLate'        => $cdLateMin !== null,
