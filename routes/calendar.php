@@ -50,10 +50,18 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         elseif ($cdStatus === 'skipped') $cdMed['skipped']++;
         elseif ($cdStatus === 'missed')  $cdMed['missed']++;
         $cdMed['slots'][] = [
-            'displayTime' => to12h((string) $log['scheduled_time']),
-            'status'      => $cdStatus,
-            'isLate'      => $cdLateMin !== null,
-            'lateLabel'   => $cdLateMin !== null ? formatLate($cdLateMin) : null,
+            'logId'         => (int) $log['id'],
+            'medicationId'  => $cdMedId,
+            'scheduledDate' => $cdDate,
+            'scheduledTime' => (string) $log['scheduled_time'],
+            'takenAt'       => (string) $log['taken_at'],
+            'note'          => (string) $log['note'],
+            'painLevel'     => $log['pain_level'] !== null ? (int) $log['pain_level'] : null,
+            'moodLevel'     => $log['mood_level'] !== null ? (int) $log['mood_level'] : null,
+            'displayTime'   => to12h((string) $log['scheduled_time']),
+            'status'        => $cdStatus,
+            'isLate'        => $cdLateMin !== null,
+            'lateLabel'     => $cdLateMin !== null ? formatLate($cdLateMin) : null,
         ];
         unset($cdMed);
     }

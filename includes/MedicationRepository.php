@@ -610,6 +610,11 @@ final class MedicationRepository
         $this->scheduleRepo->revertTakenDose($logId);
     }
 
+    public function deleteDoseLog(int $logId): void
+    {
+        $this->scheduleRepo->deleteDoseLog($logId);
+    }
+
     public function dateInventoryCrossedZero(int $medicationId): ?string
     {
         return $this->inventoryRepo->dateInventoryCrossedZero($medicationId);

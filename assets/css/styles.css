@@ -2609,6 +2609,28 @@ button.danger:hover {
   min-width: 4.5rem;
 }
 
+.cal-day-slot-inner {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.cal-day-slot-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.cal-day-slot-actions .history-entry-edit-btn {
+  margin-left: 0;
+}
+
+.cal-day-slot-inner .history-entry-edit-form {
+  width: 100%;
+}
+
 .warning-banner {
   background: rgba(245, 165, 36, 0.08);
   border: 1px solid rgba(245, 165, 36, 0.35);
@@ -7046,6 +7068,38 @@ a.nav-user-btn.is-active {
   background: none;
   box-shadow: none;
   transform: none;
+}
+
+.history-entry-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.history-entry-actions .history-entry-edit-btn {
+  margin-left: 0;
+}
+
+.history-entry-delete-btn {
+  background: none;
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-sm, 0.4rem);
+  color: var(--rx-danger, #c9213c);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.history-entry-delete-btn:hover {
+  background: none;
+  border-color: var(--rx-danger, #c9213c);
+  box-shadow: none;
+  transform: none;
+}
+
+.history-edit-time-field {
+  margin-bottom: 0.5rem;
 }
 
 /* Inline edit form within a history entry */
