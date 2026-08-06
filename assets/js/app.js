@@ -5761,6 +5761,98 @@ refillModal?.addEventListener('click', (event) => {
   if (event.target === refillModal) closeRefillModal();
 });
 
+// ── Refill reminder cards: local (client-only) swipe-to-dismiss ────────────────
+
+const REFILL_DISMISS_KEY = 'rxtracker_refill_reminders_dismissed';
+
+const readRefillDismissMap = () => {
+  try {
+    return JSON.parse(window.localStorage.getItem(REFILL_DISMISS_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+};
+
+const writeRefillDismissMap = (map) => {
+  try {
+    window.localStorage.setItem(REFILL_DISMISS_KEY, JSON.stringify(map));
+  } catch {
+    // Non-critical
+  }
+};
+
+const refillDismissKeyFor = (medicationId) => `${medicationId}:${serverToday()}`;
+
+const isRefillReminderDismissed = (medicationId) =>
+  Boolean(readRefillDismissMap()[refillDismissKeyFor(medicationId)]);
+
+const dismissRefillReminderLocally = (medicationId) => {
+  const today = serverToday();
+  const map = readRefillDismissMap();
+  Object.keys(map).forEach((key) => {
+    if (!key.endsWith(`:${today}`)) delete map[key];
+  });
+  map[refillDismissKeyFor(medicationId)] = true;
+  writeRefillDismissMap(map);
+};
+
+document.querySelectorAll('[data-refill-reminder-card]').forEach((card) => {
+  const medicationId = card.dataset.medicationId;
+  if (!medicationId) return;
+
+  if (isRefillReminderDismissed(medicationId)) {
+    card.remove();
+    return;
+  }
+
+  const dismiss = () => {
+    dismissRefillReminderLocally(medicationId);
+    card.remove();
+  };
+
+  card.querySelector('[data-refill-reminder-dismiss]')?.addEventListener('click', dismiss);
+
+  let dragging = false;
+  let startX = 0;
+  let currentX = 0;
+  const dragThreshold = () => Math.max(80, card.offsetWidth * 0.35);
+
+  card.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('[data-open-refill-modal], [data-refill-reminder-dismiss]')) return;
+    dragging = true;
+    startX = event.clientX;
+    currentX = startX;
+    card.classList.add('is-dragging');
+    card.setPointerCapture(event.pointerId);
+  });
+
+  card.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    currentX = event.clientX;
+    const dx = currentX - startX;
+    card.style.transform = `translateX(${dx}px)`;
+    card.style.opacity = String(Math.max(0.2, 1 - Math.abs(dx) / (card.offsetWidth * 0.9)));
+  });
+
+  const endDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    card.classList.remove('is-dragging');
+    const dx = currentX - startX;
+    if (Math.abs(dx) > dragThreshold()) {
+      card.style.transform = `translateX(${dx > 0 ? '120%' : '-120%'})`;
+      card.style.opacity = '0';
+      dismiss();
+    } else {
+      card.style.transform = '';
+      card.style.opacity = '';
+    }
+  };
+
+  card.addEventListener('pointerup', endDrag);
+  card.addEventListener('pointercancel', endDrag);
+});
+
 // ── Adjust quantity modal ─────────────────────────────────────────────────────
 
 const adjustQtyModal = document.querySelector('[data-adjust-qty-modal]');

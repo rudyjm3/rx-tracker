@@ -13,18 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/../includes/pages-data.php';
 require __DIR__ . '/../includes/pages-shell-top.php';
 ?>
-  <?php if ($lowSupplyMeds !== []): ?>
-  <div class="warning-banner" role="alert">
-    <?php foreach ($lowSupplyMeds as $lowMed): ?>
-      <?php
-        $lowCurQty = (float) ($lowMed['current_quantity'] ?? $lowMed['pill_count'] ?? 0);
-        $lowUnit   = (string) ($lowMed['inventory_unit'] ?? 'tablets');
-        $lowCurDisplay = $lowCurQty == (int) $lowCurQty ? (string) (int) $lowCurQty : rtrim(number_format($lowCurQty, 3), '0');
-      ?>
-      <p><strong><?= e((string) $lowMed['name']) ?><?= formattedDose($lowMed) !== '' ? ' ' . e(formattedDose($lowMed)) : '' ?></strong> &mdash; only <?= e($lowCurDisplay) ?> <?= e($lowUnit) ?> left (refill alert at &le;<?= e((string) $lowMed['low_supply_threshold']) ?> <?= e($lowUnit) ?>)</p>
-    <?php endforeach; ?>
-  </div>
-  <?php endif; ?>
+  <?php require __DIR__ . '/../includes/refill-reminder-banner.php'; ?>
 
   <div class="in-app-alert" data-in-app-alert hidden></div>
 
