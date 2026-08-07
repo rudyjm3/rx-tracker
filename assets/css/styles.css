@@ -2649,6 +2649,129 @@ button.danger:hover {
   margin-top: 0.4rem;
 }
 
+/* ── Refill reminder cards ──────────────────────────────────────────────── */
+
+.refill-reminders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.refill-reminder-card {
+  align-items: center;
+  background: var(--rx-gradient-hero);
+  border-radius: var(--rx-radius-lg);
+  box-shadow: 0 12px 30px rgba(3, 18, 42, 0.22);
+  color: #fff;
+  display: flex;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  position: relative;
+  touch-action: pan-y;
+  transition: transform 200ms ease, opacity 200ms ease;
+  user-select: none;
+}
+
+.refill-reminder-card.is-dragging {
+  transition: none;
+}
+
+.refill-reminder-swipe-hint {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  position: absolute;
+  right: 1.1rem;
+  text-transform: uppercase;
+  top: 0.55rem;
+}
+
+.refill-reminder-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.refill-reminder-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.refill-reminder-eyebrow {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.refill-reminder-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refill-reminder-desc {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.8rem;
+}
+
+.refill-reminder-action {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: #fff;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-left: auto;
+  padding: 0.4rem 0.85rem;
+  white-space: nowrap;
+}
+
+.refill-reminder-action:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.refill-reminder-close {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  padding: 0.25rem;
+}
+
+.refill-reminder-close:hover {
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+}
+
+@media (max-width: 800px) {
+  .refill-reminder-card {
+    flex-wrap: wrap;
+    padding: 0.9rem 1rem;
+  }
+
+  .refill-reminder-action {
+    margin-left: 3.35rem;
+  }
+}
+
 .refill-soon {
   color: var(--rx-warning);
   font-weight: 800;
@@ -3532,6 +3655,7 @@ button.danger:hover {
   .hero,
   .reminder-panel,
   .warning-banner,
+  .refill-reminders,
   .dashboard-grid,
   .history-panel,
   .modal-overlay,
@@ -3991,7 +4115,7 @@ button.danger:hover {
 /* ── Pain tracking dedicated page ───────────────────────────────────────── */
 
 .pain-tracking-page {
-  padding: 1.25rem 1rem 2rem;
+  padding: 1.25rem 0 2rem;
   width: 100%;
 }
 
@@ -6294,6 +6418,10 @@ a.nav-user-btn.is-active {
   text-transform: uppercase;
 }
 
+.nav-user-menu-owner-option {
+  border-bottom: 1px solid var(--rx-border, #e2e8f0);
+}
+
 .nav-user-menu-switcher-form {
   display: flex;
   flex-direction: column;
@@ -6623,10 +6751,6 @@ a.nav-user-btn.is-active {
   }
 }
 
-.app-shell--full {
-  max-width: 100%;
-}
-
 .help-panel {
   max-width: 100%;
   width: 100%;
@@ -6636,8 +6760,8 @@ a.nav-user-btn.is-active {
   background: #EAF4FF;
   border-left: 4px solid var(--rx-deep-blue);
   color: var(--rx-navy);
-  margin: 1.5rem -1.75rem 0.75rem;
-  padding: 0.5rem 1.75rem;
+  margin: 1.5rem -1.35rem 0.75rem;
+  padding: 0.5rem 1.35rem;
 }
 
 

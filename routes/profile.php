@@ -238,18 +238,18 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
             My Profile
           </a>
           <?php if (!empty($familyProfiles)): ?>
-          <div class="nav-user-menu-section-label">Family Members</div>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="switch_family_profile">
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
-                    class="profile-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
+                    class="profile-option nav-user-menu-owner-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
               <span class="profile-option-avatar" style="background:#6366f1">
                 <?= e(mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1))) ?>
               </span>
               <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
             </button>
+            <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $navActiveProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
@@ -441,7 +441,7 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       </div>
 
       <!-- Family Members -->
-      <div class="panel">
+      <div class="panel" id="family">
         <div class="panel-heading">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           <h2>Family Members</h2>

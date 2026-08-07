@@ -13,8 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/../includes/pages-data.php';
 require __DIR__ . '/../includes/pages-shell-top.php';
 ?>
-<main class="app-shell app-shell--full">
-  <section class="panel help-panel" style="margin:1.5rem auto;padding:1.5rem 1.75rem;">
+  <section class="panel help-panel" style="margin:1.5rem 0;padding-top:1.5rem;padding-bottom:1.5rem;">
     <div class="panel-heading"><h2>Help &amp; User Guide</h2></div>
 
     <nav class="help-toc" style="margin-bottom:1.5rem;line-height:2;">

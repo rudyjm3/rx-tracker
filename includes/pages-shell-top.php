@@ -62,18 +62,18 @@
             My Profile
           </a>
           <?php if (!empty($familyProfiles)): ?>
-          <div class="nav-user-menu-section-label">Family Members</div>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="switch_family_profile">
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
-                    class="profile-option<?= $activeProfileId === null ? ' is-active' : '' ?>">
+                    class="profile-option nav-user-menu-owner-option<?= $activeProfileId === null ? ' is-active' : '' ?>">
               <span class="profile-option-avatar" style="background:#6366f1">
                 <?= e(mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'U'), 0, 1))) ?>
               </span>
               <?= e((string) ($currentUser['display_name'] ?? 'Me')) ?>
             </button>
+            <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $activeProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
