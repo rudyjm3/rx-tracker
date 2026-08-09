@@ -240,7 +240,7 @@ final class ScheduleRepository
         return $result;
     }
 
-    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null): int
+    public function recordDoseStatus(int $medicationId, string $date, string $time, string $status, string $note, ?int $painLevel = null, ?int $groupId = null, ?string $customTakenAt = null, ?int $moodLevel = null, bool $requireActive = true): int
     {
         if (!in_array($status, ['taken', 'skipped', 'missed'], true)) {
             throw new RuntimeException('Invalid dose status.');
@@ -254,8 +254,12 @@ final class ScheduleRepository
             throw new RuntimeException('Mood level must be between 1 and 10.');
         }
 
+        // Live logging routes always require the medication to be currently active (a
+        // discontinued medication shouldn't be loggable through the UI). Historical
+        // backfill is the one internal caller that legitimately needs to write a missed
+        // dose for a medication that was active on $date but has since been discontinued.
         $ownerCheck = $this->db->prepare(
-            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ' AND active = 1'
+            'SELECT id FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('') . ($requireActive ? ' AND active = 1' : '')
         );
         $ownerCheck->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         if (!$ownerCheck->fetchColumn()) {
@@ -630,7 +634,11 @@ final class ScheduleRepository
 
     public function todaySchedule(string $date): array
     {
-        $medications = $this->activeMedications();
+        return $this->buildScheduleRows($date, $this->activeMedications());
+    }
+
+    private function buildScheduleRows(string $date, array $medications): array
+    {
         $logs = $this->doseLogMapForDate($date);
         $postpones = $this->activePostponesForDate($date);
         $groupMap = $this->groupRepo->medicationGroupMap();
@@ -860,7 +868,12 @@ final class ScheduleRepository
     private function finalizeMissedDosesForDate(string $date, DateTimeImmutable $now, int $graceMinutes): void
     {
         $isHistoricalBackfill = $date < $now->format('Y-m-d');
-        $schedule = $this->todaySchedule($date);
+        // For historical backfill, also consider medications that are inactive *now* but
+        // were active on $date (e.g. discontinued after the blank day) — activeMedications()
+        // alone only reflects "right now" and would otherwise leave that day permanently blank.
+        $schedule = $isHistoricalBackfill
+            ? $this->buildScheduleRows($date, array_merge($this->activeMedications(), $this->historicallyActiveMedications($date)))
+            : $this->todaySchedule($date);
         foreach ($schedule as $row) {
             if ((bool) $row['as_needed']) {
                 continue;
@@ -871,10 +884,10 @@ final class ScheduleRepository
             if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
                 continue;
             }
-            // For a genuinely past date, todaySchedule() still reflects the medication's
-            // *current* active status and schedule times, not necessarily what applied on
-            // $date. If either has changed since, skip rather than risk fabricating a wrong
-            // missed dose against a schedule that never actually applied that day.
+            // For a genuinely past date, the medication's current schedule/active status isn't
+            // necessarily what applied on $date. If either has changed since, skip rather than
+            // risk fabricating a wrong missed dose against a schedule that never actually
+            // applied that day.
             if ($isHistoricalBackfill && !$this->medicationConfigurationValidForDate((int) $row['medication_id'], $date)) {
                 continue;
             }
@@ -902,7 +915,8 @@ final class ScheduleRepository
                 $date,
                 (string) $row['reminder_time'] . ':00',
                 'missed',
-                'Auto-marked missed'
+                'Auto-marked missed',
+                requireActive: !$isHistoricalBackfill
             );
             $this->clearPostponeForDose(
                 (int) $row['medication_id'],
@@ -934,19 +948,43 @@ final class ScheduleRepository
             // No created_at column on this install/test double: no signal, assume stable.
         }
 
+        return $this->wasMedicationActiveOnDate($medicationId, $date);
+    }
+
+    // Reconstructs whether a medication was active as of 23:59:59 on $date by replaying
+    // medication_status_events up to that point, rather than trusting the medication's
+    // current `active` flag (which only reflects "right now"). No prior event means the
+    // medication's default (active) state. Fails open (assumes active) if the table isn't
+    // available, matching medicationConfigurationValidForDate()'s fail-open style for older
+    // installs and test doubles.
+    private function wasMedicationActiveOnDate(int $medicationId, string $date): bool
+    {
+        $dateEnd = $date . ' 23:59:59';
+
         try {
             $statement = $this->db->prepare(
-                'SELECT COUNT(*) FROM medication_status_events WHERE medication_id = :medication_id AND event_at > :date_end'
+                'SELECT event FROM medication_status_events WHERE medication_id = :medication_id AND event_at <= :date_end ORDER BY event_at DESC, id DESC LIMIT 1'
             );
             $statement->execute(['medication_id' => $medicationId, 'date_end' => $dateEnd]);
-            if ((int) $statement->fetchColumn() > 0) {
-                return false;
+            $lastEvent = $statement->fetchColumn();
+            if ($lastEvent === false) {
+                return true;
             }
+            return (string) $lastEvent !== 'discontinued';
         } catch (Throwable) {
-            // Table not present on this install/test double: no signal, assume stable.
+            return true;
         }
+    }
 
-        return true;
+    // Currently-inactive medications that were nonetheless active as of $date, so historical
+    // backfill can generate missed doses for medications discontinued after the blank day
+    // instead of silently skipping them (activeMedications() only reflects "right now").
+    private function historicallyActiveMedications(string $date): array
+    {
+        return array_values(array_filter(
+            $this->inactiveMedications(),
+            fn (array $medication): bool => $this->wasMedicationActiveOnDate((int) $medication['id'], $date)
+        ));
     }
 
     public function dueReminderItems(DateTimeImmutable $now): array
