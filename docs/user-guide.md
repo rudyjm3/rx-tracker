@@ -38,7 +38,7 @@ New accounts go through a one-time setup wizard before reaching the Dashboard:
 2. **Tracking** — for each medication, choose which features to turn on: Reminders, Adherence tracking, and/or Inventory tracking.
 3. **Schedule** — set dose times for each medication. Quick-add presets (Morning 8am, Noon, Evening 6pm, Bedtime 10pm) speed this up, or enter custom times and per-time quantities.
 4. **Inventory** — for each medication with inventory tracking on, choose one: **Count now** (enter what you currently have), **Estimate from fill** (enter your last fill date and quantity dispensed, and RxTracker calculates an estimate with a confidence label), or **Skip**.
-5. **Today** — shown only if any doses were already due earlier today. Bulk-mark a time group's doses as Taken or Skipped, or skip reconciling altogether (a confirmation warns that unreconciled doses won't be marked Missed).
+5. **Today** — shown only if any doses were already due earlier today. Check off the doses in a time group and confirm to log them as Taken; leave a dose unchecked (or use the group's Skip button to uncheck the whole group) to leave it unreconciled rather than logged — it won't be recorded as Skipped or Missed. You can also skip this step altogether (a confirmation warns that unreconciled doses won't be marked Missed).
 6. **Activate** — click **Activate & go to dashboard** to finish.
 
 If you leave setup partway through, a **Resume setup** banner appears across the app until you complete it. After setup, the Dashboard is the first page you see when you sign in.
@@ -113,7 +113,7 @@ Click **Save Medication** on Step 4 to finish and add it to your active list.
 - To **edit**: Go to the **Medications** page → click the edit icon (pencil) on the medication card. Editing uses a single-page form, not the wizard used for adding a medication.
 - To **discontinue**: On the Medications page, click **Discontinue Use** on the medication card and choose a reason — *End of regimen*, *Side effects (moderate to severe)*, *Doctor's orders*, or *Other* (requires a comment) — plus an optional comment. The medication moves to the **Inactive** tab and no longer appears on the Dashboard schedule.
 - To **reactivate**: Go to the **Inactive** tab and click **Activate**, then choose a reason — *Doctor's orders*, *Symptoms returned*, *Retrying after side effects subsided*, *Restarting regimen*, or *Other* — plus an optional comment.
-- Both the Active and Inactive tabs support **filtering** by medication type (Prescription / OTC / Supplement checkboxes) and **drag-to-reorder**.
+- Both the Active and Inactive tabs support **filtering** by medication type (Prescription / OTC / Supplement checkboxes). **Drag-to-reorder** is available on the Active tab only.
 
 ---
 
@@ -152,7 +152,7 @@ When a dose becomes due, a full-screen alarm overlay rings (sound and/or vibrati
 If multiple medications in the group have feedback tracking enabled, you're stepped through a feedback prompt for each one in sequence, with a progress indicator (e.g. "Ibuprofen (2 of 3)").
 
 ### Logging a Dose Outside the Alarm
-Use **Log dose now** from a medication's actions menu:
+Use **Log past dose** from a medication's actions menu:
 - If the medication has **multiple scheduled times**, a slot picker shows each slot's status (Taken/Skipped/Missed/Overdue/Upcoming). Picking an overdue slot asks whether it was taken on time or late, with a custom time field if late.
 - If the medication is **PRN or interval-based** with no fixed slots, a simpler prompt asks what time it was taken.
 - Tapping **Take** after the grace period has already elapsed opens a similar prompt automatically, so you can record the actual time along with feedback and notes in one step.
@@ -179,12 +179,14 @@ Each medication card on the Medications page shows:
 - Estimated days of supply remaining.
 - A dismissible **refill reminder card** on the Dashboard, Medications, Pain Tracking, and Mood & Wellbeing pages once supply drops below your alert threshold. Swipe (mobile) or tap the **×** to dismiss it — dismissal is remembered only on that device, not synced across devices or to your account.
 
-### When Supply Would Hit Zero
-If logging a dose would bring your on-hand count down to zero, a prompt offers:
+### When You're Already Out of Stock
+If a medication is *already* at or below zero supply when you log a dose against it, a prompt offers:
 - **Adjust quantity** — correct the count with a quick +/- stepper.
 - **Log a refill** — jump straight to the refill form.
 - **Not now** — dismiss and proceed with the dose as normal.
 - **Cancel this dose** — fully undoes the dose log and restores your inventory, as if it was never marked taken. Use this if you tapped Take by mistake.
+
+Note: a dose that itself brings your supply down to exactly zero is logged normally without this prompt — this interstitial only appears on doses logged *after* you're already out.
 
 ### Logging a Refill
 1. On the Medications page, click **Log refill** on the medication card.
