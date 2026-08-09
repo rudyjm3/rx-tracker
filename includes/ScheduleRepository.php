@@ -842,7 +842,25 @@ final class ScheduleRepository
 
     public function finalizeMissedDoses(DateTimeImmutable $now, int $graceMinutes): void
     {
-        $schedule = $this->todaySchedule($now->format('Y-m-d'));
+        $this->finalizeMissedDosesForDate($now->format('Y-m-d'), $now, $graceMinutes);
+    }
+
+    // Backfills missed-dose finalization for past dates that were never evaluated
+    // (e.g. the owner didn't open the app and no cron ran that day), so calendar
+    // days don't stay permanently blank. Safe to re-run: todaySchedule() already
+    // excludes dates outside a medication's tracked range, and recordDoseStatus()
+    // is idempotent per (medication, date, time).
+    public function backfillMissedDosesForDates(array $dates, DateTimeImmutable $now, int $graceMinutes): void
+    {
+        foreach ($dates as $date) {
+            $this->finalizeMissedDosesForDate((string) $date, $now, $graceMinutes);
+        }
+    }
+
+    private function finalizeMissedDosesForDate(string $date, DateTimeImmutable $now, int $graceMinutes): void
+    {
+        $isHistoricalBackfill = $date < $now->format('Y-m-d');
+        $schedule = $this->todaySchedule($date);
         foreach ($schedule as $row) {
             if ((bool) $row['as_needed']) {
                 continue;
@@ -853,8 +871,15 @@ final class ScheduleRepository
             if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
                 continue;
             }
+            // For a genuinely past date, todaySchedule() still reflects the medication's
+            // *current* active status and schedule times, not necessarily what applied on
+            // $date. If either has changed since, skip rather than risk fabricating a wrong
+            // missed dose against a schedule that never actually applied that day.
+            if ($isHistoricalBackfill && !$this->medicationConfigurationValidForDate((int) $row['medication_id'], $date)) {
+                continue;
+            }
 
-            $baseDue = DateTimeImmutable::createFromFormat('Y-m-d H:i', $now->format('Y-m-d') . ' ' . (string) $row['reminder_time']);
+            $baseDue = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . (string) $row['reminder_time']);
             if (!$baseDue instanceof DateTimeImmutable) {
                 continue;
             }
@@ -874,17 +899,54 @@ final class ScheduleRepository
 
             $this->recordDoseStatus(
                 (int) $row['medication_id'],
-                $now->format('Y-m-d'),
+                $date,
                 (string) $row['reminder_time'] . ':00',
                 'missed',
                 'Auto-marked missed'
             );
             $this->clearPostponeForDose(
                 (int) $row['medication_id'],
-                $now->format('Y-m-d'),
+                $date,
                 (string) $row['reminder_time'] . ':00'
             );
         }
+    }
+
+    // Best-effort check for whether a medication's current schedule/active status can be
+    // trusted to reflect what applied on a past $date. Each signal fails open (returns "no
+    // evidence of change") if its underlying column/table isn't present, so older installs
+    // and test doubles keep their prior behavior — this only tightens things where the data
+    // to do so safely actually exists.
+    private function medicationConfigurationValidForDate(int $medicationId, string $date): bool
+    {
+        $dateEnd = $date . ' 23:59:59';
+
+        try {
+            $statement = $this->db->prepare(
+                'SELECT MIN(created_at) FROM medication_schedule_times WHERE medication_id = :medication_id'
+            );
+            $statement->execute(['medication_id' => $medicationId]);
+            $earliestScheduleAt = $statement->fetchColumn();
+            if (is_string($earliestScheduleAt) && $earliestScheduleAt !== '' && $earliestScheduleAt > $dateEnd) {
+                return false;
+            }
+        } catch (Throwable) {
+            // No created_at column on this install/test double: no signal, assume stable.
+        }
+
+        try {
+            $statement = $this->db->prepare(
+                'SELECT COUNT(*) FROM medication_status_events WHERE medication_id = :medication_id AND event_at > :date_end'
+            );
+            $statement->execute(['medication_id' => $medicationId, 'date_end' => $dateEnd]);
+            if ((int) $statement->fetchColumn() > 0) {
+                return false;
+            }
+        } catch (Throwable) {
+            // Table not present on this install/test double: no signal, assume stable.
+        }
+
+        return true;
     }
 
     public function dueReminderItems(DateTimeImmutable $now): array

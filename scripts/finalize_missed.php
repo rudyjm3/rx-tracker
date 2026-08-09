@@ -46,13 +46,17 @@ try {
         $userTzName = $repo->getUserTimezone() ?: date_default_timezone_get();
         $now        = new DateTimeImmutable('now', new DateTimeZone($userTzName));
 
-        $repo->finalizeMissedDoses($now, $graceMinutes);
+        // Also re-check yesterday so a brief cron outage spanning a day boundary
+        // self-corrects on the next run instead of leaving a permanent gap.
+        $backfillDates = [$now->modify('-1 day')->format('Y-m-d'), $now->format('Y-m-d')];
+
+        $repo->backfillMissedDosesForDates($backfillDates, $now, $graceMinutes);
         $totalFinalized++;
 
         // Each family profile under this user (same timezone as the owning account).
         foreach ($familyRepo->profilesForUser($userId) as $profile) {
             $profileRepo = new MedicationRepository(db(), $userId, (int) $profile['id']);
-            $profileRepo->finalizeMissedDoses($now, $graceMinutes);
+            $profileRepo->backfillMissedDosesForDates($backfillDates, $now, $graceMinutes);
             $totalFinalized++;
         }
     }

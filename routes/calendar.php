@@ -22,6 +22,19 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     $calMonthDt = new DateTimeImmutable($monthStart);
     $monthEnd = $calMonthDt->modify('last day of this month')->format('Y-m-d');
     $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
+    $todayForBackfill = date('Y-m-d');
+    $missingPastDates = [];
+    $daysInMonthForBackfill = (int) $calMonthDt->modify('last day of this month')->format('j');
+    for ($bfDay = 1; $bfDay <= $daysInMonthForBackfill; $bfDay++) {
+        $bfDate = sprintf('%s-%02d', $monthParam, $bfDay);
+        if ($bfDate < $todayForBackfill && !isset($calendarMarkers[$bfDate])) {
+            $missingPastDates[] = $bfDate;
+        }
+    }
+    if ($missingPastDates !== []) {
+        $repository->backfillMissedDosesForDates($missingPastDates, new DateTimeImmutable('now'), $graceMinutes);
+        $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
+    }
     $calendarDayData = [];
     foreach ($repository->calendarLogsForMonth($monthStart, $monthEnd) as $log) {
         $cdDate  = (string) $log['scheduled_for_date'];
