@@ -765,6 +765,11 @@ final class MedicationRepository
         $this->scheduleRepo->finalizeMissedDoses($now, $graceMinutes);
     }
 
+    public function backfillMissedDosesForDates(array $dates, DateTimeImmutable $now, int $graceMinutes): void
+    {
+        $this->scheduleRepo->backfillMissedDosesForDates($dates, $now, $graceMinutes);
+    }
+
     public function dueReminderItems(DateTimeImmutable $now): array
     {
         return $this->scheduleRepo->dueReminderItems($now);

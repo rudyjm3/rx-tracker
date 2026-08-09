@@ -842,7 +842,24 @@ final class ScheduleRepository
 
     public function finalizeMissedDoses(DateTimeImmutable $now, int $graceMinutes): void
     {
-        $schedule = $this->todaySchedule($now->format('Y-m-d'));
+        $this->finalizeMissedDosesForDate($now->format('Y-m-d'), $now, $graceMinutes);
+    }
+
+    // Backfills missed-dose finalization for past dates that were never evaluated
+    // (e.g. the owner didn't open the app and no cron ran that day), so calendar
+    // days don't stay permanently blank. Safe to re-run: todaySchedule() already
+    // excludes dates outside a medication's tracked range, and recordDoseStatus()
+    // is idempotent per (medication, date, time).
+    public function backfillMissedDosesForDates(array $dates, DateTimeImmutable $now, int $graceMinutes): void
+    {
+        foreach ($dates as $date) {
+            $this->finalizeMissedDosesForDate((string) $date, $now, $graceMinutes);
+        }
+    }
+
+    private function finalizeMissedDosesForDate(string $date, DateTimeImmutable $now, int $graceMinutes): void
+    {
+        $schedule = $this->todaySchedule($date);
         foreach ($schedule as $row) {
             if ((bool) $row['as_needed']) {
                 continue;
@@ -854,7 +871,7 @@ final class ScheduleRepository
                 continue;
             }
 
-            $baseDue = DateTimeImmutable::createFromFormat('Y-m-d H:i', $now->format('Y-m-d') . ' ' . (string) $row['reminder_time']);
+            $baseDue = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . (string) $row['reminder_time']);
             if (!$baseDue instanceof DateTimeImmutable) {
                 continue;
             }
@@ -874,14 +891,14 @@ final class ScheduleRepository
 
             $this->recordDoseStatus(
                 (int) $row['medication_id'],
-                $now->format('Y-m-d'),
+                $date,
                 (string) $row['reminder_time'] . ':00',
                 'missed',
                 'Auto-marked missed'
             );
             $this->clearPostponeForDose(
                 (int) $row['medication_id'],
-                $now->format('Y-m-d'),
+                $date,
                 (string) $row['reminder_time'] . ':00'
             );
         }
