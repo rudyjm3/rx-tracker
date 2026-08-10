@@ -149,6 +149,8 @@ final class SchemaInstaller
         $this->ensureOnboardingColumns();
         $this->ensureMedicationDraftsTable();
         $this->ensureEndDateColumn();
+        $this->ensureNameAndBirthdateColumns();
+        $this->ensureAllergyTables();
     }
 
     private function ensureGroupTables(): void
@@ -2012,6 +2014,120 @@ final class SchemaInstaller
                 }
                 if (!$hasColumn) {
                     $this->db->exec("ALTER TABLE medications ADD COLUMN end_date TEXT NULL");
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureNameAndBirthdateColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $columns = [
+                    'users'           => ['first_name' => 'VARCHAR(50) NULL', 'last_name' => 'VARCHAR(50) NULL', 'birth_date' => 'DATE NULL'],
+                    'family_profiles' => ['first_name' => 'VARCHAR(50) NULL', 'last_name' => 'VARCHAR(50) NULL', 'birth_date' => 'DATE NULL'],
+                ];
+                foreach ($columns as $table => $cols) {
+                    foreach ($cols as $column => $definition) {
+                        $check = $this->db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
+                        if ($check !== false && $check->fetchColumn() === false) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $columns = [
+                    'users'           => ['first_name' => 'TEXT NULL', 'last_name' => 'TEXT NULL', 'birth_date' => 'TEXT NULL'],
+                    'family_profiles' => ['first_name' => 'TEXT NULL', 'last_name' => 'TEXT NULL', 'birth_date' => 'TEXT NULL'],
+                ];
+                foreach ($columns as $table => $cols) {
+                    $check = $this->db->query("PRAGMA table_info({$table})");
+                    if ($check === false) {
+                        continue;
+                    }
+                    $existing = array_map(static fn(array $c): string => (string) ($c['name'] ?? ''), $check->fetchAll());
+                    foreach ($cols as $column => $definition) {
+                        if (!in_array($column, $existing, true)) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
+                    }
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureAllergyTables(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS allergy_catalog (
+                        id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        owner_user_id  INT UNSIGNED NULL,
+                        name           VARCHAR(150) NOT NULL,
+                        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_allergy_catalog_name_owner (name, owner_user_id),
+                        CONSTRAINT fk_allergy_catalog_user FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS profile_allergies (
+                        id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                        owner_user_id       INT UNSIGNED NOT NULL,
+                        profile_id          INT UNSIGNED NULL,
+                        allergy_catalog_id  INT UNSIGNED NOT NULL,
+                        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uq_profile_allergy (owner_user_id, profile_id, allergy_catalog_id),
+                        CONSTRAINT fk_profile_allergies_user FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_profile_allergies_profile FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_profile_allergies_catalog FOREIGN KEY (allergy_catalog_id) REFERENCES allergy_catalog(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB"
+                );
+            } elseif ($driver === 'sqlite') {
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS allergy_catalog (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        owner_user_id  INTEGER NULL,
+                        name           TEXT NOT NULL,
+                        created_at     TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+                $this->db->exec(
+                    "CREATE TABLE IF NOT EXISTS profile_allergies (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        owner_user_id       INTEGER NOT NULL,
+                        profile_id          INTEGER NULL,
+                        allergy_catalog_id  INTEGER NOT NULL,
+                        created_at          TEXT DEFAULT CURRENT_TIMESTAMP
+                    )"
+                );
+            } else {
+                return;
+            }
+
+            $names = [
+                'Penicillin', 'Sulfa Drugs', 'Aspirin/NSAIDs', 'Codeine/Opioids', 'Iodine/Contrast Dye',
+                'Latex', 'Peanuts', 'Tree Nuts', 'Shellfish', 'Eggs', 'Milk/Dairy', 'Soy', 'Wheat/Gluten',
+                'Pollen', 'Pet Dander (Cat/Dog)', 'Bee/Insect Stings',
+            ];
+            $existingStmt = $this->db->query('SELECT name FROM allergy_catalog WHERE owner_user_id IS NULL');
+            $existingNames = $existingStmt !== false
+                ? array_map(static fn(array $row): string => (string) $row['name'], $existingStmt->fetchAll())
+                : [];
+            $insert = $this->db->prepare('INSERT INTO allergy_catalog (owner_user_id, name) VALUES (NULL, :name)');
+            foreach ($names as $name) {
+                if (!in_array($name, $existingNames, true)) {
+                    $insert->execute(['name' => $name]);
                 }
             }
         } catch (Throwable) {

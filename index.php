@@ -11,6 +11,7 @@ require __DIR__ . '/includes/GoogleAuthService.php';
 require __DIR__ . '/includes/MailService.php';
 require __DIR__ . '/includes/MedicationRepository.php';
 require __DIR__ . '/includes/FamilyProfileRepository.php';
+require __DIR__ . '/includes/AllergyRepository.php';
 require __DIR__ . '/includes/PushNotificationService.php';
 require __DIR__ . '/includes/SideEffectRepository.php';
 require __DIR__ . '/includes/PainChartRenderer.php';
@@ -62,7 +63,12 @@ if ($page === 'profile') {
 }
 
 if ($page === 'family') {
-    header('Location: index.php?page=profile');
+    require __DIR__ . '/routes/family.php';
+    exit;
+}
+
+if ($page === 'family-member') {
+    require __DIR__ . '/routes/family_member.php';
     exit;
 }
 

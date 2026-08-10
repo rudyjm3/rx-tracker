@@ -2211,6 +2211,11 @@ button.danger:hover {
   color: var(--rx-text-muted);
   font-size: 0.82rem;
   margin: 0.15rem 0 0;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .inactive-history {
@@ -2233,6 +2238,11 @@ button.danger:hover {
 
 .inactive-history-comment {
   color: var(--rx-text-muted);
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .dose-change-history-list {
@@ -6065,7 +6075,7 @@ a.nav-user-btn.is-active {
 .profile-page {
   max-width: 900px;
   margin: 0 auto;
-  padding: 1.5rem 1.25rem 3rem;
+  padding: 1.5rem 0 3rem;
   width: 100%;
 }
 

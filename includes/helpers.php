@@ -59,6 +59,72 @@ function formattedDose(array $medication): string
     return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
 }
 
+function calculate_age(?string $birthDate, ?int $birthYear = null): ?int
+{
+    if ($birthDate !== null && $birthDate !== '') {
+        try {
+            return (new DateTimeImmutable($birthDate))->diff(new DateTimeImmutable())->y;
+        } catch (Throwable) {
+            // fall through to the birth-year fallback below
+        }
+    }
+
+    if ($birthYear !== null && $birthYear > 0) {
+        return (int) date('Y') - $birthYear;
+    }
+
+    return null;
+}
+
+function format_member_since(string $createdAt): string
+{
+    try {
+        $since = new DateTimeImmutable($createdAt);
+    } catch (Throwable) {
+        return '';
+    }
+
+    $interval = $since->diff(new DateTimeImmutable());
+
+    $parts = [];
+    if ($interval->y > 0) {
+        $parts[] = $interval->y . ' year' . ($interval->y === 1 ? '' : 's');
+    }
+    if ($interval->m > 0) {
+        $parts[] = $interval->m . ' month' . ($interval->m === 1 ? '' : 's');
+    }
+    $parts[] = $interval->d . ' day' . ($interval->d === 1 ? '' : 's');
+
+    return $since->format('m/d/Y') . ' - ' . implode(', ', $parts);
+}
+
+function render_simple_medication_line(array $medication, bool $showStopDate = false): string
+{
+    $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
+    $medTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+    $dose          = formattedDose($medication);
+
+    $html  = '<div class="medication-row medication-row-simple" data-med-type="' . e($medTypeSlug) . '">';
+    $html .= '<div>';
+    $html .= '<div class="med-title"><strong>' . e((string) $medication['name']) . '</strong>';
+    $html .= '<span class="med-type-badge med-type-badge--' . e($medTypeSlug) . '">' . e($medTypeLabels[$medTypeSlug] ?? 'Rx') . '</span></div>';
+    if ($dose !== '') {
+        $html .= '<p class="med-dose">' . e($dose) . '</p>';
+    }
+    if ($showStopDate) {
+        $lastDiscontinued = $medication['last_discontinued'] ?? null;
+        if (is_array($lastDiscontinued) && (string) $lastDiscontinued['event_at'] !== '') {
+            $ts = strtotime((string) $lastDiscontinued['event_at']);
+            $stoppedOn = $ts !== false ? date('M j, Y', $ts) : (string) $lastDiscontinued['event_at'];
+            $html .= '<p class="inactive-discontinued-line">Stopped ' . e($stoppedOn) . '</p>';
+        }
+    }
+    $html .= '</div>';
+    $html .= '</div>';
+
+    return $html;
+}
+
 function parseTimeValue(string $raw): string
 {
     $value = trim($raw);
@@ -209,7 +275,7 @@ function render_inactive_medication_row(array $medication): string
     }
     $html .= '</div>';
     $html .= '<div class="row-actions">';
-    $html .= '<button type="button" data-open-resume-modal data-medication-id="' . e((string) $medication['id']) . '" data-medication-name="' . e((string) $medication['name']) . '">Activate</button>';
+    $html .= '<button type="button" data-open-resume-modal data-medication-id="' . e((string) $medication['id']) . '" data-medication-name="' . e((string) $medication['name']) . '">Resume</button>';
     $html .= '</div>';
     $html .= '</div>';
 

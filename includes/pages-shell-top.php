@@ -61,6 +61,10 @@
             <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
             My Profile
           </a>
+          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
+          </a>
           <?php if (!empty($familyProfiles)): ?>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
@@ -87,10 +91,6 @@
             </button>
             <?php endforeach; ?>
           </form>
-          <a href="index.php?page=profile#family" class="nav-user-menu-link nav-user-menu-link--manage">
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-            Manage Family
-          </a>
           <?php endif; ?>
         </div>
       </div>
