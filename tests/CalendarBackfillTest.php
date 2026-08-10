@@ -47,7 +47,8 @@ $db->exec("CREATE TABLE medications (
     quantity_per_dose REAL NOT NULL DEFAULT 1.0
 );
 CREATE TABLE medication_schedule_times (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, reminder_time TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE dose_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, scheduled_for_date TEXT, scheduled_time TEXT, status TEXT, note TEXT, taken_at TEXT DEFAULT CURRENT_TIMESTAMP, created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
+CREATE TABLE dose_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, scheduled_for_date TEXT, scheduled_time TEXT, status TEXT, note TEXT, taken_at TEXT DEFAULT CURRENT_TIMESTAMP, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE medication_status_events (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER NOT NULL, event TEXT NOT NULL, event_at TEXT DEFAULT CURRENT_TIMESTAMP, reason TEXT NOT NULL DEFAULT '', comment TEXT NOT NULL DEFAULT '', created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
 
 $repo = new MedicationRepository($db);
 
@@ -179,3 +180,111 @@ $schedRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE med
 assertCB(0, $schedRowCount, 'Backfill skips a medication whose schedule changed after the target date, rather than fabricating doses');
 
 echo "CalendarBackfillTest (schedule-change guard) passed.\n";
+
+// ── Test: a medication discontinued after a blank day still backfills ──────────
+// Reproduces #80: activeMedications() only reflects the medication's *current*
+// active status, so a medication discontinued after a blank historical day was
+// silently excluded from backfill and that day stayed blank forever, even
+// though the medication genuinely was active (and due) on that day.
+
+$repo->createMedication(
+    'DiscontinuedMed',
+    '',
+    'fixed_times',
+    ['07:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-08-01'
+);
+$allDisc = $repo->activeMedications();
+$discMedId = (int) array_values(array_filter($allDisc, static fn(array $r): bool => $r['name'] === 'DiscontinuedMed'))[0]['id'];
+
+// Simulate this schedule having existed unchanged since well before the blank day.
+$db->exec("UPDATE medication_schedule_times SET created_at = '2026-07-01 00:00:00' WHERE medication_id = {$discMedId}");
+
+// The medication is discontinued on 2026-08-11 — after the blank day (2026-08-10)
+// we're about to backfill, so it was still active back then.
+$repo->deactivateMedication($discMedId, 'no longer needed');
+$db->exec("UPDATE medication_status_events SET event_at = '2026-08-11 09:00:00' WHERE medication_id = {$discMedId}");
+
+$discRowCountBefore = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$discMedId} AND scheduled_for_date = '2026-08-10'")->fetch()['c'];
+assertCB(0, $discRowCountBefore, 'Untouched past day for a since-discontinued medication has no dose_logs rows yet');
+
+// Other medications created by earlier tests (DailyMed, ScheduleChanged) are still
+// active with open-ended schedules, so they legitimately also get missed doses
+// backfilled for this date — scope assertions to DiscontinuedMed's own dose_logs
+// rows rather than the month's aggregate markers.
+$repo->backfillMissedDosesForDates(['2026-08-10'], new DateTimeImmutable('2026-08-12 12:00:00'), 60);
+
+$discStatus = $db->query("SELECT status FROM dose_logs WHERE medication_id = {$discMedId} AND scheduled_for_date = '2026-08-10' AND scheduled_time = '07:00:00'")->fetch();
+assertCB('missed', $discStatus['status'] ?? null, 'Backfill marks the discontinued medication\'s slot as missed for a date it was still active on');
+
+// Re-running must stay idempotent.
+$repo->backfillMissedDosesForDates(['2026-08-10'], new DateTimeImmutable('2026-08-12 12:00:00'), 60);
+$discRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$discMedId} AND scheduled_for_date = '2026-08-10'")->fetch()['c'];
+assertCB(1, $discRowCount, 'Backfill for a discontinued medication is idempotent: re-running does not create duplicate rows');
+
+// A date after the discontinuation must NOT get a fabricated missed dose.
+$repo->backfillMissedDosesForDates(['2026-08-12'], new DateTimeImmutable('2026-08-13 12:00:00'), 60);
+$discAfterRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$discMedId} AND scheduled_for_date = '2026-08-12'")->fetch()['c'];
+assertCB(0, $discAfterRowCount, 'Backfill does not fabricate a missed dose for a date after the medication was discontinued');
+
+echo "CalendarBackfillTest (discontinued-medication backfill) passed.\n";
+
+// ── Test: an inactive medication with no recorded status history stays blank ───
+// A medication that's inactive now but has zero medication_status_events rows
+// (e.g. discontinued via a legacy path, or before status-event tracking existed
+// on an upgraded database) has genuinely unknown history. wasMedicationActiveOnDate()
+// fails open to "active" when there's no event at all, which is correct for a
+// currently-active medication with no history — but historicallyActiveMedications()
+// must NOT rely on that default to include such a medication, or it would fabricate
+// missed doses for arbitrarily old dates. It should stay excluded, leaving the day
+// blank exactly as it did before this backfill improvement.
+
+$repo->createMedication(
+    'LegacyInactiveMed',
+    '',
+    'fixed_times',
+    ['07:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-08-01'
+);
+$allLegacy = $repo->activeMedications();
+$legacyMedId = (int) array_values(array_filter($allLegacy, static fn(array $r): bool => $r['name'] === 'LegacyInactiveMed'))[0]['id'];
+
+$db->exec("UPDATE medication_schedule_times SET created_at = '2026-07-01 00:00:00' WHERE medication_id = {$legacyMedId}");
+
+// Deactivated directly (no medication_status_events row), simulating a medication
+// whose discontinuation predates status-event tracking.
+$db->exec("UPDATE medications SET active = 0 WHERE id = {$legacyMedId}");
+
+$repo->backfillMissedDosesForDates(['2026-08-15'], new DateTimeImmutable('2026-08-16 12:00:00'), 60);
+$legacyRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$legacyMedId} AND scheduled_for_date = '2026-08-15'")->fetch()['c'];
+assertCB(0, $legacyRowCount, 'An inactive medication with no status-event history is not backfilled (unknown history, stays blank)');
+
+echo "CalendarBackfillTest (eventless inactive medication stays blank) passed.\n";
