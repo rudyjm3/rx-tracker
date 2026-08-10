@@ -145,4 +145,78 @@ assertGSO(1, count($rows5), 'Medication should keep its dose after being removed
 assertGSO('07:00', $rows5[0]['reminder_time'], 'The dose stays at whatever time it was synced to while grouped.');
 assertGSO(null, $rows5[0]['group_id'], 'The dose should no longer be tagged with the group after removal.');
 
+// ── Scenario 6: a group's own time change must not steal an unrelated dose ──
+// (regression for a reviewer-caught bug in syncGroupScheduleTime())
+$repo6 = freshGSORepo();
+$repo6->createMedication('Simvastatin', '', 'fixed_times', ['07:00:00', '19:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$medId6 = (int) gsoFindByName($repo6->activeMedications(), 'Simvastatin')['id'];
+$groupId6 = $repo6->createGroup('Morning Group', '07:00:00');
+$repo6->addMedicationToGroup($groupId6, $medId6);
+$repo6->updateGroup($groupId6, 'Morning Group', '06:00:00');
+
+$rows6 = array_values(array_filter($repo6->todaySchedule($today), static fn (array $r): bool => (int) $r['medication_id'] === $medId6));
+usort($rows6, static fn (array $a, array $b): int => strcmp((string) $a['reminder_time'], (string) $b['reminder_time']));
+assertGSO(2, count($rows6), 'Changing the group\'s time must not delete the medication\'s unrelated evening dose.');
+assertGSO('06:00', $rows6[0]['reminder_time'], 'The group-owned row should move to the group\'s new time.');
+assertGSO($groupId6, $rows6[0]['group_id'], 'The relocated row should still be tagged with the group.');
+assertGSO('19:00', $rows6[1]['reminder_time'], 'The unrelated evening dose must survive the group\'s time change untouched.');
+assertGSO(null, $rows6[1]['group_id'], 'The unrelated evening dose must remain untagged.');
+
+// ── Scenario 7: deleting another tenant's group must not untag your rows ────
+// (regression for a reviewer-caught cross-tenant bug in deleteGroup())
+$db7 = new PDO('sqlite::memory:');
+$db7->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$db7->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$db7->exec("CREATE TABLE medications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL DEFAULT 0, profile_id INTEGER NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP, name TEXT, dose TEXT NOT NULL DEFAULT '', instructions TEXT,
+    schedule_mode TEXT, time_format TEXT DEFAULT '12h', interval_hours INTEGER, first_dose_time TEXT,
+    as_needed INTEGER DEFAULT 0, starting_pill_count INTEGER DEFAULT 0, pill_count INTEGER DEFAULT 0,
+    low_supply_threshold INTEGER DEFAULT 5, active INTEGER DEFAULT 1, medication_type TEXT NOT NULL DEFAULT 'prescription',
+    dose_amount REAL NULL, dose_unit TEXT NULL, dose_form TEXT NULL, inventory_type TEXT NOT NULL DEFAULT 'pills',
+    inventory_unit TEXT NOT NULL DEFAULT 'tablets', starting_quantity REAL NULL, current_quantity REAL NULL,
+    quantity_per_dose REAL NOT NULL DEFAULT 1.0
+);
+CREATE TABLE medication_schedule_times (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, reminder_time TEXT);
+CREATE TABLE dose_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, medication_id INTEGER, scheduled_for_date TEXT, scheduled_time TEXT, status TEXT, note TEXT, taken_at TEXT DEFAULT CURRENT_TIMESTAMP, created_at TEXT DEFAULT CURRENT_TIMESTAMP);");
+
+$repoOwner = new MedicationRepository($db7, 1, null);
+$repoAttacker = new MedicationRepository($db7, 2, null);
+$repoOwner->createMedication('Owner Med', '', 'fixed_times', ['08:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$ownerMedId = (int) gsoFindByName($repoOwner->activeMedications(), 'Owner Med')['id'];
+$ownerGroupId = $repoOwner->createGroup('Owner Group', '07:00:00');
+$repoOwner->addMedicationToGroup($ownerGroupId, $ownerMedId);
+
+// Attacker (a different tenant) submits the owner's group id to their own deleteGroup() call.
+$repoAttacker->deleteGroup($ownerGroupId);
+
+$rows7 = array_values(array_filter($repoOwner->todaySchedule($today), static fn (array $r): bool => (int) $r['medication_id'] === $ownerMedId));
+assertGSO(1, count($rows7), 'Owner\'s medication should still have its schedule row after a cross-tenant delete attempt.');
+assertGSO($ownerGroupId, $rows7[0]['group_id'], 'A cross-tenant deleteGroup() call must not untag the real owner\'s group membership.');
+
+// ── Scenario 8: editing a medication in two groups must not drop the other ──
+// (regression for a reviewer-caught bug where replaceScheduleTimes() wiped every
+// group_id, and the edit form's single group_id only re-synced one of them)
+$repo8 = freshGSORepo();
+$repo8->createMedication('Multigroup Med', '', 'fixed_times', ['08:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$medId8 = (int) gsoFindByName($repo8->activeMedications(), 'Multigroup Med')['id'];
+$groupA8 = $repo8->createGroup('Morning Group', '07:00:00');
+$groupB8 = $repo8->createGroup('Midday Group', '12:00:00');
+$repo8->addMedicationToGroup($groupA8, $medId8);
+$repo8->addMedicationToGroup($groupB8, $medId8);
+
+// Simulates the medication edit form: the user adds a third, unrelated individual dose
+// (18:00) unconnected to either group. The form only knows about one group_id (A), and
+// updateMedication() itself unconditionally rewrites the medication's individual schedule
+// rows — group B is never mentioned by this call at all.
+$repo8->updateMedication($medId8, 'Multigroup Med', '', 'fixed_times', ['18:00:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0, []);
+$repo8->addMedicationToGroup($groupA8, $medId8);
+
+$rows8 = array_values(array_filter($repo8->todaySchedule($today), static fn (array $r): bool => (int) $r['medication_id'] === $medId8));
+usort($rows8, static fn (array $a, array $b): int => strcmp((string) $a['reminder_time'], (string) $b['reminder_time']));
+assertGSO(3, count($rows8), 'Editing the medication should keep both group rows plus the new unrelated individual dose.');
+assertGSO($groupA8, $rows8[0]['group_id'], 'Group A\'s row should survive the edit.');
+assertGSO($groupB8, $rows8[1]['group_id'], 'Group B\'s row must survive even though the edit form only referenced group A.');
+assertGSO(null, $rows8[2]['group_id'], 'The new unrelated individual dose should be untagged.');
+
 echo "GroupScheduleOverrideTest passed.\n";

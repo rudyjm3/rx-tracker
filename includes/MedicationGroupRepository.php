@@ -102,10 +102,16 @@ final class MedicationGroupRepository
 
     public function deleteGroup(int $id): void
     {
-        // No FK cascade on medication_schedule_times.group_id: un-tag its rows first so member
-        // medications keep their dose (now a plain individual reminder) instead of losing it.
-        $this->db->prepare('UPDATE medication_schedule_times SET group_id = NULL WHERE group_id = :group_id')
-            ->execute(['group_id' => $id]);
+        // Ownership gate: without this, submitting another tenant's group id would still
+        // un-tag that foreign group's schedule rows below even though the owner-scoped DELETE
+        // afterward correctly refuses to remove the group itself.
+        if ($this->groupBelongsToUser($id)) {
+            // No FK cascade on medication_schedule_times.group_id: un-tag its rows first so
+            // member medications keep their dose (now a plain individual reminder) instead of
+            // losing it.
+            $this->db->prepare('UPDATE medication_schedule_times SET group_id = NULL WHERE group_id = :group_id')
+                ->execute(['group_id' => $id]);
+        }
         $statement = $this->db->prepare('DELETE FROM medication_groups WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
     }
@@ -153,10 +159,23 @@ final class MedicationGroupRepository
     // different group_id, so a medication can belong to several groups at once.
     private function syncGroupScheduleTime(int $groupId, int $medicationId, string $scheduledTime): void
     {
-        $this->db->prepare(
-            'DELETE FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id'
-        )->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
+        // Already owned by this group (e.g. the group's own time just changed) — relocate that
+        // row in place rather than deleting it and re-running the claim heuristic below, which
+        // would otherwise steal an unrelated individual dose on every re-sync.
+        $existing = $this->db->prepare(
+            'SELECT id FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id LIMIT 1'
+        );
+        $existing->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
+        $existingId = $existing->fetchColumn();
+        if ($existingId !== false) {
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET reminder_time = :reminder_time WHERE id = :id'
+            )->execute(['reminder_time' => $scheduledTime, 'id' => (int) $existingId]);
+            return;
+        }
 
+        // First time this medication joins this group: claim an exact-time individual row if
+        // one exists, else the earliest remaining individual row, else insert fresh.
         $claim = $this->db->prepare(
             'UPDATE medication_schedule_times SET group_id = :group_id
              WHERE medication_id = :medication_id AND reminder_time = :reminder_time AND group_id IS NULL'
