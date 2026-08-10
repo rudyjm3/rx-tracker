@@ -979,12 +979,34 @@ final class ScheduleRepository
     // Currently-inactive medications that were nonetheless active as of $date, so historical
     // backfill can generate missed doses for medications discontinued after the blank day
     // instead of silently skipping them (activeMedications() only reflects "right now").
+    //
+    // Requires an actual medication_status_events row to exist before trusting
+    // wasMedicationActiveOnDate()'s reconstruction here: that method fails open (assumes
+    // "active") when a medication has no recorded events at all, which is the right default
+    // for a *currently active* medication with no history, but wrong here — a medication
+    // that's inactive now with zero events (e.g. discontinued before medication_status_events
+    // existed, on a database upgraded via migration 006 without backfilling old events) has
+    // genuinely unknown history and must be skipped, not treated as active for every past date.
     private function historicallyActiveMedications(string $date): array
     {
         return array_values(array_filter(
             $this->inactiveMedications(),
-            fn (array $medication): bool => $this->wasMedicationActiveOnDate((int) $medication['id'], $date)
+            fn (array $medication): bool => $this->hasAnyStatusEvents((int) $medication['id'])
+                && $this->wasMedicationActiveOnDate((int) $medication['id'], $date)
         ));
+    }
+
+    private function hasAnyStatusEvents(int $medicationId): bool
+    {
+        try {
+            $statement = $this->db->prepare(
+                'SELECT COUNT(*) FROM medication_status_events WHERE medication_id = :medication_id'
+            );
+            $statement->execute(['medication_id' => $medicationId]);
+            return (int) $statement->fetchColumn() > 0;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public function dueReminderItems(DateTimeImmutable $now): array

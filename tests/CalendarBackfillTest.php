@@ -242,3 +242,49 @@ $discAfterRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE
 assertCB(0, $discAfterRowCount, 'Backfill does not fabricate a missed dose for a date after the medication was discontinued');
 
 echo "CalendarBackfillTest (discontinued-medication backfill) passed.\n";
+
+// ── Test: an inactive medication with no recorded status history stays blank ───
+// A medication that's inactive now but has zero medication_status_events rows
+// (e.g. discontinued via a legacy path, or before status-event tracking existed
+// on an upgraded database) has genuinely unknown history. wasMedicationActiveOnDate()
+// fails open to "active" when there's no event at all, which is correct for a
+// currently-active medication with no history — but historicallyActiveMedications()
+// must NOT rely on that default to include such a medication, or it would fabricate
+// missed doses for arbitrarily old dates. It should stay excluded, leaving the day
+// blank exactly as it did before this backfill improvement.
+
+$repo->createMedication(
+    'LegacyInactiveMed',
+    '',
+    'fixed_times',
+    ['07:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-08-01'
+);
+$allLegacy = $repo->activeMedications();
+$legacyMedId = (int) array_values(array_filter($allLegacy, static fn(array $r): bool => $r['name'] === 'LegacyInactiveMed'))[0]['id'];
+
+$db->exec("UPDATE medication_schedule_times SET created_at = '2026-07-01 00:00:00' WHERE medication_id = {$legacyMedId}");
+
+// Deactivated directly (no medication_status_events row), simulating a medication
+// whose discontinuation predates status-event tracking.
+$db->exec("UPDATE medications SET active = 0 WHERE id = {$legacyMedId}");
+
+$repo->backfillMissedDosesForDates(['2026-08-15'], new DateTimeImmutable('2026-08-16 12:00:00'), 60);
+$legacyRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$legacyMedId} AND scheduled_for_date = '2026-08-15'")->fetch()['c'];
+assertCB(0, $legacyRowCount, 'An inactive medication with no status-event history is not backfilled (unknown history, stays blank)');
+
+echo "CalendarBackfillTest (eventless inactive medication stays blank) passed.\n";
