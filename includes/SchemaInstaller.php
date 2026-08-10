@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 4;
+    private const CURRENT_SCHEMA_VERSION = 5;
 
     private static array $schemaSweepDone = [];
 
@@ -23,6 +23,15 @@ final class SchemaInstaller
         $this->seedMoodTagsForUser();
         $this->backfillMedicationNotesForUser();
         $this->backfillGroupScheduleTimesForUser();
+    }
+
+    // Runs just the version-gated schema sweep, without the per-user seed/backfill
+    // steps `install()` also does. Callable with no real user (e.g. userId 0) very
+    // early in boot — before login is checked — so tables/columns added by a new
+    // deploy exist before any code (including the login gate) queries them.
+    public function ensureSchemaUpToDate(): void
+    {
+        $this->ensureSchemaSweep();
     }
 
     // Runs the full 33-method schema-migration sweep at most once per database: cached in-process

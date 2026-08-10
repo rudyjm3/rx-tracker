@@ -366,7 +366,17 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
           <h2>Medications and Supplements</h2>
         </div>
         <?php if ($ownerActiveMeds === [] && $ownerInactiveMeds === []): ?>
-          <p class="muted">No medications yet. <a href="index.php?page=medications">Add one</a> to see it here.</p>
+          <div class="muted">
+            No medications yet.
+            <form method="post" action="index.php?page=profile" style="display:inline">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="switch_family_profile">
+              <input type="hidden" name="profile_id" value="0">
+              <input type="hidden" name="redirect_to" value="index.php?page=medications">
+              <button type="submit" class="btn-text" style="padding:0;font-size:inherit">Add one</button>
+            </form>
+            to see it here.
+          </div>
         <?php else: ?>
           <?php if ($ownerActiveMeds !== []): ?>
           <h3 style="margin:0 0 .5rem;font-size:.85rem;color:var(--rx-text-muted)">Active</h3>

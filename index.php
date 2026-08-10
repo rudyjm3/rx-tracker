@@ -23,6 +23,11 @@ if (is_file(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
 }
 
+// Run pending schema migrations before anything else touches the database —
+// in particular, requireLogin() below queries `users` before any repository
+// (the usual trigger for this) is constructed.
+(new SchemaInstaller(db()))->ensureSchemaUpToDate();
+
 send_security_headers();
 
 $page = (string) ($_GET['page'] ?? 'dashboard');

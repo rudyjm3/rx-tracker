@@ -240,11 +240,31 @@ HTML;
     // Section 1: Header band
     // -------------------------------------------------------------------------
 
+    // Registration collects display_name as a "Full name" field (and Google
+    // sign-in populates it from the account's full name too), so it often
+    // already ends with the surname. Only append lastName when it isn't
+    // already the trailing word of displayName, to avoid "John Doe Doe".
+    private function patientDisplayName(): string
+    {
+        $full = trim($this->displayName);
+        $last = trim((string) ($this->lastName ?? ''));
+        if ($last === '') {
+            return $full !== '' ? $full : 'Patient';
+        }
+
+        $words    = preg_split('/\s+/', $full);
+        $lastWord = $words !== false && $words !== [] ? (string) end($words) : '';
+        if (mb_strtolower($lastWord) === mb_strtolower($last)) {
+            return $full !== '' ? $full : $last;
+        }
+
+        return trim($full . ' ' . $last);
+    }
+
     private function sectionHeader(string $title, string $periodLabel, string $generatedDate): string
     {
         $logo  = $this->logoDataUri();
-        $fullName = trim($this->displayName . ' ' . ($this->lastName ?? ''));
-        $name  = $this->h($fullName !== '' ? $fullName : 'Patient');
+        $name  = $this->h($this->patientDisplayName());
         $period = $this->h($periodLabel);
         $gen   = $this->h($generatedDate);
         $titleEsc = $this->h($title);
