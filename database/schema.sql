@@ -33,15 +33,27 @@ WHERE starting_pill_count = 0;
 CREATE TABLE IF NOT EXISTS medication_schedule_times (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     medication_id INT UNSIGNED NOT NULL,
+    -- NULL = a plain individual dose time. When set, this row is "owned" by that group
+    -- (kept in sync with the group's own scheduled_time) so a medication can belong to
+    -- several groups at once, each firing its own alert. No FK: group deletion/removal is
+    -- handled explicitly by MedicationGroupRepository rather than an ON DELETE CASCADE.
+    group_id INT UNSIGNED NULL DEFAULT NULL,
     reminder_time TIME NOT NULL,
     quantity_per_dose DECIMAL(10,3) NULL DEFAULT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_schedule_medication_time (medication_id, reminder_time),
+    UNIQUE KEY uq_schedule_medication_time (medication_id, reminder_time, group_id),
     INDEX idx_schedule_time (reminder_time),
+    INDEX idx_schedule_group (group_id),
     CONSTRAINT fk_schedule_medication
         FOREIGN KEY (medication_id) REFERENCES medications (id)
         ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- Installs created before group_id existed: add it (and widen the uniqueness guard to
+-- include it) so SchemaInstaller.php's ensureScheduleTimeGroupColumn() has nothing to do,
+-- while still being safe/idempotent to run against a pre-existing table missing it.
+ALTER TABLE medication_schedule_times
+    ADD COLUMN IF NOT EXISTS group_id INT UNSIGNED NULL DEFAULT NULL AFTER medication_id;
 
 CREATE TABLE IF NOT EXISTS dose_logs (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

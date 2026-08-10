@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 3;
+    private const CURRENT_SCHEMA_VERSION = 4;
 
     private static array $schemaSweepDone = [];
 
@@ -22,6 +22,7 @@ final class SchemaInstaller
         $this->ensureSchemaSweep();
         $this->seedMoodTagsForUser();
         $this->backfillMedicationNotesForUser();
+        $this->backfillGroupScheduleTimesForUser();
     }
 
     // Runs the full 33-method schema-migration sweep at most once per database: cached in-process
@@ -133,6 +134,7 @@ final class SchemaInstaller
         $this->ensureDoseStructuredColumns();
         $this->ensureInventoryColumns();
         $this->ensureScheduleTimeDoseColumn();
+        $this->ensureScheduleTimeGroupColumn();
         $this->ensureSortOrderColumns();
         $this->ensureMedicationUserIndex();
         $this->ensureUserNotificationsTable();
@@ -1143,6 +1145,56 @@ final class SchemaInstaller
         }
     }
 
+    // A medication's schedule row can now be "owned" by a group (group_id set), letting a
+    // medication belong to several groups at once, each firing its own alert at that group's
+    // time — see MedicationGroupRepository::syncGroupScheduleTime(). group_id IS NULL means a
+    // plain individual dose time, exactly as before this column existed.
+    private function ensureScheduleTimeGroupColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM medication_schedule_times LIKE 'group_id'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN group_id INT UNSIGNED NULL DEFAULT NULL AFTER medication_id');
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD INDEX idx_schedule_group (group_id)');
+                }
+                // Widen the uniqueness guard to (medication_id, reminder_time, group_id) so a
+                // group-owned row can't collide with a different group's row at the same time
+                // for the same medication (two groups may legitimately share a time).
+                $idx = $this->db->query(
+                    "SELECT COUNT(*) FROM information_schema.statistics
+                     WHERE table_schema = DATABASE()
+                       AND table_name = 'medication_schedule_times'
+                       AND index_name = 'uq_schedule_medication_time'
+                       AND seq_in_index = 3"
+                );
+                if ($idx !== false && (int) $idx->fetchColumn() === 0) {
+                    $this->db->exec('ALTER TABLE medication_schedule_times DROP INDEX uq_schedule_medication_time');
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD UNIQUE KEY uq_schedule_medication_time (medication_id, reminder_time, group_id)');
+                }
+                return;
+            }
+
+            if ($driver === 'sqlite') {
+                $check = $this->db->query("PRAGMA table_info(medication_schedule_times)");
+                if ($check === false) {
+                    return;
+                }
+                $columns = array_column($check->fetchAll(), 'name');
+                if (!in_array('group_id', $columns, true)) {
+                    $this->db->exec('ALTER TABLE medication_schedule_times ADD COLUMN group_id INTEGER NULL DEFAULT NULL');
+                }
+                // SQLite test/dev fixtures for this table are created without a UNIQUE
+                // constraint at all (see tests/*.php), so there's nothing to widen here — the
+                // production guard above only applies to the real MySQL schema.
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
     private function ensureSortOrderColumns(): void
     {
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
@@ -1655,6 +1707,111 @@ final class SchemaInstaller
         } catch (Throwable) {
             // Keep app booting even if backfill fails.
         }
+    }
+
+    // Per-user backfill step: installs that had group memberships before this fix shipped
+    // have live rows in medication_group_members with no corresponding group-owned row in
+    // medication_schedule_times, so those medications were silently excluded from their
+    // group's alert. Mirrors MedicationGroupRepository::syncGroupScheduleTime()'s claim/insert
+    // logic; kept self-contained here (like backfillMedicationNotesForUser()) rather than
+    // depending on that class. Gated by an app_settings flag so it only does work once.
+    private function backfillGroupScheduleTimesForUser(): void
+    {
+        if ($this->userId <= 0) {
+            return;
+        }
+
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver !== 'mysql' && $driver !== 'sqlite') {
+            return;
+        }
+
+        try {
+            $flagStmt = $this->db->prepare(
+                'SELECT 1 FROM app_settings WHERE user_id = :user_id AND setting_key = :key LIMIT 1'
+            );
+            $flagStmt->execute(['user_id' => $this->userId, 'key' => 'group_schedule_backfill_done']);
+            if ($flagStmt->fetchColumn()) {
+                return;
+            }
+
+            $members = $this->db->prepare(
+                'SELECT mgm.group_id, mgm.medication_id, g.scheduled_time
+                 FROM medication_group_members mgm
+                 INNER JOIN medication_groups g ON g.id = mgm.group_id
+                 INNER JOIN medications m ON m.id = mgm.medication_id
+                 WHERE m.user_id = :user_id'
+            );
+            $members->execute(['user_id' => $this->userId]);
+
+            foreach ($members->fetchAll() as $row) {
+                $this->backfillOneGroupSchedule((int) $row['group_id'], (int) $row['medication_id'], (string) $row['scheduled_time']);
+            }
+
+            if ($driver === 'mysql') {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :insert_value)
+                     ON DUPLICATE KEY UPDATE setting_value = :update_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'group_schedule_backfill_done', 'insert_value' => '1', 'update_value' => '1']);
+            } else {
+                $this->db->prepare(
+                    'INSERT INTO app_settings (user_id, setting_key, setting_value)
+                     VALUES (:user_id, :key, :value)
+                     ON CONFLICT(user_id, setting_key) DO UPDATE SET setting_value = excluded.setting_value'
+                )->execute(['user_id' => $this->userId, 'key' => 'group_schedule_backfill_done', 'value' => '1']);
+            }
+        } catch (Throwable) {
+            // Keep app booting even if backfill fails.
+        }
+    }
+
+    // Ensures medicationId has a schedule row owned by groupId at scheduledTime: reuses an
+    // exact-time individual row if one exists, else claims the medication's earliest remaining
+    // individual row (the dose the group is taking over), else inserts a fresh row. Any other
+    // individual doses the medication has are left untouched.
+    private function backfillOneGroupSchedule(int $groupId, int $medicationId, string $scheduledTime): void
+    {
+        $existing = $this->db->prepare(
+            'SELECT 1 FROM medication_schedule_times
+             WHERE medication_id = :medication_id AND group_id = :group_id AND reminder_time = :reminder_time LIMIT 1'
+        );
+        $existing->execute(['medication_id' => $medicationId, 'group_id' => $groupId, 'reminder_time' => $scheduledTime]);
+        if ($existing->fetchColumn()) {
+            return;
+        }
+
+        $this->db->prepare(
+            'DELETE FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id'
+        )->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
+
+        $claim = $this->db->prepare(
+            'UPDATE medication_schedule_times SET group_id = :group_id
+             WHERE medication_id = :medication_id AND reminder_time = :reminder_time AND group_id IS NULL'
+        );
+        $claim->execute(['group_id' => $groupId, 'medication_id' => $medicationId, 'reminder_time' => $scheduledTime]);
+        if ($claim->rowCount() > 0) {
+            return;
+        }
+
+        $earliest = $this->db->prepare(
+            'SELECT id FROM medication_schedule_times
+             WHERE medication_id = :medication_id AND group_id IS NULL
+             ORDER BY reminder_time ASC LIMIT 1'
+        );
+        $earliest->execute(['medication_id' => $medicationId]);
+        $rowId = $earliest->fetchColumn();
+        if ($rowId !== false) {
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET reminder_time = :reminder_time, group_id = :group_id WHERE id = :id'
+            )->execute(['reminder_time' => $scheduledTime, 'group_id' => $groupId, 'id' => (int) $rowId]);
+            return;
+        }
+
+        $this->db->prepare(
+            'INSERT INTO medication_schedule_times (medication_id, reminder_time, quantity_per_dose, group_id)
+             VALUES (:medication_id, :reminder_time, NULL, :group_id)'
+        )->execute(['medication_id' => $medicationId, 'reminder_time' => $scheduledTime, 'group_id' => $groupId]);
     }
 
     private function ensureOnboardingColumns(): void
