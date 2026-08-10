@@ -88,10 +88,30 @@ final class MedicationGroupRepository
             'UPDATE medication_groups SET name = :name, scheduled_time = :scheduled_time WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
         );
         $statement->execute(array_merge(['id' => $id, 'name' => $name, 'scheduled_time' => $scheduledTime, 'user_id' => $this->userId], $this->profileParam()));
+        if ($statement->rowCount() === 0) {
+            return;
+        }
+
+        // Keep every current member's group-owned schedule row following the group's time.
+        $members = $this->db->prepare('SELECT medication_id FROM medication_group_members WHERE group_id = :group_id');
+        $members->execute(['group_id' => $id]);
+        foreach ($members->fetchAll(PDO::FETCH_COLUMN) as $memberId) {
+            $this->syncGroupScheduleTime($id, (int) $memberId, $scheduledTime);
+        }
     }
 
     public function deleteGroup(int $id): void
     {
+        // Ownership gate: without this, submitting another tenant's group id would still
+        // un-tag that foreign group's schedule rows below even though the owner-scoped DELETE
+        // afterward correctly refuses to remove the group itself.
+        if ($this->groupBelongsToUser($id)) {
+            // No FK cascade on medication_schedule_times.group_id: un-tag its rows first so
+            // member medications keep their dose (now a plain individual reminder) instead of
+            // losing it.
+            $this->db->prepare('UPDATE medication_schedule_times SET group_id = NULL WHERE group_id = :group_id')
+                ->execute(['group_id' => $id]);
+        }
         $statement = $this->db->prepare('DELETE FROM medication_groups WHERE id = :id AND user_id = :user_id ' . $this->profileSql(''));
         $statement->execute(array_merge(['id' => $id, 'user_id' => $this->userId], $this->profileParam()));
     }
@@ -102,6 +122,10 @@ final class MedicationGroupRepository
         if (!$this->groupBelongsToUser($groupId) || !$this->medicationBelongsToUser($medicationId)) {
             return;
         }
+        $groupTime = $this->scheduledTimeForGroup($groupId);
+        if ($groupTime === null) {
+            return;
+        }
         $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         $sql = $driver === 'sqlite'
             ? 'INSERT OR IGNORE INTO medication_group_members (group_id, medication_id, quantity_per_dose)
@@ -110,6 +134,75 @@ final class MedicationGroupRepository
                VALUES (:group_id, :medication_id, :quantity_per_dose)';
         $statement = $this->db->prepare($sql);
         $statement->execute(['group_id' => $groupId, 'medication_id' => $medicationId, 'quantity_per_dose' => $quantityPerDose]);
+
+        // Runs on every call, not just the first: the medication's own createMedication()/
+        // updateMedication() (called just before this in routes/actions.php) already wrote
+        // whatever individual times the form submitted — this sync must run after and win, so
+        // the group's time is what actually takes effect for this membership.
+        $this->syncGroupScheduleTime($groupId, $medicationId, $groupTime);
+    }
+
+    private function scheduledTimeForGroup(int $groupId): ?string
+    {
+        $statement = $this->db->prepare('SELECT scheduled_time FROM medication_groups WHERE id = :id');
+        $statement->execute(['id' => $groupId]);
+        $time = $statement->fetchColumn();
+
+        return $time !== false ? (string) $time : null;
+    }
+
+    // Ensures $medicationId has a schedule row owned by $groupId at $scheduledTime: reuses an
+    // exact-time individual row if one exists (the already-working case, no visible change),
+    // else claims the medication's earliest remaining individual row (the dose this group is
+    // taking over), else inserts a fresh row. Any other individual doses the medication has —
+    // e.g. a second, unrelated daily dose — are left untouched. Never touches rows owned by a
+    // different group_id, so a medication can belong to several groups at once.
+    private function syncGroupScheduleTime(int $groupId, int $medicationId, string $scheduledTime): void
+    {
+        // Already owned by this group (e.g. the group's own time just changed) — relocate that
+        // row in place rather than deleting it and re-running the claim heuristic below, which
+        // would otherwise steal an unrelated individual dose on every re-sync.
+        $existing = $this->db->prepare(
+            'SELECT id FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id LIMIT 1'
+        );
+        $existing->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
+        $existingId = $existing->fetchColumn();
+        if ($existingId !== false) {
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET reminder_time = :reminder_time WHERE id = :id'
+            )->execute(['reminder_time' => $scheduledTime, 'id' => (int) $existingId]);
+            return;
+        }
+
+        // First time this medication joins this group: claim an exact-time individual row if
+        // one exists, else the earliest remaining individual row, else insert fresh.
+        $claim = $this->db->prepare(
+            'UPDATE medication_schedule_times SET group_id = :group_id
+             WHERE medication_id = :medication_id AND reminder_time = :reminder_time AND group_id IS NULL'
+        );
+        $claim->execute(['group_id' => $groupId, 'medication_id' => $medicationId, 'reminder_time' => $scheduledTime]);
+        if ($claim->rowCount() > 0) {
+            return;
+        }
+
+        $earliest = $this->db->prepare(
+            'SELECT id FROM medication_schedule_times
+             WHERE medication_id = :medication_id AND group_id IS NULL
+             ORDER BY reminder_time ASC LIMIT 1'
+        );
+        $earliest->execute(['medication_id' => $medicationId]);
+        $rowId = $earliest->fetchColumn();
+        if ($rowId !== false) {
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET reminder_time = :reminder_time, group_id = :group_id WHERE id = :id'
+            )->execute(['reminder_time' => $scheduledTime, 'group_id' => $groupId, 'id' => (int) $rowId]);
+            return;
+        }
+
+        $this->db->prepare(
+            'INSERT INTO medication_schedule_times (medication_id, reminder_time, quantity_per_dose, group_id)
+             VALUES (:medication_id, :reminder_time, NULL, :group_id)'
+        )->execute(['medication_id' => $medicationId, 'reminder_time' => $scheduledTime, 'group_id' => $groupId]);
     }
 
     public function removeMedicationFromGroup(int $medicationId, ?int $groupId = null): void
@@ -119,11 +212,19 @@ final class MedicationGroupRepository
             return;
         }
         if ($groupId !== null) {
+            // Un-tag rather than delete: the medication keeps its dose, just as a plain
+            // individual reminder instead of a group-tagged one.
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET group_id = NULL WHERE medication_id = :medication_id AND group_id = :group_id'
+            )->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
             $statement = $this->db->prepare(
                 'DELETE FROM medication_group_members WHERE medication_id = :medication_id AND group_id = :group_id'
             );
             $statement->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
         } else {
+            $this->db->prepare(
+                'UPDATE medication_schedule_times SET group_id = NULL WHERE medication_id = :medication_id AND group_id IS NOT NULL'
+            )->execute(['medication_id' => $medicationId]);
             $statement = $this->db->prepare(
                 'DELETE FROM medication_group_members WHERE medication_id = :medication_id'
             );
@@ -245,13 +346,17 @@ final class MedicationGroupRepository
         return $result;
     }
 
+    // Tags each medication's schedule slot(s) with the group that owns them, straight from
+    // medication_schedule_times.group_id rather than inferring membership by comparing times —
+    // a medication can have one tagged row per group it belongs to, each at that group's own
+    // time (see syncGroupScheduleTime()).
     public function medicationGroupMap(): array
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT mgm.medication_id, g.id AS group_id, g.name AS group_name, g.scheduled_time AS group_time
-                 FROM medication_group_members mgm
-                 INNER JOIN medication_groups g ON g.id = mgm.group_id
+                'SELECT mst.medication_id, mst.reminder_time AS group_time, g.id AS group_id, g.name AS group_name
+                 FROM medication_schedule_times mst
+                 INNER JOIN medication_groups g ON g.id = mst.group_id
                  WHERE g.user_id = :user_id'
             );
             $statement->execute(['user_id' => $this->userId]);

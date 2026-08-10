@@ -63,7 +63,12 @@ final class ScheduleRepository
 
     public function replaceScheduleTimes(int $medicationId, array $doseTimes, array $doseQtys = []): void
     {
-        $delete = $this->db->prepare('DELETE FROM medication_schedule_times WHERE medication_id = :medication_id');
+        // Only the medication's own individual doses are replaced here — group-owned rows
+        // (group_id set) are synced separately via
+        // MedicationGroupRepository::syncGroupScheduleTime() and must survive an edit to this
+        // medication's individual times, otherwise any group the medication belongs to would
+        // silently lose its alert for it.
+        $delete = $this->db->prepare('DELETE FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id IS NULL');
         $delete->execute(['medication_id' => $medicationId]);
         if ($doseTimes === []) {
             return;
