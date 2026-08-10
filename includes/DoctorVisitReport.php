@@ -12,7 +12,9 @@ final class DoctorVisitReport
         private readonly SideEffectRepository $sideEffectRepo,
         private readonly PainChartRenderer    $chartRenderer,
         private readonly MoodChartRenderer    $moodChartRenderer,
-        private readonly string               $displayName
+        private readonly string               $displayName,
+        private readonly ?string              $lastName = null,
+        private readonly array                $allergies = []
     ) {}
 
     /**
@@ -119,6 +121,7 @@ final class DoctorVisitReport
         $html .= '<body>';
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
+        $html .= $this->sectionAllergies($this->allergies);
         $html .= $this->sectionAdherence($adherence, $medications, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
         $html .= $this->sectionMedications($medications, $includeMood);
         $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includeMood);
@@ -240,7 +243,8 @@ HTML;
     private function sectionHeader(string $title, string $periodLabel, string $generatedDate): string
     {
         $logo  = $this->logoDataUri();
-        $name  = $this->h($this->displayName ?: 'Patient');
+        $fullName = trim($this->displayName . ' ' . ($this->lastName ?? ''));
+        $name  = $this->h($fullName !== '' ? $fullName : 'Patient');
         $period = $this->h($periodLabel);
         $gen   = $this->h($generatedDate);
         $titleEsc = $this->h($title);
@@ -259,6 +263,32 @@ HTML;
   </tr>
 </table>
 <div style="height:3pt;background:#14CFE0;margin-bottom:0;"></div>
+HTML;
+    }
+
+    // -------------------------------------------------------------------------
+    // Section: Known Allergies
+    // -------------------------------------------------------------------------
+
+    private function sectionAllergies(array $allergies): string
+    {
+        $rows = '';
+        foreach ($allergies as $allergy) {
+            $rows .= sprintf('<tr><td>%s</td></tr>', $this->h((string) $allergy['name']));
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td class="empty-state">No known allergies recorded.</td></tr>';
+        }
+
+        return <<<HTML
+<div class="section-title">Known Allergies</div>
+<div class="section-block">
+  <table>
+    <thead><tr><th>Allergy</th></tr></thead>
+    <tbody>{$rows}</tbody>
+  </table>
+</div>
 HTML;
     }
 

@@ -815,7 +815,12 @@ try {
             $patientName = $activeProfile !== null
                 ? (string) ($activeProfile['display_name'] ?? $currentUser['display_name'] ?? 'Patient')
                 : (string) ($currentUser['display_name'] ?? 'Patient');
-            $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName);
+            $patientLastName = $activeProfile !== null
+                ? (($activeProfile['last_name'] ?? null) !== null ? (string) $activeProfile['last_name'] : null)
+                : (($currentUser['last_name'] ?? null) !== null ? (string) $currentUser['last_name'] : null);
+            $allergyRepo = new AllergyRepository(db(), $auth->currentUserId());
+            $allergies   = $allergyRepo->allergiesForProfile($activeProfileId);
+            $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName, $patientLastName, $allergies);
             $pdf    = $report->generateReport($reportStart, $reportEnd, $chartDays, $includeMood, $moodChartDays);
 
             $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));

@@ -166,7 +166,7 @@ final class AuthService
             return null;
         }
         $stmt = $this->db->prepare(
-            'SELECT id, email, display_name, profile_picture, email_verified FROM users WHERE id = :id LIMIT 1'
+            'SELECT id, email, display_name, last_name, profile_picture, email_verified FROM users WHERE id = :id LIMIT 1'
         );
         $stmt->execute(['id' => $userId]);
         $row = $stmt->fetch();
