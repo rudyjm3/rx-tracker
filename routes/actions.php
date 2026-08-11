@@ -822,7 +822,10 @@ try {
                 ? (($activeProfile['first_name'] ?? null) !== null ? (string) $activeProfile['first_name'] : null)
                 : (($currentUser['first_name'] ?? null) !== null ? (string) $currentUser['first_name'] : null);
             $allergyRepo = new AllergyRepository(db(), $auth->currentUserId());
-            $allergies   = $allergyRepo->allergiesForProfile($activeProfileId);
+            $allergies   = array_values(array_filter(
+                $allergyRepo->allergiesForProfile($activeProfileId),
+                static fn(array $a): bool => (int) $a['is_active'] === 1
+            ));
             $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName, $patientLastName, $allergies, $patientFirstName);
             $pdf    = $report->generateReport($reportStart, $reportEnd, $chartDays, $includeMood, $moodChartDays);
 

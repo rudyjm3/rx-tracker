@@ -249,13 +249,17 @@ HTML;
     {
         $first = trim((string) ($this->firstName ?? ''));
         $last  = trim((string) ($this->lastName ?? ''));
-        if ($first !== '') {
+
+        // Only trust the structured first+last pair when both are present —
+        // using first name alone would silently drop a surname that's
+        // already part of displayName (e.g. registration's "Full name").
+        if ($first !== '' && $last !== '') {
             return trim($first . ' ' . $last);
         }
 
         $full = trim($this->displayName);
         if ($last === '') {
-            return $full !== '' ? $full : 'Patient';
+            return $full !== '' ? $full : ($first !== '' ? $first : 'Patient');
         }
 
         $words    = preg_split('/\s+/', $full);
@@ -298,20 +302,27 @@ HTML;
 
     private function sectionAllergies(array $allergies): string
     {
+        $typeLabels = ['allergy' => 'Allergy', 'intolerance' => 'Intolerance'];
+
         $rows = '';
         foreach ($allergies as $allergy) {
-            $rows .= sprintf('<tr><td>%s</td></tr>', $this->h((string) $allergy['name']));
+            $type = $typeLabels[(string) ($allergy['allergy_type'] ?? 'allergy')] ?? 'Allergy';
+            $rows .= sprintf(
+                '<tr><td>%s</td><td>%s</td></tr>',
+                $this->h((string) $allergy['name']),
+                $this->h($type)
+            );
         }
 
         if ($rows === '') {
-            $rows = '<tr><td class="empty-state">No known allergies recorded.</td></tr>';
+            $rows = '<tr><td colspan="2" class="empty-state">No known allergies or intolerances recorded.</td></tr>';
         }
 
         return <<<HTML
-<div class="section-title">Known Allergies</div>
+<div class="section-title">Known Allergies &amp; Intolerances</div>
 <div class="section-block">
   <table>
-    <thead><tr><th>Allergy</th></tr></thead>
+    <thead><tr><th>Substance</th><th>Type</th></tr></thead>
     <tbody>{$rows}</tbody>
   </table>
 </div>
