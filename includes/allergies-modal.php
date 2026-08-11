@@ -8,6 +8,8 @@
  *   $modalProfileId      ?int   null for the account owner, else a family member id
  *   $modalAllergies      array  rows from AllergyRepository::allergiesForProfile()
  *   $modalAllergyCatalog array  rows from AllergyRepository::catalogForUser()
+ *   $modalMedications    array  the profile's own medications (active + inactive merged), each
+ *                                with at least 'name'; offered as Medication-mode suggestions
  *   $modalActionUrl      string e.g. 'index.php?page=profile' or 'index.php?page=family-member&id=5'
  *   $modalReopenAllergies ?bool  optional; true reopens the modal already showing the list view
  *   $flashSuccess         ?string optional; shown inside the modal when it reopens (see $modalReopenAllergies)
@@ -20,6 +22,11 @@ $modalPastAllergies   = array_values(array_filter($modalAllergies, static fn(arr
 $modalAllergyTypes      = AllergyRepository::allowedTypes();
 $modalAllergySeverities = AllergyRepository::allowedSeverities();
 $modalAllergyCategories = AllergyRepository::allowedCategories();
+$modalMedications       = $modalMedications ?? [];
+$modalMedicationNames   = array_values(array_unique(array_map(
+    static fn(array $m): string => (string) $m['name'],
+    $modalMedications
+)));
 ?>
 <div class="modal-overlay<?= $modalReopenAllergies ? ' is-open' : '' ?>" data-allergies-modal>
   <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="allergies-modal-title">
@@ -62,23 +69,41 @@ $modalAllergyCategories = AllergyRepository::allowedCategories();
         </button>
       </div>
 
+      <script type="application/json" data-allergy-medications-catalog><?= json_encode($modalMedicationNames, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+
       <div data-allergies-view="add" hidden>
         <form method="post" action="<?= e($modalActionUrl) ?>" class="stacked-form">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="add_profile_allergy">
           <div class="form-group">
-            <label for="allergy_add_select">Substance</label>
-            <select id="allergy_add_select" name="allergy_catalog_id" data-allergy-select>
-              <option value="">— Select —</option>
-              <?php foreach ($modalAllergyCatalog as $item): ?>
-              <option value="<?= (int) $item['id'] ?>"><?= e((string) $item['name']) ?></option>
-              <?php endforeach; ?>
-              <option value="new">+ Add a new allergy…</option>
-            </select>
+            <label class="toggle-control" for="allergy_add_source_toggle">
+              <input type="checkbox" id="allergy_add_source_toggle" data-allergy-source-toggle>
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-allergy-source-label>Substance</span>
+            </label>
           </div>
-          <div class="form-group" data-allergy-new-wrap style="display:none">
-            <label for="allergy_add_new_name">New allergy name</label>
-            <input type="text" id="allergy_add_new_name" name="new_allergy_name" maxlength="150" placeholder="e.g. Amoxicillin">
+          <div data-allergy-substance-wrap>
+            <div class="form-group">
+              <label for="allergy_add_select">Substance</label>
+              <select id="allergy_add_select" name="allergy_catalog_id" data-allergy-select>
+                <option value="">— Select —</option>
+                <?php foreach ($modalAllergyCatalog as $item): ?>
+                <option value="<?= (int) $item['id'] ?>"><?= e((string) $item['name']) ?></option>
+                <?php endforeach; ?>
+                <option value="new">+ Add a new allergy…</option>
+              </select>
+            </div>
+            <div class="form-group" data-allergy-new-wrap style="display:none">
+              <label for="allergy_add_new_name">New allergy name</label>
+              <input type="text" id="allergy_add_new_name" name="new_allergy_name" maxlength="150" placeholder="e.g. Amoxicillin">
+            </div>
+          </div>
+          <div class="form-group" data-allergy-medication-wrap hidden>
+            <label for="allergy_add_med_input">Medication</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="allergy_add_med_input" name="new_allergy_name" maxlength="150" autocomplete="off" placeholder="Type a medication, supplement, or OTC…" data-allergy-med-input disabled>
+              <ul class="autocomplete-dropdown" data-allergy-med-dropdown hidden></ul>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label" style="align-items:center;display:flex;gap:.35rem">
@@ -155,18 +180,34 @@ $modalAllergyCategories = AllergyRepository::allowedCategories();
             </div>
           </div>
           <div class="form-group">
-            <label for="allergy_edit_select_<?= (int) $a['id'] ?>">Substance</label>
-            <select id="allergy_edit_select_<?= (int) $a['id'] ?>" name="allergy_catalog_id" data-allergy-select>
-              <option value="">— Select —</option>
-              <?php foreach ($modalAllergyCatalog as $item): ?>
-              <option value="<?= (int) $item['id'] ?>"<?= (int) $item['id'] === (int) $a['allergy_catalog_id'] ? ' selected' : '' ?>><?= e((string) $item['name']) ?></option>
-              <?php endforeach; ?>
-              <option value="new">+ Add a new allergy…</option>
-            </select>
+            <label class="toggle-control" for="allergy_edit_source_toggle_<?= (int) $a['id'] ?>">
+              <input type="checkbox" id="allergy_edit_source_toggle_<?= (int) $a['id'] ?>" data-allergy-source-toggle>
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-allergy-source-label>Substance</span>
+            </label>
           </div>
-          <div class="form-group" data-allergy-new-wrap style="display:none">
-            <label for="allergy_edit_new_name_<?= (int) $a['id'] ?>">New allergy name</label>
-            <input type="text" id="allergy_edit_new_name_<?= (int) $a['id'] ?>" name="new_allergy_name" maxlength="150" placeholder="e.g. Amoxicillin">
+          <div data-allergy-substance-wrap>
+            <div class="form-group">
+              <label for="allergy_edit_select_<?= (int) $a['id'] ?>">Substance</label>
+              <select id="allergy_edit_select_<?= (int) $a['id'] ?>" name="allergy_catalog_id" data-allergy-select>
+                <option value="">— Select —</option>
+                <?php foreach ($modalAllergyCatalog as $item): ?>
+                <option value="<?= (int) $item['id'] ?>"<?= (int) $item['id'] === (int) $a['allergy_catalog_id'] ? ' selected' : '' ?>><?= e((string) $item['name']) ?></option>
+                <?php endforeach; ?>
+                <option value="new">+ Add a new allergy…</option>
+              </select>
+            </div>
+            <div class="form-group" data-allergy-new-wrap style="display:none">
+              <label for="allergy_edit_new_name_<?= (int) $a['id'] ?>">New allergy name</label>
+              <input type="text" id="allergy_edit_new_name_<?= (int) $a['id'] ?>" name="new_allergy_name" maxlength="150" placeholder="e.g. Amoxicillin">
+            </div>
+          </div>
+          <div class="form-group" data-allergy-medication-wrap hidden>
+            <label for="allergy_edit_med_input_<?= (int) $a['id'] ?>">Medication</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="allergy_edit_med_input_<?= (int) $a['id'] ?>" name="new_allergy_name" maxlength="150" autocomplete="off" placeholder="Type a medication, supplement, or OTC…" data-allergy-med-input disabled>
+              <ul class="autocomplete-dropdown" data-allergy-med-dropdown hidden></ul>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label" style="align-items:center;display:flex;gap:.35rem">
@@ -246,8 +287,8 @@ $modalAllergyCategories = AllergyRepository::allowedCategories();
       </button>
     </div>
     <div class="modal-scroll">
-      <p>Choose Allergy when a reaction involves the immune system, since this covers symptoms such as hives, swelling, trouble breathing, or anaphylaxis, and even small amounts can trigger a response. If a reaction has ever been sudden, severe, or life-threatening, select Allergy so it's flagged appropriately.</p>
-      <p>Choose Intolerance when the body has trouble processing a substance without immune involvement, since this usually leads to milder digestive or discomfort symptoms like bloating, gas, or headaches, and the reaction often depends on how much was consumed.</p>
+      <p>Choose <strong>Allergy</strong> when a reaction involves the immune system, since this covers symptoms such as hives, swelling, trouble breathing, or anaphylaxis, and even small amounts can trigger a response. If a reaction has ever been sudden, severe, or life-threatening, select Allergy so it's flagged appropriately.</p>
+      <p>Choose <strong>Intolerance</strong> when the body has trouble processing a substance without immune involvement, since this usually leads to milder digestive or discomfort symptoms like bloating, gas, or headaches, and the reaction often depends on how much was consumed.</p>
     </div>
   </div>
 </div>
