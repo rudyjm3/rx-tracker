@@ -59,6 +59,144 @@ function formattedDose(array $medication): string
     return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
 }
 
+function calculate_age(?string $birthDate, ?int $birthYear = null): ?int
+{
+    if ($birthDate !== null && $birthDate !== '') {
+        try {
+            return (new DateTimeImmutable($birthDate))->diff(new DateTimeImmutable())->y;
+        } catch (Throwable) {
+            // fall through to the birth-year fallback below
+        }
+    }
+
+    if ($birthYear !== null && $birthYear > 0) {
+        return (int) date('Y') - $birthYear;
+    }
+
+    return null;
+}
+
+function format_member_since(string $createdAt): string
+{
+    try {
+        $since = new DateTimeImmutable($createdAt);
+    } catch (Throwable) {
+        return '';
+    }
+
+    $interval = $since->diff(new DateTimeImmutable());
+
+    $parts = [];
+    if ($interval->y > 0) {
+        $parts[] = $interval->y . ' year' . ($interval->y === 1 ? '' : 's');
+    }
+    if ($interval->m > 0) {
+        $parts[] = $interval->m . ' month' . ($interval->m === 1 ? '' : 's');
+    }
+    $parts[] = $interval->d . ' day' . ($interval->d === 1 ? '' : 's');
+
+    return $since->format('m/d/Y') . ' - ' . implode(', ', $parts);
+}
+
+function fallback_display_name(?string $firstName, ?string $lastName): string
+{
+    $first = trim((string) $firstName);
+    $last  = trim((string) $lastName);
+
+    if ($first === '') {
+        return '';
+    }
+    if ($last === '') {
+        return $first;
+    }
+
+    return $first . ' ' . mb_strtoupper(mb_substr($last, 0, 1)) . '.';
+}
+
+function allergy_severity_label(?string $severity): string
+{
+    $labels = ['low' => 'Low', 'moderate' => 'Moderate', 'high' => 'High', 'very_high' => 'Very High'];
+    return $labels[$severity] ?? '';
+}
+
+function allergy_category_label(?string $category): string
+{
+    $labels = ['drug' => 'Drug', 'food' => 'Food', 'environment_animal' => 'Environment / Animal', 'other' => 'Other'];
+    return $labels[$category] ?? '';
+}
+
+function render_allergy_row(array $allergy): string
+{
+    if ((int) ($allergy['life_threatening'] ?? 0) === 1) {
+        $meta = '<strong style="color:var(--rx-danger)">Life-threatening</strong>';
+    } else {
+        $label = allergy_severity_label($allergy['severity'] ?? null);
+        $meta  = $label !== '' ? e($label) : '';
+    }
+
+    return '<li class="session-row">'
+        . '<button type="button" class="session-info" style="background:none;border:none;text-align:left;cursor:pointer;padding:0;flex:1;color:inherit" data-open-allergy-edit-view="' . (int) $allergy['id'] . '">'
+        . '<span class="session-agent">' . e((string) $allergy['name']) . '</span>'
+        . ($meta !== '' ? '<span class="session-meta">' . $meta . '</span>' : '')
+        . '</button>'
+        . '<i class="fa-solid fa-chevron-right" aria-hidden="true" style="color:var(--rx-text-muted);flex-shrink:0"></i>'
+        . '</li>';
+}
+
+function height_to_inches(float $value, string $unit): float
+{
+    return $unit === 'cm' ? $value / 2.54 : $value;
+}
+
+function format_feet_inches(float $totalInches): string
+{
+    $totalInches = max(0.0, $totalInches);
+    $feet        = (int) floor($totalInches / 12);
+    $inches      = (int) round($totalInches - ($feet * 12));
+    if ($inches === 12) {
+        $feet++;
+        $inches = 0;
+    }
+
+    return $feet . "' " . $inches . '"';
+}
+
+function render_avatar(?string $pictureUrl, string $letter, string $color, string $cssClass): string
+{
+    if ($pictureUrl !== null && $pictureUrl !== '') {
+        return '<img src="' . e($pictureUrl) . '" alt="" class="' . e($cssClass) . ' avatar-img">';
+    }
+
+    return '<span class="' . e($cssClass) . '" style="background:' . e($color) . '">' . e($letter) . '</span>';
+}
+
+function render_simple_medication_line(array $medication, bool $showStopDate = false): string
+{
+    $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
+    $medTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+    $dose          = formattedDose($medication);
+
+    $html  = '<div class="medication-row medication-row-simple" data-med-type="' . e($medTypeSlug) . '">';
+    $html .= '<div>';
+    $html .= '<div class="med-title"><strong>' . e((string) $medication['name']) . '</strong>';
+    $html .= '<span class="med-type-badge med-type-badge--' . e($medTypeSlug) . '">' . e($medTypeLabels[$medTypeSlug] ?? 'Rx') . '</span></div>';
+    if ($dose !== '') {
+        $html .= '<p class="med-dose">' . e($dose) . '</p>';
+    }
+    if ($showStopDate) {
+        $lastDiscontinued = $medication['last_discontinued'] ?? null;
+        if (is_array($lastDiscontinued) && (string) $lastDiscontinued['event_at'] !== '') {
+            $ts = strtotime((string) $lastDiscontinued['event_at']);
+            $stoppedOn = $ts !== false ? date('M j, Y', $ts) : (string) $lastDiscontinued['event_at'];
+            $html .= '<p class="inactive-discontinued-line">Stopped ' . e($stoppedOn) . '</p>';
+        }
+    }
+    $html .= '</div>';
+    $html .= '</div>';
+
+    return $html;
+}
+
 function parseTimeValue(string $raw): string
 {
     $value = trim($raw);
@@ -209,7 +347,7 @@ function render_inactive_medication_row(array $medication): string
     }
     $html .= '</div>';
     $html .= '<div class="row-actions">';
-    $html .= '<button type="button" data-open-resume-modal data-medication-id="' . e((string) $medication['id']) . '" data-medication-name="' . e((string) $medication['name']) . '">Activate</button>';
+    $html .= '<button type="button" data-open-resume-modal data-medication-id="' . e((string) $medication['id']) . '" data-medication-name="' . e((string) $medication['name']) . '">Resume</button>';
     $html .= '</div>';
     $html .= '</div>';
 

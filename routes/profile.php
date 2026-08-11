@@ -7,7 +7,7 @@ declare(strict_types=1);
 $userId     = $auth->currentUserId();
 $familyRepo = new FamilyProfileRepository(db());
 
-$stmt = db()->prepare('SELECT id, email, display_name, google_id, profile_picture, password_hash, created_at FROM users WHERE id = :id LIMIT 1');
+$stmt = db()->prepare('SELECT id, email, display_name, first_name, last_name, birth_date, google_id, profile_picture, password_hash, created_at, height_value, height_unit FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
 $userRow = $stmt->fetch();
 if (!is_array($userRow)) {
@@ -30,19 +30,131 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $action = post_string('action');
 
-    if ($action === 'update_display_name') {
-        $newName = post_string('display_name');
+    if ($action === 'update_profile_info') {
+        $newName   = post_string('display_name');
+        $firstName = trim(post_string('first_name')) ?: null;
+        $lastName  = trim(post_string('last_name')) ?: null;
+        $birthDate = trim(post_string('birth_date')) ?: null;
+
         if ($newName === '') {
-            header('Location: index.php?page=profile&error=' . urlencode('Display name cannot be empty.'));
+            $newName = fallback_display_name($firstName, $lastName);
+        }
+        if ($newName === '') {
+            header('Location: index.php?page=profile&error=' . urlencode('Enter a display name or a first name.'));
             exit;
         }
-        if (strlen($newName) > 100) {
-            header('Location: index.php?page=profile&error=' . urlencode('Display name must be 100 characters or fewer.'));
+        if (strlen($newName) > 100 || ($firstName !== null && mb_strlen($firstName) > 50) || ($lastName !== null && mb_strlen($lastName) > 50)) {
+            header('Location: index.php?page=profile&error=' . urlencode('Name fields are too long.'));
             exit;
         }
-        db()->prepare('UPDATE users SET display_name = :name WHERE id = :id')
-            ->execute(['name' => $newName, 'id' => $userId]);
-        header('Location: index.php?page=profile&success=' . urlencode('Display name updated.'));
+        if ($birthDate !== null) {
+            try {
+                if (new DateTimeImmutable($birthDate) > new DateTimeImmutable()) {
+                    header('Location: index.php?page=profile&error=' . urlencode('Birthdate cannot be in the future.'));
+                    exit;
+                }
+            } catch (Throwable) {
+                header('Location: index.php?page=profile&error=' . urlencode('Birthdate is not a valid date.'));
+                exit;
+            }
+        }
+
+        $heightValueRaw = trim(post_string('height_value'));
+        $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
+        $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : 'in';
+        if ($heightValue !== null) {
+            $bounds = $heightUnit === 'cm' ? [50.0, 274.0] : [20.0, 108.0];
+            if ($heightValue < $bounds[0] || $heightValue > $bounds[1]) {
+                header('Location: index.php?page=profile&error=' . urlencode('Height value is out of range.'));
+                exit;
+            }
+        } else {
+            $heightUnit = null;
+        }
+
+        $avatarService  = new AvatarUploadService();
+        $profilePicture = (string) ($userRow['profile_picture'] ?? '') ?: null;
+        if (isset($_POST['remove_profile_picture'])) {
+            $avatarService->deleteIfLocal($profilePicture);
+            $profilePicture = null;
+        } elseif (($_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $newPicture = $avatarService->saveUpload($_FILES['profile_picture']);
+                $avatarService->deleteIfLocal($profilePicture);
+                $profilePicture = $newPicture;
+            } catch (RuntimeException $e) {
+                header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+                exit;
+            }
+        }
+
+        db()->prepare('UPDATE users SET display_name = :name, first_name = :first_name, last_name = :last_name, birth_date = :birth_date, height_value = :height_value, height_unit = :height_unit, profile_picture = :profile_picture WHERE id = :id')
+            ->execute([
+                'name'            => $newName,
+                'first_name'      => $firstName,
+                'last_name'       => $lastName,
+                'birth_date'      => $birthDate,
+                'height_value'    => $heightValue,
+                'height_unit'     => $heightUnit,
+                'profile_picture' => $profilePicture,
+                'id'              => $userId,
+            ]);
+        header('Location: index.php?page=profile&success=' . urlencode('Profile updated.'));
+        exit;
+    }
+
+    if ($action === 'add_profile_allergy') {
+        try {
+            $allergyRepo  = new AllergyRepository(db(), $userId);
+            $catalogIdRaw = post_string('allergy_catalog_id');
+            $catalogId    = $catalogIdRaw !== '' ? (int) $catalogIdRaw : null;
+            $newName      = trim(post_string('new_allergy_name')) ?: null;
+            $allergyRepo->addAllergy(
+                null,
+                $catalogId,
+                $newName,
+                post_string('allergy_type') ?: 'allergy',
+                isset($_POST['life_threatening']),
+                trim(post_string('severity')) ?: null,
+                trim(post_string('category')) ?: null,
+                post_string('notes') ?: null
+            );
+            header('Location: index.php?page=profile&success=' . urlencode('Allergy added.'));
+        } catch (RuntimeException $e) {
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+        }
+        exit;
+    }
+
+    if ($action === 'update_profile_allergy') {
+        try {
+            $allergyRepo  = new AllergyRepository(db(), $userId);
+            $catalogIdRaw = post_string('allergy_catalog_id');
+            $catalogId    = $catalogIdRaw !== '' ? (int) $catalogIdRaw : null;
+            $newName      = trim(post_string('new_allergy_name')) ?: null;
+            $allergyRepo->updateAllergy(
+                null,
+                (int) ($_POST['allergy_id'] ?? 0),
+                $catalogId,
+                $newName,
+                post_string('allergy_type') ?: 'allergy',
+                isset($_POST['life_threatening']),
+                trim(post_string('severity')) ?: null,
+                trim(post_string('category')) ?: null,
+                post_string('notes') ?: null,
+                post_string('is_active') !== '0'
+            );
+            header('Location: index.php?page=profile&success=' . urlencode('Allergy updated.'));
+        } catch (RuntimeException $e) {
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+        }
+        exit;
+    }
+
+    if ($action === 'remove_profile_allergy') {
+        $allergyRepo = new AllergyRepository(db(), $userId);
+        $allergyRepo->removeAllergy(null, (int) ($_POST['allergy_id'] ?? 0));
+        header('Location: index.php?page=profile&success=' . urlencode('Allergy removed.'));
         exit;
     }
 
@@ -113,49 +225,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($action === 'create_family_profile') {
-        try {
-            $displayName  = trim(post_string('display_name'));
-            $avatarColor  = trim(post_string('avatar_color')) ?: null;
-            $relationship = trim(post_string('relationship')) ?: null;
-            $birthYearRaw = trim(post_string('birth_year'));
-            $birthYear    = $birthYearRaw !== '' ? (int) $birthYearRaw : null;
-            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, $birthYear);
-            header('Location: index.php?page=profile&success=' . urlencode($displayName . ' was added.'));
-        } catch (RuntimeException $e) {
-            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
-        }
-        exit;
-    }
-
-    if ($action === 'update_family_profile') {
-        try {
-            $profileId    = (int) ($_POST['profile_id'] ?? 0);
-            $displayName  = trim(post_string('display_name'));
-            $avatarColor  = trim(post_string('avatar_color')) ?: null;
-            $relationship = trim(post_string('relationship')) ?: null;
-            $birthYearRaw = trim(post_string('birth_year'));
-            $birthYear    = $birthYearRaw !== '' ? (int) $birthYearRaw : null;
-            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear);
-            header('Location: index.php?page=profile&success=' . urlencode($displayName . '\'s profile was updated.'));
-        } catch (RuntimeException $e) {
-            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
-        }
-        exit;
-    }
-
-    if ($action === 'delete_family_profile') {
-        $profileId = (int) ($_POST['profile_id'] ?? 0);
-        if ($profileId > 0) {
-            $familyRepo->deleteProfile($profileId, $userId);
-            if ($auth->activeProfileId() === $profileId) {
-                $auth->setActiveProfile(null);
-            }
-        }
-        header('Location: index.php?page=profile&success=' . urlencode('Family member removed.'));
-        exit;
-    }
-
     header('Location: index.php?page=profile');
     exit;
 }
@@ -171,17 +240,20 @@ $activeSessions = $sessStmt->fetchAll();
 $currentToken   = (string) ($_COOKIE['rx_remember'] ?? '');
 
 $familyProfiles     = $familyRepo->profilesForUser($userId);
-$relationships      = FamilyProfileRepository::allowedRelationships();
-$palette            = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444'];
 
-$memberSince = '';
-if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
-    try {
-        $memberSince = (new DateTimeImmutable((string) $userRow['created_at']))->format('F j, Y');
-    } catch (Throwable) {
-        $memberSince = '';
-    }
-}
+$memberSince = isset($userRow['created_at']) && $userRow['created_at'] !== ''
+    ? format_member_since((string) $userRow['created_at'])
+    : '';
+$ownerAge = calculate_age($userRow['birth_date'] !== null ? (string) $userRow['birth_date'] : null);
+
+$allergyRepo     = new AllergyRepository(db(), $userId);
+$ownerAllergies  = $allergyRepo->allergiesForProfile(null);
+$ownerActiveAllergies = array_values(array_filter($ownerAllergies, static fn(array $a): bool => (int) $a['is_active'] === 1));
+$allergyCatalog  = $allergyRepo->catalogForUser();
+
+$ownerMedRepo       = new MedicationRepository(db(), $userId, null);
+$ownerActiveMeds    = $ownerMedRepo->activeMedications();
+$ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 
 ?>
 <!doctype html>
@@ -230,12 +302,16 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e((string) $userRow['email']) ?>" aria-label="My profile">
-          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
+          <?= render_avatar((string) ($navActiveProfile['profile_picture'] ?? $userRow['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top is-active">
             <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
             My Profile
+          </a>
+          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
           </a>
           <?php if (!empty($familyProfiles)): ?>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
@@ -244,18 +320,14 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
                     class="profile-option nav-user-menu-owner-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:#6366f1">
-                <?= e(mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($userRow['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
             </button>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $navActiveProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
-                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'profile-option-avatar') ?>
               <?= e((string) $fp['display_name']) ?>
               <?php if ($fp['relationship']): ?>
                 <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
@@ -263,10 +335,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
             </button>
             <?php endforeach; ?>
           </form>
-          <a href="index.php?page=profile#family" class="nav-user-menu-link nav-user-menu-link--manage">
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-            Manage Family
-          </a>
           <?php endif; ?>
         </div>
       </div>
@@ -313,6 +381,25 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
           <span class="profile-info-label">Email</span>
           <span class="profile-info-value"><?= e((string) $userRow['email']) ?></span>
         </div>
+        <?php if (!empty($userRow['birth_date'])): ?>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Birthdate</span>
+          <span class="profile-info-value">
+            <?= e((new DateTimeImmutable((string) $userRow['birth_date']))->format('F j, Y')) ?>
+            <?php if ($ownerAge !== null): ?> (<?= $ownerAge ?> years old)<?php endif; ?>
+          </span>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($userRow['height_value'])): ?>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Height</span>
+          <span class="profile-info-value">
+            <?php $ownerHeightInches = height_to_inches((float) $userRow['height_value'], (string) $userRow['height_unit']); ?>
+            <?= e(rtrim(rtrim(number_format((float) $userRow['height_value'], 1), '0'), '.')) ?> <?= e((string) $userRow['height_unit']) ?>
+            (<?= e(format_feet_inches($ownerHeightInches)) ?>)
+          </span>
+        </div>
+        <?php endif; ?>
         <?php if ($memberSince !== ''): ?>
         <div class="profile-info-row">
           <span class="profile-info-label">Member since</span>
@@ -322,11 +409,40 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
 
         <hr class="profile-divider">
 
-        <form method="post" action="index.php?page=profile" class="stacked-form">
+        <form method="post" action="index.php?page=profile" class="stacked-form" enctype="multipart/form-data">
           <?= csrf_field() ?>
-          <input type="hidden" name="action" value="update_display_name">
+          <input type="hidden" name="action" value="update_profile_info">
           <div class="form-group">
-            <label for="display_name">Display name</label>
+            <label class="form-label">Profile Picture</label>
+            <div style="display:flex;align-items:center;gap:.75rem">
+              <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
+                <?= render_avatar(
+                  (string) ($userRow['profile_picture'] ?? '') ?: null,
+                  mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)),
+                  '#6366f1',
+                  'family-profile-card__avatar'
+                ) ?>
+              </span>
+              <div>
+                <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
+                <?php if (!empty($userRow['profile_picture'])): ?>
+                <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
+                  <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
+                </label>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="first_name">First name</label>
+            <input type="text" id="first_name" name="first_name" value="<?= e((string) ($userRow['first_name'] ?? '')) ?>" maxlength="50" placeholder="First name" autocomplete="given-name">
+          </div>
+          <div class="form-group">
+            <label for="last_name">Last name</label>
+            <input type="text" id="last_name" name="last_name" value="<?= e((string) ($userRow['last_name'] ?? '')) ?>" maxlength="50" placeholder="Last name" autocomplete="family-name">
+          </div>
+          <div class="form-group">
+            <label for="display_name">Display name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
             <input
               type="text"
               id="display_name"
@@ -335,11 +451,53 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
               maxlength="100"
               placeholder="Your name"
               autocomplete="name"
-              required
             >
           </div>
-          <button type="submit" class="secondary">Save name</button>
+          <div class="form-group">
+            <label for="birth_date">Birthdate</label>
+            <input type="date" id="birth_date" name="birth_date" value="<?= e((string) ($userRow['birth_date'] ?? '')) ?>" max="<?= e(today()) ?>">
+          </div>
+          <div class="form-group">
+            <label for="height_value">Height</label>
+            <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+              <input type="number" id="height_value" name="height_value" step="0.1" min="0" style="max-width:8rem" value="<?= e($userRow['height_value'] !== null ? (string) (float) $userRow['height_value'] : '') ?>">
+              <label class="toggle-control" for="height_unit_toggle">
+                <input type="checkbox" id="height_unit_toggle" name="height_unit_cm"<?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
+                <span class="toggle-slider" aria-hidden="true"></span>
+                <span class="toggle-label" data-height-unit-label><?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
+              </label>
+            </div>
+          </div>
+          <button type="submit" class="secondary">Save profile</button>
         </form>
+      </div>
+
+      <!-- Medications and Supplements -->
+      <div class="panel">
+        <button type="button" class="summary-card" data-open-meds-modal>
+          <span class="summary-card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+          </span>
+          <span class="summary-card-body">
+            <span class="summary-card-title">Medications and Supplements</span>
+            <span class="summary-card-meta"><?= count($ownerActiveMeds) ?> active med<?= count($ownerActiveMeds) === 1 ? '' : 's' ?></span>
+          </span>
+          <i class="fa-solid fa-chevron-right summary-card-chevron" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <!-- Allergies -->
+      <div class="panel">
+        <button type="button" class="summary-card" data-open-allergies-modal>
+          <span class="summary-card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5c0 3 2 4 2 7a5 5 0 0 0 10 0c0-3 2-4 2-7a5 5 0 0 0-5-5"/></svg>
+          </span>
+          <span class="summary-card-body">
+            <span class="summary-card-title">Allergies &amp; Intolerances</span>
+            <span class="summary-card-meta"><?= count($ownerActiveAllergies) ?> allerg<?= count($ownerActiveAllergies) === 1 ? 'y' : 'ies' ?></span>
+          </span>
+          <i class="fa-solid fa-chevron-right summary-card-chevron" aria-hidden="true"></i>
+        </button>
       </div>
 
       <!-- Connected Accounts -->
@@ -440,154 +598,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
         </form>
       </div>
 
-      <!-- Family Members -->
-      <div class="panel" id="family">
-        <div class="panel-heading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <h2>Family Members</h2>
-        </div>
-        <p class="muted" style="margin-bottom:1rem">Track medications for family members under one account — no separate logins needed.</p>
-
-        <?php if ($familyProfiles !== []): ?>
-        <ul class="sessions-list" style="margin-bottom:1.25rem">
-          <?php foreach ($familyProfiles as $fp): ?>
-          <li class="session-row">
-            <div class="session-info">
-              <span class="session-agent">
-                <span style="display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border-radius:50%;background:<?= e((string)($fp['avatar_color'] ?? '#6366f1')) ?>;color:#fff;font-size:.75rem;font-weight:700;margin-right:.5rem">
-                  <?= e(mb_strtoupper(mb_substr((string)$fp['display_name'], 0, 1))) ?>
-                </span>
-                <?= e((string)$fp['display_name']) ?>
-              </span>
-              <?php if ($fp['relationship'] || $fp['birth_year']): ?>
-              <span class="session-meta">
-                <?php if ($fp['relationship']): ?><?= e((string)$fp['relationship']) ?><?php endif; ?>
-                <?php if ($fp['relationship'] && $fp['birth_year']): ?> · <?php endif; ?>
-                <?php if ($fp['birth_year']): ?>b. <?= (int)$fp['birth_year'] ?><?php endif; ?>
-              </span>
-              <?php endif; ?>
-            </div>
-            <div style="display:flex;gap:.5rem;flex-shrink:0">
-              <button type="button" class="secondary" style="font-size:.8rem;padding:.25rem .6rem" data-open-family-edit-modal="<?= (int)$fp['id'] ?>">Edit</button>
-              <form method="post" action="index.php?page=profile"
-                    onsubmit="return confirm('Remove <?= e(addslashes((string)$fp['display_name'])) ?> from your family members?')">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="delete_family_profile">
-                <input type="hidden" name="profile_id" value="<?= (int)$fp['id'] ?>">
-                <button type="submit" class="btn-danger" style="font-size:.8rem;padding:.25rem .6rem">Remove</button>
-              </form>
-            </div>
-          </li>
-          <?php endforeach; ?>
-        </ul>
-        <?php endif; ?>
-
-        <?php foreach ($familyProfiles as $fp): ?>
-        <div class="modal-overlay" data-family-edit-modal="<?= (int)$fp['id'] ?>">
-          <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="family-edit-title-<?= (int)$fp['id'] ?>">
-            <div class="modal-header">
-              <h2 id="family-edit-title-<?= (int)$fp['id'] ?>">Edit <?= e((string)$fp['display_name']) ?></h2>
-              <button type="button" class="modal-close-btn" data-close-family-edit-modal aria-label="Close">
-                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-              </button>
-            </div>
-            <div class="modal-scroll">
-              <form method="post" action="index.php?page=profile" class="stacked-form">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="update_family_profile">
-                <input type="hidden" name="profile_id" value="<?= (int)$fp['id'] ?>">
-                <div class="form-group">
-                  <label for="edit_display_name_<?= (int)$fp['id'] ?>">Name <span style="color:var(--danger)">*</span></label>
-                  <input type="text" id="edit_display_name_<?= (int)$fp['id'] ?>" name="display_name" required maxlength="100"
-                         value="<?= e((string)$fp['display_name']) ?>">
-                </div>
-                <div class="form-group">
-                  <label for="edit_relationship_<?= (int)$fp['id'] ?>">Relationship</label>
-                  <select id="edit_relationship_<?= (int)$fp['id'] ?>" name="relationship">
-                    <option value="">— Optional —</option>
-                    <?php foreach ($relationships as $rel): ?>
-                    <option value="<?= e($rel) ?>"<?= $fp['relationship'] === $rel ? ' selected' : '' ?>><?= e($rel) ?></option>
-                    <?php endforeach; ?>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label for="edit_birth_year_<?= (int)$fp['id'] ?>">Birth Year</label>
-                  <input type="number" id="edit_birth_year_<?= (int)$fp['id'] ?>" name="birth_year" min="1900" max="<?= (int)date('Y') ?>"
-                         value="<?= $fp['birth_year'] !== null ? (int)$fp['birth_year'] : '' ?>">
-                </div>
-                <div class="form-group">
-                  <label class="form-label"><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
-                  <div class="avatar-color-picker">
-                    <?php $currentColor = (string)($fp['avatar_color'] ?? '#6366f1'); ?>
-                    <?php foreach ($palette as $color): ?>
-                    <label class="avatar-color-swatch">
-                      <input type="radio" name="avatar_color_edit_<?= (int)$fp['id'] ?>" value="<?= e($color) ?>"
-                             <?= $currentColor === $color ? 'checked' : '' ?>>
-                      <span class="avatar-color-dot" style="background:<?= e($color) ?>"></span>
-                    </label>
-                    <?php endforeach; ?>
-                    <label class="avatar-color-swatch avatar-color-swatch--custom">
-                      <input type="radio" name="avatar_color_edit_<?= (int)$fp['id'] ?>" value="custom" id="edit_color_custom_radio_<?= (int)$fp['id'] ?>"
-                             <?= !in_array($currentColor, $palette, true) ? 'checked' : '' ?>>
-                      <input type="color" id="edit_color_custom_<?= (int)$fp['id'] ?>" value="<?= e($currentColor) ?>" class="avatar-color-custom-input">
-                      <span class="avatar-color-custom-label">Custom color picker</span>
-                    </label>
-                  </div>
-                  <input type="hidden" name="avatar_color_final" id="edit_avatar_color_final_<?= (int)$fp['id'] ?>" value="<?= e($currentColor) ?>">
-                </div>
-                <div class="modal-footer">
-                  <button type="submit" class="secondary">Save Changes</button>
-                  <button type="button" class="secondary" data-close-family-edit-modal>Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-        <?php endforeach; ?>
-
-        <h3 style="margin-bottom:.75rem;font-size:.95rem">Add a Family Member</h3>
-        <form method="post" action="index.php?page=profile" class="stacked-form">
-          <?= csrf_field() ?>
-          <input type="hidden" name="action" value="create_family_profile">
-          <div class="form-group">
-            <label for="family_display_name">Name <span style="color:var(--danger)">*</span></label>
-            <input type="text" id="family_display_name" name="display_name" required maxlength="100" placeholder="e.g. Sarah">
-          </div>
-          <div class="form-group">
-            <label for="family_relationship">Relationship</label>
-            <select id="family_relationship" name="relationship">
-              <option value="">— Optional —</option>
-              <?php foreach ($relationships as $rel): ?>
-              <option value="<?= e($rel) ?>"><?= e($rel) ?></option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="family_birth_year">Birth Year</label>
-            <input type="number" id="family_birth_year" name="birth_year" min="1900" max="<?= (int)date('Y') ?>" placeholder="e.g. 1985">
-          </div>
-          <div class="form-group">
-            <label class="form-label"><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
-            <div class="avatar-color-picker">
-              <?php foreach ($palette as $i => $color): ?>
-              <label class="avatar-color-swatch">
-                <input type="radio" name="avatar_color" value="<?= e($color) ?>"
-                       <?= $i === 0 ? 'checked' : '' ?>>
-                <span class="avatar-color-dot" style="background:<?= e($color) ?>"></span>
-              </label>
-              <?php endforeach; ?>
-              <label class="avatar-color-swatch avatar-color-swatch--custom">
-                <input type="radio" name="avatar_color" value="custom" id="family_color_custom_radio">
-                <input type="color" id="family_color_custom" value="#6366f1" class="avatar-color-custom-input">
-                <span class="avatar-color-custom-label">Custom color picker</span>
-              </label>
-            </div>
-            <input type="hidden" name="avatar_color_final" id="family_avatar_color_final" value="#6366f1">
-          </div>
-          <button type="submit" class="secondary">Add Family Member</button>
-        </form>
-      </div>
-
       <!-- Data & Privacy -->
       <div class="panel">
         <div class="panel-heading">
@@ -671,6 +681,19 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
   </section>
 
 </main>
+
+<?php
+$modalProfileId      = null;
+$modalAllergies      = $ownerAllergies;
+$modalAllergyCatalog = $allergyCatalog;
+$modalActionUrl       = 'index.php?page=profile';
+require __DIR__ . '/../includes/allergies-modal.php';
+
+$modalActiveMeds   = $ownerActiveMeds;
+$modalInactiveMeds = $ownerInactiveMeds;
+require __DIR__ . '/../includes/medications-modal.php';
+?>
+
 <nav class="bottom-nav" aria-label="Main navigation">
   <a href="index.php" class="bottom-nav-item" aria-label="Dashboard">
     <i class="fa-solid fa-house" aria-hidden="true"></i>
@@ -710,54 +733,6 @@ if (isset($userRow['created_at']) && $userRow['created_at'] !== '') {
     </a>
   </div>
 </div>
-<script>
-(function () {
-  function setupColorPicker(radioName, customInputId, finalInputId) {
-    var customRadio = document.querySelector('input[name="' + radioName + '"][value="custom"]');
-    var customInput = document.getElementById(customInputId);
-    var finalInput  = document.getElementById(finalInputId);
-    if (!customRadio || !customInput || !finalInput) return;
-    document.querySelectorAll('input[name="' + radioName + '"]').forEach(function (radio) {
-      radio.addEventListener('change', function () {
-        finalInput.value = radio.value === 'custom' ? customInput.value : radio.value;
-      });
-    });
-    customInput.addEventListener('input', function () {
-      customRadio.checked = true;
-      finalInput.value = customInput.value;
-    });
-    var form = customInput.closest('form');
-    if (form) {
-      form.addEventListener('submit', function () {
-        document.querySelectorAll('input[name="' + radioName + '"]').forEach(function (r) { r.disabled = true; });
-        finalInput.name = 'avatar_color';
-        finalInput.disabled = false;
-      });
-    }
-  }
-
-  setupColorPicker('avatar_color', 'family_color_custom', 'family_avatar_color_final');
-  <?php foreach ($familyProfiles as $fp): ?>
-  setupColorPicker('avatar_color_edit_<?= (int) $fp['id'] ?>', 'edit_color_custom_<?= (int) $fp['id'] ?>', 'edit_avatar_color_final_<?= (int) $fp['id'] ?>');
-  <?php endforeach; ?>
-
-  document.querySelectorAll('[data-open-family-edit-modal]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var modal = document.querySelector('[data-family-edit-modal="' + btn.getAttribute('data-open-family-edit-modal') + '"]');
-      if (modal) modal.classList.add('is-open');
-    });
-  });
-  document.querySelectorAll('[data-close-family-edit-modal]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      btn.closest('.modal-overlay').classList.remove('is-open');
-    });
-  });
-  document.querySelectorAll('[data-family-edit-modal]').forEach(function (overlay) {
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) overlay.classList.remove('is-open');
-    });
-  });
-})();
-</script>
+<script src="assets/js/profile-cards-modal.js?v=<?= filemtime(__DIR__ . '/../assets/js/profile-cards-modal.js') ?>" defer></script>
 </body>
 </html>

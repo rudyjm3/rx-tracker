@@ -11,6 +11,8 @@ require __DIR__ . '/includes/GoogleAuthService.php';
 require __DIR__ . '/includes/MailService.php';
 require __DIR__ . '/includes/MedicationRepository.php';
 require __DIR__ . '/includes/FamilyProfileRepository.php';
+require __DIR__ . '/includes/AllergyRepository.php';
+require __DIR__ . '/includes/AvatarUploadService.php';
 require __DIR__ . '/includes/PushNotificationService.php';
 require __DIR__ . '/includes/SideEffectRepository.php';
 require __DIR__ . '/includes/PainChartRenderer.php';
@@ -21,6 +23,11 @@ require_once __DIR__ . '/includes/InventoryEstimator.php';
 if (is_file(__DIR__ . '/vendor/autoload.php')) {
     require __DIR__ . '/vendor/autoload.php';
 }
+
+// Run pending schema migrations before anything else touches the database —
+// in particular, requireLogin() below queries `users` before any repository
+// (the usual trigger for this) is constructed.
+(new SchemaInstaller(db()))->ensureSchemaUpToDate();
 
 send_security_headers();
 
@@ -62,7 +69,12 @@ if ($page === 'profile') {
 }
 
 if ($page === 'family') {
-    header('Location: index.php?page=profile');
+    require __DIR__ . '/routes/family.php';
+    exit;
+}
+
+if ($page === 'family-member') {
+    require __DIR__ . '/routes/family_member.php';
     exit;
 }
 

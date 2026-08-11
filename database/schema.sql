@@ -518,3 +518,82 @@ CREATE TABLE IF NOT EXISTS medication_drafts (
 
 ALTER TABLE medications
     ADD COLUMN IF NOT EXISTS end_date DATE NULL AFTER start_date;
+
+-- Migration 016: Add first/last name and a real birthdate to both the
+-- primary user account and family member profiles, so the Profile
+-- Information card can show a full name and calculate an exact age.
+-- family_profiles.birth_year is left in place as a legacy fallback for
+-- rows that only have a birth year (used to approximate age until a real
+-- birth_date is entered).
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS first_name VARCHAR(50) NULL AFTER display_name,
+    ADD COLUMN IF NOT EXISTS last_name  VARCHAR(50) NULL AFTER first_name,
+    ADD COLUMN IF NOT EXISTS birth_date DATE NULL AFTER last_name;
+
+ALTER TABLE family_profiles
+    ADD COLUMN IF NOT EXISTS first_name VARCHAR(50) NULL AFTER display_name,
+    ADD COLUMN IF NOT EXISTS last_name  VARCHAR(50) NULL AFTER first_name,
+    ADD COLUMN IF NOT EXISTS birth_date DATE NULL AFTER birth_year;
+
+-- Migration 017: Allergies. A per-user catalog of allergy names (seeded
+-- with common allergies, plus any custom ones a user adds) and a join
+-- table linking allergies to a profile. profile_id NULL means the
+-- primary account owner, matching the convention already used by
+-- medications.profile_id and medication_groups.profile_id.
+CREATE TABLE IF NOT EXISTS allergy_catalog (
+    id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id  INT UNSIGNED NULL,
+    name           VARCHAR(150) NOT NULL,
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_allergy_catalog_name_owner (name, owner_user_id),
+    CONSTRAINT fk_allergy_catalog_user FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS profile_allergies (
+    id                  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id       INT UNSIGNED NOT NULL,
+    profile_id          INT UNSIGNED NULL,
+    allergy_catalog_id  INT UNSIGNED NOT NULL,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_profile_allergy (owner_user_id, profile_id, allergy_catalog_id),
+    CONSTRAINT fk_profile_allergies_user FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_profile_allergies_profile FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_profile_allergies_catalog FOREIGN KEY (allergy_catalog_id) REFERENCES allergy_catalog(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- MySQL treats NULL as distinct in a unique index, so ON DUPLICATE KEY
+-- UPDATE would not de-dupe these global (owner_user_id IS NULL) rows on a
+-- re-run; guard idempotency explicitly instead.
+INSERT INTO allergy_catalog (owner_user_id, name)
+SELECT NULL, v.name FROM (
+    SELECT 'Penicillin' AS name UNION ALL SELECT 'Sulfa Drugs' UNION ALL SELECT 'Aspirin/NSAIDs' UNION ALL
+    SELECT 'Codeine/Opioids' UNION ALL SELECT 'Iodine/Contrast Dye' UNION ALL SELECT 'Latex' UNION ALL
+    SELECT 'Peanuts' UNION ALL SELECT 'Tree Nuts' UNION ALL SELECT 'Shellfish' UNION ALL
+    SELECT 'Eggs' UNION ALL SELECT 'Milk/Dairy' UNION ALL SELECT 'Soy' UNION ALL SELECT 'Wheat/Gluten' UNION ALL
+    SELECT 'Pollen' UNION ALL SELECT 'Pet Dander (Cat/Dog)' UNION ALL SELECT 'Bee/Insect Stings'
+) v
+WHERE NOT EXISTS (
+    SELECT 1 FROM allergy_catalog ac WHERE ac.owner_user_id IS NULL AND ac.name = v.name
+);
+
+-- Migration 018: Height (value + unit) for both the primary account owner
+-- and family members, plus a profile picture for family members (users
+-- already has profile_picture, populated by Google sign-in).
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS height_value DECIMAL(5,2) NULL,
+    ADD COLUMN IF NOT EXISTS height_unit  VARCHAR(4) NULL;
+
+ALTER TABLE family_profiles
+    ADD COLUMN IF NOT EXISTS height_value    DECIMAL(5,2) NULL,
+    ADD COLUMN IF NOT EXISTS height_unit     VARCHAR(4) NULL,
+    ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(500) NULL;
+
+-- Migration 019: Richer allergy detail fields (type, life-threatening flag,
+-- estimated severity, category, notes, active/resolved status).
+ALTER TABLE profile_allergies
+    ADD COLUMN IF NOT EXISTS allergy_type     VARCHAR(12) NOT NULL DEFAULT 'allergy',
+    ADD COLUMN IF NOT EXISTS life_threatening TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS severity         VARCHAR(12) NULL,
+    ADD COLUMN IF NOT EXISTS category         VARCHAR(20) NULL,
+    ADD COLUMN IF NOT EXISTS notes            TEXT NULL,
+    ADD COLUMN IF NOT EXISTS is_active        TINYINT(1) NOT NULL DEFAULT 1;

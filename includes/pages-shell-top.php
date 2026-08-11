@@ -54,12 +54,16 @@
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e($currentUser['email'] ?? '') ?>" aria-label="My profile">
-          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
+          <?= render_avatar((string) ($activeProfile['profile_picture'] ?? $currentUser['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top">
             <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
             My Profile
+          </a>
+          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
           </a>
           <?php if (!empty($familyProfiles)): ?>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
@@ -68,18 +72,14 @@
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
                     class="profile-option nav-user-menu-owner-option<?= $activeProfileId === null ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:#6366f1">
-                <?= e(mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'U'), 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($currentUser['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($currentUser['display_name'] ?? 'Me')) ?>
             </button>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $activeProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
-                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'profile-option-avatar') ?>
               <?= e((string) $fp['display_name']) ?>
               <?php if ($fp['relationship']): ?>
                 <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
@@ -87,10 +87,6 @@
             </button>
             <?php endforeach; ?>
           </form>
-          <a href="index.php?page=profile#family" class="nav-user-menu-link nav-user-menu-link--manage">
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-            Manage Family
-          </a>
           <?php endif; ?>
         </div>
       </div>
@@ -108,9 +104,7 @@
 
   <?php if (!empty($activeProfile)): ?>
   <div class="profile-context-banner" role="status">
-    <span class="profile-context-avatar" style="background:<?= e((string) ($activeProfile['avatar_color'] ?? '#6366f1')) ?>">
-      <?= e(mb_strtoupper(mb_substr((string) $activeProfile['display_name'], 0, 1))) ?>
-    </span>
+    <?= render_avatar((string) ($activeProfile['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $activeProfile['display_name'], 0, 1)), (string) ($activeProfile['avatar_color'] ?? '#6366f1'), 'profile-context-avatar') ?>
     <span>Viewing <strong><?= e((string) $activeProfile['display_name']) ?></strong>'s medications</span>
     <form method="post" action="index.php?page=profile" style="display:inline">
       <?= csrf_field() ?>

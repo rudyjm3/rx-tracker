@@ -12,7 +12,7 @@ final class FamilyProfileRepository
     {
         try {
             $stmt = $this->db->prepare(
-                'SELECT id, owner_user_id, display_name, avatar_color, relationship, birth_year, created_at
+                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit
                  FROM family_profiles
                  WHERE owner_user_id = :user_id
                  ORDER BY created_at ASC'
@@ -28,7 +28,7 @@ final class FamilyProfileRepository
     {
         try {
             $stmt = $this->db->prepare(
-                'SELECT id, owner_user_id, display_name, avatar_color, relationship, birth_year, created_at
+                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit
                  FROM family_profiles
                  WHERE id = :id AND owner_user_id = :user_id
                  LIMIT 1'
@@ -46,23 +46,39 @@ final class FamilyProfileRepository
         string $displayName,
         ?string $avatarColor,
         ?string $relationship,
-        ?int $birthYear
+        ?int $birthYear,
+        ?string $firstName = null,
+        ?string $lastName = null,
+        ?string $birthDate = null,
+        ?string $profilePicture = null,
+        ?float $heightValue = null,
+        ?string $heightUnit = null
     ): int {
         $this->validateDisplayName($displayName);
         $this->validateAvatarColor($avatarColor);
         $this->validateRelationship($relationship);
         $this->validateBirthYear($birthYear);
+        $this->validateNamePart($firstName, 'First name');
+        $this->validateNamePart($lastName, 'Last name');
+        $this->validateBirthDate($birthDate);
+        $this->validateHeight($heightValue, $heightUnit);
 
         $stmt = $this->db->prepare(
-            'INSERT INTO family_profiles (owner_user_id, display_name, avatar_color, relationship, birth_year)
-             VALUES (:owner_user_id, :display_name, :avatar_color, :relationship, :birth_year)'
+            'INSERT INTO family_profiles (owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, profile_picture, height_value, height_unit)
+             VALUES (:owner_user_id, :display_name, :first_name, :last_name, :avatar_color, :relationship, :birth_year, :birth_date, :profile_picture, :height_value, :height_unit)'
         );
         $stmt->execute([
-            'owner_user_id' => $userId,
-            'display_name'  => $displayName,
-            'avatar_color'  => $avatarColor,
-            'relationship'  => $relationship,
-            'birth_year'    => $birthYear,
+            'owner_user_id'   => $userId,
+            'display_name'    => $displayName,
+            'first_name'      => $firstName,
+            'last_name'       => $lastName,
+            'avatar_color'    => $avatarColor,
+            'relationship'    => $relationship,
+            'birth_year'      => $birthYear,
+            'birth_date'      => $birthDate,
+            'profile_picture' => $profilePicture,
+            'height_value'    => $heightValue,
+            'height_unit'     => $heightUnit,
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -74,28 +90,50 @@ final class FamilyProfileRepository
         string $displayName,
         ?string $avatarColor,
         ?string $relationship,
-        ?int $birthYear
+        ?int $birthYear,
+        ?string $firstName = null,
+        ?string $lastName = null,
+        ?string $birthDate = null,
+        ?string $profilePicture = null,
+        ?float $heightValue = null,
+        ?string $heightUnit = null
     ): void {
         $this->validateDisplayName($displayName);
         $this->validateAvatarColor($avatarColor);
         $this->validateRelationship($relationship);
         $this->validateBirthYear($birthYear);
+        $this->validateNamePart($firstName, 'First name');
+        $this->validateNamePart($lastName, 'Last name');
+        $this->validateBirthDate($birthDate);
+        $this->validateHeight($heightValue, $heightUnit);
 
         $stmt = $this->db->prepare(
             'UPDATE family_profiles
-             SET display_name = :display_name,
-                 avatar_color = :avatar_color,
-                 relationship = :relationship,
-                 birth_year   = :birth_year
+             SET display_name    = :display_name,
+                 first_name      = :first_name,
+                 last_name       = :last_name,
+                 avatar_color    = :avatar_color,
+                 relationship    = :relationship,
+                 birth_year      = :birth_year,
+                 birth_date      = :birth_date,
+                 profile_picture = :profile_picture,
+                 height_value    = :height_value,
+                 height_unit     = :height_unit
              WHERE id = :id AND owner_user_id = :user_id'
         );
         $stmt->execute([
-            'id'           => $profileId,
-            'user_id'      => $userId,
-            'display_name' => $displayName,
-            'avatar_color' => $avatarColor,
-            'relationship' => $relationship,
-            'birth_year'   => $birthYear,
+            'id'              => $profileId,
+            'user_id'         => $userId,
+            'display_name'    => $displayName,
+            'first_name'      => $firstName,
+            'last_name'       => $lastName,
+            'avatar_color'    => $avatarColor,
+            'relationship'    => $relationship,
+            'birth_year'      => $birthYear,
+            'birth_date'      => $birthDate,
+            'profile_picture' => $profilePicture,
+            'height_value'    => $heightValue,
+            'height_unit'     => $heightUnit,
         ]);
     }
 
@@ -140,6 +178,42 @@ final class FamilyProfileRepository
     {
         if ($year !== null && ($year < 1900 || $year > (int) date('Y'))) {
             throw new RuntimeException('Birth year must be between 1900 and the current year.');
+        }
+    }
+
+    private function validateNamePart(?string $name, string $label): void
+    {
+        if ($name !== null && mb_strlen($name) > 50) {
+            throw new RuntimeException("{$label} must be 50 characters or fewer.");
+        }
+    }
+
+    private function validateBirthDate(?string $birthDate): void
+    {
+        if ($birthDate === null || $birthDate === '') {
+            return;
+        }
+        try {
+            $date = new DateTimeImmutable($birthDate);
+        } catch (Throwable) {
+            throw new RuntimeException('Birthdate is not a valid date.');
+        }
+        if ($date > new DateTimeImmutable()) {
+            throw new RuntimeException('Birthdate cannot be in the future.');
+        }
+    }
+
+    private function validateHeight(?float $value, ?string $unit): void
+    {
+        if ($value === null) {
+            return;
+        }
+        if ($unit !== 'in' && $unit !== 'cm') {
+            throw new RuntimeException('Height unit must be inches or centimeters.');
+        }
+        $bounds = $unit === 'cm' ? [50.0, 274.0] : [20.0, 108.0];
+        if ($value < $bounds[0] || $value > $bounds[1]) {
+            throw new RuntimeException('Height value is out of range.');
         }
     }
 }

@@ -2211,6 +2211,11 @@ button.danger:hover {
   color: var(--rx-text-muted);
   font-size: 0.82rem;
   margin: 0.15rem 0 0;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .inactive-history {
@@ -2233,6 +2238,11 @@ button.danger:hover {
 
 .inactive-history-comment {
   color: var(--rx-text-muted);
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
 }
 
 .dose-change-history-list {
@@ -6065,7 +6075,7 @@ a.nav-user-btn.is-active {
 .profile-page {
   max-width: 900px;
   margin: 0 auto;
-  padding: 1.5rem 1.25rem 3rem;
+  padding: 1.5rem 0 3rem;
   width: 100%;
 }
 
@@ -6363,6 +6373,142 @@ a.nav-user-btn.is-active {
   height: 100%;
   justify-content: center;
   width: 100%;
+}
+
+.avatar-img {
+  border-radius: 50%;
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.family-list-avatar {
+  align-items: center;
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Collapsed summary row — tap to open a full-screen list/detail modal */
+.summary-card {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 0.85rem;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.summary-card-icon {
+  align-items: center;
+  background: var(--rx-bg);
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+  height: 2.25rem;
+  justify-content: center;
+  width: 2.25rem;
+}
+
+.summary-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.summary-card-meta {
+  color: var(--rx-text-muted);
+  font-size: 0.8rem;
+}
+
+.summary-card-chevron {
+  color: var(--rx-text-muted);
+  flex-shrink: 0;
+}
+
+/* Pill-style radio buttons (hidden radio + styled sibling label), used for
+   allergy type/severity/category and other short single-choice pickers. */
+.pill-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pill-radio {
+  cursor: pointer;
+  position: relative;
+}
+
+.pill-radio input {
+  height: 0;
+  opacity: 0;
+  position: absolute;
+  width: 0;
+}
+
+.pill-radio-label {
+  background: var(--rx-bg);
+  border: 1.5px solid var(--rx-border);
+  border-radius: 999px;
+  color: var(--rx-text);
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pill-radio input:checked + .pill-radio-label {
+  background: var(--rx-deep-blue);
+  border-color: var(--rx-deep-blue);
+  color: #fff;
+}
+
+.pill-radio input:focus-visible + .pill-radio-label {
+  box-shadow: 0 0 0 3px rgba(7, 84, 168, 0.18);
+}
+
+.pill-radio--danger input:checked + .pill-radio-label {
+  background: var(--rx-danger);
+  border-color: var(--rx-danger);
+}
+
+.pill-tabs {
+  border-bottom: 1px solid var(--rx-border);
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.pill-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--rx-text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 0.5rem 0.1rem;
+}
+
+.pill-tab.is-active {
+  border-bottom-color: var(--rx-deep-blue);
+  color: var(--rx-deep-blue);
 }
 
 .nav-user-menu-panel {

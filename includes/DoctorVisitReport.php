@@ -12,7 +12,10 @@ final class DoctorVisitReport
         private readonly SideEffectRepository $sideEffectRepo,
         private readonly PainChartRenderer    $chartRenderer,
         private readonly MoodChartRenderer    $moodChartRenderer,
-        private readonly string               $displayName
+        private readonly string               $displayName,
+        private readonly ?string              $lastName = null,
+        private readonly array                $allergies = [],
+        private readonly ?string              $firstName = null
     ) {}
 
     /**
@@ -119,6 +122,7 @@ final class DoctorVisitReport
         $html .= '<body>';
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
+        $html .= $this->sectionAllergies($this->allergies);
         $html .= $this->sectionAdherence($adherence, $medications, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
         $html .= $this->sectionMedications($medications, $includeMood);
         $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includeMood);
@@ -237,10 +241,40 @@ HTML;
     // Section 1: Header band
     // -------------------------------------------------------------------------
 
+    // Registration collects display_name as a "Full name" field (and Google
+    // sign-in populates it from the account's full name too), so it often
+    // already ends with the surname. Only append lastName when it isn't
+    // already the trailing word of displayName, to avoid "John Doe Doe".
+    private function patientDisplayName(): string
+    {
+        $first = trim((string) ($this->firstName ?? ''));
+        $last  = trim((string) ($this->lastName ?? ''));
+
+        // Only trust the structured first+last pair when both are present —
+        // using first name alone would silently drop a surname that's
+        // already part of displayName (e.g. registration's "Full name").
+        if ($first !== '' && $last !== '') {
+            return trim($first . ' ' . $last);
+        }
+
+        $full = trim($this->displayName);
+        if ($last === '') {
+            return $full !== '' ? $full : ($first !== '' ? $first : 'Patient');
+        }
+
+        $words    = preg_split('/\s+/', $full);
+        $lastWord = $words !== false && $words !== [] ? (string) end($words) : '';
+        if (mb_strtolower($lastWord) === mb_strtolower($last)) {
+            return $full !== '' ? $full : $last;
+        }
+
+        return trim($full . ' ' . $last);
+    }
+
     private function sectionHeader(string $title, string $periodLabel, string $generatedDate): string
     {
         $logo  = $this->logoDataUri();
-        $name  = $this->h($this->displayName ?: 'Patient');
+        $name  = $this->h($this->patientDisplayName());
         $period = $this->h($periodLabel);
         $gen   = $this->h($generatedDate);
         $titleEsc = $this->h($title);
@@ -259,6 +293,39 @@ HTML;
   </tr>
 </table>
 <div style="height:3pt;background:#14CFE0;margin-bottom:0;"></div>
+HTML;
+    }
+
+    // -------------------------------------------------------------------------
+    // Section: Known Allergies
+    // -------------------------------------------------------------------------
+
+    private function sectionAllergies(array $allergies): string
+    {
+        $typeLabels = ['allergy' => 'Allergy', 'intolerance' => 'Intolerance'];
+
+        $rows = '';
+        foreach ($allergies as $allergy) {
+            $type = $typeLabels[(string) ($allergy['allergy_type'] ?? 'allergy')] ?? 'Allergy';
+            $rows .= sprintf(
+                '<tr><td>%s</td><td>%s</td></tr>',
+                $this->h((string) $allergy['name']),
+                $this->h($type)
+            );
+        }
+
+        if ($rows === '') {
+            $rows = '<tr><td colspan="2" class="empty-state">No known allergies or intolerances recorded.</td></tr>';
+        }
+
+        return <<<HTML
+<div class="section-title">Known Allergies &amp; Intolerances</div>
+<div class="section-block">
+  <table>
+    <thead><tr><th>Substance</th><th>Type</th></tr></thead>
+    <tbody>{$rows}</tbody>
+  </table>
+</div>
 HTML;
     }
 
