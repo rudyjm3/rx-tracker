@@ -32,8 +32,9 @@ final class AllergyRepository
     public function catalogForUser(): array
     {
         $stmt = $this->db->prepare(
-            'SELECT id, owner_user_id, name FROM allergy_catalog
+            'SELECT MIN(id) AS id, owner_user_id, name FROM allergy_catalog
              WHERE owner_user_id IS NULL OR owner_user_id = :user_id
+             GROUP BY name, owner_user_id
              ORDER BY name ASC'
         );
         $stmt->execute(['user_id' => $this->userId]);

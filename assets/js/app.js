@@ -4730,83 +4730,8 @@ if (medicationForm) {
 
 // ── Drug name autocomplete ────────────────────────────────────────────────────
 
-const medNameInput = document.querySelector('[data-med-name-input]');
-const autocompleteDropdown = document.querySelector('[data-autocomplete-dropdown]');
-const setIdInput = document.querySelector('[data-set-id-input]');
-let autocompleteTimer = null;
-
-const hideDrugDropdown = () => {
-  if (autocompleteDropdown) autocompleteDropdown.hidden = true;
-};
-
 // Matches a dose suffix like "50 MG", "0.5 MCG", "10 ML", "100 UNITS", "20 IU", "5%"
 const DOSE_SUFFIX_RE = /^(.*?)\s+(\d[\d.]*\s*(?:MG|MCG|ML|UNITS?|IU|%)\b.*)$/i;
-
-const showDrugDropdown = (items) => {
-  if (!autocompleteDropdown) return;
-  autocompleteDropdown.innerHTML = '';
-  if (!items.length) { hideDrugDropdown(); return; }
-  items.forEach(({ name }) => {
-    const li = document.createElement('li');
-    li.className = 'autocomplete-item';
-
-    const nameSpan = document.createElement('span');
-    nameSpan.textContent = name;
-    li.appendChild(nameSpan);
-
-    li.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      const doseMatch = name.match(DOSE_SUFFIX_RE);
-      const baseName = doseMatch ? doseMatch[1] : name;
-      const parsedDose = doseMatch ? doseMatch[2].trim() : null;
-      if (medNameInput) medNameInput.value = baseName;
-      if (parsedDose) {
-        const form = medNameInput?.closest('form');
-        const doseAmountInput = form?.querySelector('[data-dailymed-dose-amount]');
-        const doseUnitSelect  = form?.querySelector('[data-dailymed-dose-unit]');
-        if (doseAmountInput && doseUnitSelect && !doseAmountInput.value.trim()) {
-          const dosePartMatch = parsedDose.match(/^([\d.]+)\s*([A-Z%]+)/i);
-          if (dosePartMatch) {
-            doseAmountInput.value = dosePartMatch[1];
-            const rawUnit = dosePartMatch[2].toUpperCase();
-            const unitMap = { MG: 'mg', MCG: 'mcg', G: 'g', ML: 'mL', TSP: 'tsp', TBSP: 'tbsp', OZ: 'oz', IU: 'IU', UNITS: 'units', UNIT: 'units', DROPS: 'drops', PUFFS: 'puffs', PATCHES: 'patches' };
-            const mappedUnit = unitMap[rawUnit];
-            if (mappedUnit) {
-              const opt = Array.from(doseUnitSelect.options).find((o) => o.value === mappedUnit);
-              if (opt) doseUnitSelect.value = mappedUnit;
-            }
-          }
-        }
-      }
-      hideDrugDropdown();
-      fetchAndSetSplId(name); // use full name (with dose) for the most specific SPL match
-    });
-    autocompleteDropdown.appendChild(li);
-  });
-  autocompleteDropdown.hidden = false;
-};
-
-const fetchDrugSuggestions = async (query) => {
-  try {
-    const q = encodeURIComponent(query + '*');
-    const res = await fetch(
-      apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=10`)
-    );
-    if (!res.ok) { hideDrugDropdown(); return; }
-    const data = await res.json();
-    const seen = new Set();
-    const names = [];
-    const queryUpper = query.toUpperCase();
-    for (const result of (data?.results ?? [])) {
-      for (const name of [...(result.openfda?.brand_name ?? []), ...(result.openfda?.generic_name ?? [])]) {
-        const key = name.toUpperCase();
-        if (!seen.has(key) && key.includes(queryUpper)) { seen.add(key); names.push(name); }
-      }
-    }
-    if (!names.length) { hideDrugDropdown(); return; }
-    showDrugDropdown(names.map((name) => ({ name })));
-  } catch { hideDrugDropdown(); }
-};
 
 const SPL_FORM_MAP = {
   tablet: 'tablet', tablets: 'tablet',
@@ -4818,7 +4743,26 @@ const SPL_FORM_MAP = {
   drops: 'drops', ophthalmic: 'drops', otic: 'drops',
 };
 
-const fetchAndSetSplId = async (name) => {
+const fetchDrugSuggestions = async (query) => {
+  const q = encodeURIComponent(query + '*');
+  const res = await fetch(
+    apiProxy(`https://api.fda.gov/drug/label.json?search=(openfda.brand_name:${q}+OR+openfda.generic_name:${q})&limit=10`)
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  const seen = new Set();
+  const names = [];
+  const queryUpper = query.toUpperCase();
+  for (const result of (data?.results ?? [])) {
+    for (const name of [...(result.openfda?.brand_name ?? []), ...(result.openfda?.generic_name ?? [])]) {
+      const key = name.toUpperCase();
+      if (!seen.has(key) && key.includes(queryUpper)) { seen.add(key); names.push(name); }
+    }
+  }
+  return names;
+};
+
+const fetchAndSetSplId = async (setIdInput, name) => {
   if (!setIdInput) return;
   setIdInput.value = '';
   try {
@@ -4847,17 +4791,94 @@ const fetchAndSetSplId = async (name) => {
   } catch {}
 };
 
-if (medNameInput) {
-  medNameInput.addEventListener('input', () => {
-    clearTimeout(autocompleteTimer);
-    // Any manual edit to the name invalidates the previously-fetched set_id
-    if (setIdInput) setIdInput.value = '';
-    const v = medNameInput.value.trim();
-    if (v.length < 3) { hideDrugDropdown(); return; }
-    autocompleteTimer = setTimeout(() => fetchDrugSuggestions(v), 300);
+// Wires a text input + <ul> dropdown to live drug-name suggestions (openFDA, via
+// api-proxy.php), optionally merged with a locally-known name list (e.g. the
+// user's own medications). Each call owns its own debounce timer, so multiple
+// independent instances can coexist on one page.
+function wireDrugAutocomplete({ input, dropdown, extraSuggestions, onSelect }) {
+  if (!input || !dropdown) return;
+  let timer = null;
+
+  const hide = () => { dropdown.hidden = true; };
+
+  const show = (names) => {
+    dropdown.innerHTML = '';
+    if (!names.length) { hide(); return; }
+    names.forEach((name) => {
+      const li = document.createElement('li');
+      li.className = 'autocomplete-item';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = name;
+      li.appendChild(nameSpan);
+
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        hide();
+        if (onSelect) { onSelect(name); } else { input.value = name; }
+      });
+      dropdown.appendChild(li);
+    });
+    dropdown.hidden = false;
+  };
+
+  const search = async (query) => {
+    const queryUpper = query.toUpperCase();
+    const local = (extraSuggestions ?? []).filter((name) => name.toUpperCase().includes(queryUpper));
+    try {
+      const remote = await fetchDrugSuggestions(query);
+      const seen = new Set(local.map((name) => name.toUpperCase()));
+      show(local.concat(remote.filter((name) => !seen.has(name.toUpperCase()))));
+    } catch {
+      show(local);
+    }
+  };
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const v = input.value.trim();
+    if (v.length < 3) { hide(); return; }
+    timer = setTimeout(() => search(v), 300);
   });
-  medNameInput.addEventListener('blur', () => { setTimeout(hideDrugDropdown, 150); });
-  medNameInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideDrugDropdown(); });
+  input.addEventListener('blur', () => { setTimeout(hide, 150); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+}
+window.wireDrugAutocomplete = wireDrugAutocomplete;
+
+const medNameInput = document.querySelector('[data-med-name-input]');
+if (medNameInput) {
+  const autocompleteDropdown = document.querySelector('[data-autocomplete-dropdown]');
+  const setIdInput = document.querySelector('[data-set-id-input]');
+  wireDrugAutocomplete({
+    input: medNameInput,
+    dropdown: autocompleteDropdown,
+    onSelect: (name) => {
+      const doseMatch = name.match(DOSE_SUFFIX_RE);
+      const baseName = doseMatch ? doseMatch[1] : name;
+      const parsedDose = doseMatch ? doseMatch[2].trim() : null;
+      medNameInput.value = baseName;
+      if (parsedDose) {
+        const form = medNameInput.closest('form');
+        const doseAmountInput = form?.querySelector('[data-dailymed-dose-amount]');
+        const doseUnitSelect  = form?.querySelector('[data-dailymed-dose-unit]');
+        if (doseAmountInput && doseUnitSelect && !doseAmountInput.value.trim()) {
+          const dosePartMatch = parsedDose.match(/^([\d.]+)\s*([A-Z%]+)/i);
+          if (dosePartMatch) {
+            doseAmountInput.value = dosePartMatch[1];
+            const rawUnit = dosePartMatch[2].toUpperCase();
+            const unitMap = { MG: 'mg', MCG: 'mcg', G: 'g', ML: 'mL', TSP: 'tsp', TBSP: 'tbsp', OZ: 'oz', IU: 'IU', UNITS: 'units', UNIT: 'units', DROPS: 'drops', PUFFS: 'puffs', PATCHES: 'patches' };
+            const mappedUnit = unitMap[rawUnit];
+            if (mappedUnit) {
+              const opt = Array.from(doseUnitSelect.options).find((o) => o.value === mappedUnit);
+              if (opt) doseUnitSelect.value = mappedUnit;
+            }
+          }
+        }
+      }
+      fetchAndSetSplId(setIdInput, name); // use full name (with dose) for the most specific SPL match; clears/refills setIdInput itself
+    },
+  });
+  medNameInput.addEventListener('input', () => { if (setIdInput) setIdInput.value = ''; });
 }
 
 // ── Dose-form icons ───────────────────────────────────────────────────────────

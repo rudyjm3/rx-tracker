@@ -103,6 +103,54 @@
       });
     });
 
+    var allergyMedNames = [];
+    var allergyMedCatalogScript = allergiesModal.querySelector('[data-allergy-medications-catalog]');
+    if (allergyMedCatalogScript) {
+      try { allergyMedNames = JSON.parse(allergyMedCatalogScript.textContent || '[]'); } catch (e) { allergyMedNames = []; }
+    }
+
+    allergiesModal.querySelectorAll('[data-allergy-source-toggle]').forEach(function (toggle) {
+      var form = toggle.closest('form');
+      if (!form) return;
+      var substanceWrap   = form.querySelector('[data-allergy-substance-wrap]');
+      var medicationWrap  = form.querySelector('[data-allergy-medication-wrap]');
+      var select          = form.querySelector('[data-allergy-select]');
+      var substanceNewWrap  = form.querySelector('[data-allergy-new-wrap]');
+      var substanceNewInput = substanceNewWrap ? substanceNewWrap.querySelector('input') : null;
+      var medInput    = form.querySelector('[data-allergy-med-input]');
+      var medDropdown = form.querySelector('[data-allergy-med-dropdown]');
+      var label       = form.querySelector('[data-allergy-source-label]');
+      if (!substanceWrap || !medicationWrap || !select || !medInput) return;
+
+      function sync() {
+        var isMed = toggle.checked;
+        substanceWrap.hidden = isMed;
+        medicationWrap.hidden = !isMed;
+        select.disabled = isMed;
+        if (isMed) {
+          // Leave select.value untouched (just disabled, so it won't submit) so the prior
+          // Substance choice is restored if the user toggles back without reselecting.
+          if (substanceNewWrap) substanceNewWrap.style.display = 'none';
+          if (substanceNewInput) { substanceNewInput.disabled = true; }
+        } else {
+          if (substanceNewInput) substanceNewInput.disabled = false;
+          if (substanceNewWrap) substanceNewWrap.style.display = select.value === 'new' ? '' : 'none';
+        }
+        medInput.disabled = !isMed;
+        if (!isMed) {
+          medInput.value = '';
+          if (medDropdown) medDropdown.hidden = true;
+        }
+        if (label) label.textContent = isMed ? 'Medication' : 'Substance';
+      }
+      toggle.addEventListener('change', sync);
+      sync();
+
+      if (window.wireDrugAutocomplete && medDropdown) {
+        window.wireDrugAutocomplete({ input: medInput, dropdown: medDropdown, extraSuggestions: allergyMedNames });
+      }
+    });
+
     allergiesModal.querySelectorAll('[data-life-threatening-toggle]').forEach(function (toggle) {
       var form = toggle.closest('form');
       var severityGroup = form ? form.querySelector('[data-severity-group]') : null;

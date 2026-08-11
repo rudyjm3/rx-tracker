@@ -2131,16 +2131,24 @@ final class SchemaInstaller
                 'Latex', 'Peanuts', 'Tree Nuts', 'Shellfish', 'Eggs', 'Milk/Dairy', 'Soy', 'Wheat/Gluten',
                 'Pollen', 'Pet Dander (Cat/Dog)', 'Bee/Insect Stings',
             ];
-            $existingStmt = $this->db->query('SELECT name FROM allergy_catalog WHERE owner_user_id IS NULL');
-            $existingNames = $existingStmt !== false
-                ? array_map(static fn(array $row): string => (string) $row['name'], $existingStmt->fetchAll())
-                : [];
-            $insert = $this->db->prepare('INSERT INTO allergy_catalog (owner_user_id, name) VALUES (NULL, :name)');
-            foreach ($names as $name) {
-                if (!in_array($name, $existingNames, true)) {
-                    $insert->execute(['name' => $name]);
-                }
+            // Single atomic INSERT...SELECT...WHERE NOT EXISTS (same idiom as migration
+            // 017_add_allergies.sql) instead of a select-then-loop-insert: MySQL doesn't
+            // dedupe NULL-owner rows via the unique key, and a separate select-then-insert
+            // leaves a race window where two concurrent sweeps can both insert the full seed
+            // list, producing duplicate catalog rows.
+            $params  = [];
+            $selects = [];
+            foreach ($names as $i => $name) {
+                $selects[] = 'SELECT :name' . $i . ($i === 0 ? ' AS name' : '');
+                $params['name' . $i] = $name;
             }
+            $this->db->prepare(
+                'INSERT INTO allergy_catalog (owner_user_id, name)
+                 SELECT NULL, v.name FROM (' . implode(' UNION ALL ', $selects) . ') v
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM allergy_catalog ac WHERE ac.owner_user_id IS NULL AND ac.name = v.name
+                 )'
+            )->execute($params);
         } catch (Throwable) {
             $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.

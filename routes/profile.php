@@ -728,6 +728,7 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 $modalProfileId        = null;
 $modalAllergies        = $ownerAllergies;
 $modalAllergyCatalog   = $allergyCatalog;
+$modalMedications      = array_merge($ownerActiveMeds, $ownerInactiveMeds);
 $modalActionUrl        = 'index.php?page=profile';
 require __DIR__ . '/../includes/allergies-modal.php';
 
