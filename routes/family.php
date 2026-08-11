@@ -7,7 +7,7 @@ declare(strict_types=1);
 $userId     = $auth->currentUserId();
 $familyRepo = new FamilyProfileRepository(db());
 
-$stmt = db()->prepare('SELECT id, email, display_name, created_at FROM users WHERE id = :id LIMIT 1');
+$stmt = db()->prepare('SELECT id, email, display_name, profile_picture, created_at FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
 $userRow = $stmt->fetch();
 if (!is_array($userRow)) {
@@ -38,7 +38,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $avatarColor  = trim(post_string('avatar_color')) ?: null;
             $relationship = trim(post_string('relationship')) ?: null;
             $birthDate    = trim(post_string('birth_date')) ?: null;
-            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, null, $firstName, $lastName, $birthDate);
+            if ($displayName === '') {
+                $displayName = fallback_display_name($firstName, $lastName);
+            }
+            if ($displayName === '') {
+                throw new RuntimeException('Enter a display name or a first name.');
+            }
+
+            $heightValueRaw = trim(post_string('height_value'));
+            $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
+            $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : ($heightValue !== null ? 'in' : null);
+
+            $profilePicture = null;
+            if (($_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                $profilePicture = (new AvatarUploadService())->saveUpload($_FILES['profile_picture']);
+            }
+
+            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit);
             header('Location: index.php?page=family&success=' . urlencode($displayName . ' was added.'));
         } catch (RuntimeException $e) {
             header('Location: index.php?page=family&error=' . urlencode($e->getMessage()));
@@ -55,9 +71,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $avatarColor  = trim(post_string('avatar_color')) ?: null;
             $relationship = trim(post_string('relationship')) ?: null;
             $birthDate    = trim(post_string('birth_date')) ?: null;
-            $existing     = $familyRepo->findProfile($profileId, $userId);
-            $birthYear    = $existing['birth_year'] ?? null;
-            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear !== null ? (int) $birthYear : null, $firstName, $lastName, $birthDate);
+            if ($displayName === '') {
+                $displayName = fallback_display_name($firstName, $lastName);
+            }
+            if ($displayName === '') {
+                throw new RuntimeException('Enter a display name or a first name.');
+            }
+            $existing  = $familyRepo->findProfile($profileId, $userId);
+            $birthYear = $existing['birth_year'] ?? null;
+
+            $heightValueRaw = trim(post_string('height_value'));
+            $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
+            $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : ($heightValue !== null ? 'in' : null);
+
+            $avatarService  = new AvatarUploadService();
+            $profilePicture = $existing['profile_picture'] ?? null;
+            if (isset($_POST['remove_profile_picture'])) {
+                $avatarService->deleteIfLocal($profilePicture);
+                $profilePicture = null;
+            } elseif (($_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                $newPicture = $avatarService->saveUpload($_FILES['profile_picture']);
+                $avatarService->deleteIfLocal($profilePicture);
+                $profilePicture = $newPicture;
+            }
+
+            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear !== null ? (int) $birthYear : null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit);
             header('Location: index.php?page=family&success=' . urlencode($displayName . '\'s profile was updated.'));
         } catch (RuntimeException $e) {
             header('Location: index.php?page=family&error=' . urlencode($e->getMessage()));
@@ -128,7 +166,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e((string) $userRow['email']) ?>" aria-label="My profile">
-          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
+          <?= render_avatar((string) ($navActiveProfile['profile_picture'] ?? $userRow['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top">
@@ -146,18 +184,14 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
                     class="profile-option nav-user-menu-owner-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:#6366f1">
-                <?= e(mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($userRow['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
             </button>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $navActiveProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
-                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'profile-option-avatar') ?>
               <?= e((string) $fp['display_name']) ?>
               <?php if ($fp['relationship']): ?>
                 <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
@@ -208,8 +242,8 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
         <li class="session-row">
           <a href="index.php?page=family-member&id=<?= (int)$fp['id'] ?>" class="session-info" style="text-decoration:none;color:inherit">
             <span class="session-agent">
-              <span style="display:inline-flex;align-items:center;justify-content:center;width:1.6rem;height:1.6rem;border-radius:50%;background:<?= e((string)($fp['avatar_color'] ?? '#6366f1')) ?>;color:#fff;font-size:.75rem;font-weight:700;margin-right:.5rem">
-                <?= e(mb_strtoupper(mb_substr((string)$fp['display_name'], 0, 1))) ?>
+              <span style="display:inline-flex;width:1.6rem;height:1.6rem;margin-right:.5rem;flex-shrink:0">
+                <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string)$fp['display_name'], 0, 1)), (string)($fp['avatar_color'] ?? '#6366f1'), 'family-list-avatar') ?>
               </span>
               <?= e((string)$fp['display_name']) ?>
             </span>
@@ -254,7 +288,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
       </button>
     </div>
     <div class="modal-scroll">
-      <form method="post" action="index.php?page=family" class="stacked-form">
+      <form method="post" action="index.php?page=family" class="stacked-form" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="create_family_profile">
         <div class="form-group">
@@ -266,8 +300,8 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
           <input type="text" id="family_last_name" name="last_name" maxlength="50" placeholder="e.g. Johnson">
         </div>
         <div class="form-group">
-          <label for="family_display_name">Display Name <span style="color:var(--danger)">*</span></label>
-          <input type="text" id="family_display_name" name="display_name" required maxlength="100" placeholder="e.g. Sarah">
+          <label for="family_display_name">Display Name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
+          <input type="text" id="family_display_name" name="display_name" maxlength="100" placeholder="e.g. Sarah">
         </div>
         <div class="form-group">
           <label for="family_relationship">Relationship</label>
@@ -281,6 +315,21 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
         <div class="form-group">
           <label for="family_birth_date">Birth Date</label>
           <input type="date" id="family_birth_date" name="birth_date" max="<?= e(today()) ?>">
+        </div>
+        <div class="form-group">
+          <label for="family_height_value">Height</label>
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <input type="number" id="family_height_value" name="height_value" step="0.1" min="0" style="max-width:8rem">
+            <label class="toggle-control" for="family_height_unit_toggle">
+              <input type="checkbox" id="family_height_unit_toggle" name="height_unit_cm">
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-height-unit-label>in</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="family_profile_picture">Profile Picture</label>
+          <input type="file" id="family_profile_picture" name="profile_picture" accept="image/png,image/jpeg,image/webp">
         </div>
         <div class="form-group">
           <label class="form-label"><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
@@ -319,7 +368,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
       </button>
     </div>
     <div class="modal-scroll">
-      <form method="post" action="index.php?page=family" class="stacked-form">
+      <form method="post" action="index.php?page=family" class="stacked-form" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="update_family_profile">
         <input type="hidden" name="profile_id" value="<?= (int)$fp['id'] ?>">
@@ -334,8 +383,8 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
                  value="<?= e((string)($fp['last_name'] ?? '')) ?>">
         </div>
         <div class="form-group">
-          <label for="edit_display_name_<?= (int)$fp['id'] ?>">Display Name <span style="color:var(--danger)">*</span></label>
-          <input type="text" id="edit_display_name_<?= (int)$fp['id'] ?>" name="display_name" required maxlength="100"
+          <label for="edit_display_name_<?= (int)$fp['id'] ?>">Display Name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
+          <input type="text" id="edit_display_name_<?= (int)$fp['id'] ?>" name="display_name" maxlength="100"
                  value="<?= e((string)$fp['display_name']) ?>">
         </div>
         <div class="form-group">
@@ -351,6 +400,34 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
           <label for="edit_birth_date_<?= (int)$fp['id'] ?>">Birth Date</label>
           <input type="date" id="edit_birth_date_<?= (int)$fp['id'] ?>" name="birth_date" max="<?= e(today()) ?>"
                  value="<?= e((string)($fp['birth_date'] ?? '')) ?>">
+        </div>
+        <div class="form-group">
+          <label for="edit_height_value_<?= (int)$fp['id'] ?>">Height</label>
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <input type="number" id="edit_height_value_<?= (int)$fp['id'] ?>" name="height_value" step="0.1" min="0" style="max-width:8rem"
+                   value="<?= e($fp['height_value'] !== null ? (string) (float) $fp['height_value'] : '') ?>">
+            <label class="toggle-control" for="edit_height_unit_toggle_<?= (int)$fp['id'] ?>">
+              <input type="checkbox" id="edit_height_unit_toggle_<?= (int)$fp['id'] ?>" name="height_unit_cm"<?= (string) ($fp['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-height-unit-label><?= (string) ($fp['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Profile Picture</label>
+          <div style="display:flex;align-items:center;gap:.75rem">
+            <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
+              <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'family-profile-card__avatar') ?>
+            </span>
+            <div>
+              <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
+              <?php if (!empty($fp['profile_picture'])): ?>
+              <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
+                <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
+              </label>
+              <?php endif; ?>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label"><i class="fa-solid fa-palette" aria-hidden="true" style="margin-right:.35rem;color:var(--rx-deep-blue)"></i>Avatar Color</label>
@@ -486,6 +563,14 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
       if (e.target === addModal) addModal.classList.remove('is-open');
     });
   }
+
+  document.querySelectorAll('input[name="height_unit_cm"]').forEach(function (toggle) {
+    var label = toggle.parentElement.querySelector('[data-height-unit-label]');
+    if (!label) return;
+    toggle.addEventListener('change', function () {
+      label.textContent = toggle.checked ? 'cm' : 'in';
+    });
+  });
 })();
 </script>
 </body>

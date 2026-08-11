@@ -575,3 +575,25 @@ SELECT NULL, v.name FROM (
 WHERE NOT EXISTS (
     SELECT 1 FROM allergy_catalog ac WHERE ac.owner_user_id IS NULL AND ac.name = v.name
 );
+
+-- Migration 018: Height (value + unit) for both the primary account owner
+-- and family members, plus a profile picture for family members (users
+-- already has profile_picture, populated by Google sign-in).
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS height_value DECIMAL(5,2) NULL,
+    ADD COLUMN IF NOT EXISTS height_unit  VARCHAR(4) NULL;
+
+ALTER TABLE family_profiles
+    ADD COLUMN IF NOT EXISTS height_value    DECIMAL(5,2) NULL,
+    ADD COLUMN IF NOT EXISTS height_unit     VARCHAR(4) NULL,
+    ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(500) NULL;
+
+-- Migration 019: Richer allergy detail fields (type, life-threatening flag,
+-- estimated severity, category, notes, active/resolved status).
+ALTER TABLE profile_allergies
+    ADD COLUMN IF NOT EXISTS allergy_type     VARCHAR(12) NOT NULL DEFAULT 'allergy',
+    ADD COLUMN IF NOT EXISTS life_threatening TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS severity         VARCHAR(12) NULL,
+    ADD COLUMN IF NOT EXISTS category         VARCHAR(20) NULL,
+    ADD COLUMN IF NOT EXISTS notes            TEXT NULL,
+    ADD COLUMN IF NOT EXISTS is_active        TINYINT(1) NOT NULL DEFAULT 1;

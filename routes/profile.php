@@ -7,7 +7,7 @@ declare(strict_types=1);
 $userId     = $auth->currentUserId();
 $familyRepo = new FamilyProfileRepository(db());
 
-$stmt = db()->prepare('SELECT id, email, display_name, first_name, last_name, birth_date, google_id, profile_picture, password_hash, created_at FROM users WHERE id = :id LIMIT 1');
+$stmt = db()->prepare('SELECT id, email, display_name, first_name, last_name, birth_date, google_id, profile_picture, password_hash, created_at, height_value, height_unit FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
 $userRow = $stmt->fetch();
 if (!is_array($userRow)) {
@@ -37,7 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $birthDate = trim(post_string('birth_date')) ?: null;
 
         if ($newName === '') {
-            header('Location: index.php?page=profile&error=' . urlencode('Display name cannot be empty.'));
+            $newName = fallback_display_name($firstName, $lastName);
+        }
+        if ($newName === '') {
+            header('Location: index.php?page=profile&error=' . urlencode('Enter a display name or a first name.'));
             exit;
         }
         if (strlen($newName) > 100 || ($firstName !== null && mb_strlen($firstName) > 50) || ($lastName !== null && mb_strlen($lastName) > 50)) {
@@ -56,20 +59,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        db()->prepare('UPDATE users SET display_name = :name, first_name = :first_name, last_name = :last_name, birth_date = :birth_date WHERE id = :id')
-            ->execute(['name' => $newName, 'first_name' => $firstName, 'last_name' => $lastName, 'birth_date' => $birthDate, 'id' => $userId]);
+        $heightValueRaw = trim(post_string('height_value'));
+        $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
+        $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : 'in';
+        if ($heightValue !== null) {
+            $bounds = $heightUnit === 'cm' ? [50.0, 274.0] : [20.0, 108.0];
+            if ($heightValue < $bounds[0] || $heightValue > $bounds[1]) {
+                header('Location: index.php?page=profile&error=' . urlencode('Height value is out of range.'));
+                exit;
+            }
+        } else {
+            $heightUnit = null;
+        }
+
+        $avatarService  = new AvatarUploadService();
+        $profilePicture = (string) ($userRow['profile_picture'] ?? '') ?: null;
+        if (isset($_POST['remove_profile_picture'])) {
+            $avatarService->deleteIfLocal($profilePicture);
+            $profilePicture = null;
+        } elseif (($_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            try {
+                $newPicture = $avatarService->saveUpload($_FILES['profile_picture']);
+                $avatarService->deleteIfLocal($profilePicture);
+                $profilePicture = $newPicture;
+            } catch (RuntimeException $e) {
+                header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+                exit;
+            }
+        }
+
+        db()->prepare('UPDATE users SET display_name = :name, first_name = :first_name, last_name = :last_name, birth_date = :birth_date, height_value = :height_value, height_unit = :height_unit, profile_picture = :profile_picture WHERE id = :id')
+            ->execute([
+                'name'            => $newName,
+                'first_name'      => $firstName,
+                'last_name'       => $lastName,
+                'birth_date'      => $birthDate,
+                'height_value'    => $heightValue,
+                'height_unit'     => $heightUnit,
+                'profile_picture' => $profilePicture,
+                'id'              => $userId,
+            ]);
         header('Location: index.php?page=profile&success=' . urlencode('Profile updated.'));
         exit;
     }
 
     if ($action === 'add_profile_allergy') {
         try {
-            $allergyRepo = new AllergyRepository(db(), $userId);
+            $allergyRepo  = new AllergyRepository(db(), $userId);
             $catalogIdRaw = post_string('allergy_catalog_id');
             $catalogId    = $catalogIdRaw !== '' ? (int) $catalogIdRaw : null;
             $newName      = trim(post_string('new_allergy_name')) ?: null;
-            $allergyRepo->addAllergy(null, $catalogId, $newName);
+            $allergyRepo->addAllergy(
+                null,
+                $catalogId,
+                $newName,
+                post_string('allergy_type') ?: 'allergy',
+                isset($_POST['life_threatening']),
+                trim(post_string('severity')) ?: null,
+                trim(post_string('category')) ?: null,
+                post_string('notes') ?: null
+            );
             header('Location: index.php?page=profile&success=' . urlencode('Allergy added.'));
+        } catch (RuntimeException $e) {
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+        }
+        exit;
+    }
+
+    if ($action === 'update_profile_allergy') {
+        try {
+            $allergyRepo  = new AllergyRepository(db(), $userId);
+            $catalogIdRaw = post_string('allergy_catalog_id');
+            $catalogId    = $catalogIdRaw !== '' ? (int) $catalogIdRaw : null;
+            $newName      = trim(post_string('new_allergy_name')) ?: null;
+            $allergyRepo->updateAllergy(
+                null,
+                (int) ($_POST['allergy_id'] ?? 0),
+                $catalogId,
+                $newName,
+                post_string('allergy_type') ?: 'allergy',
+                isset($_POST['life_threatening']),
+                trim(post_string('severity')) ?: null,
+                trim(post_string('category')) ?: null,
+                post_string('notes') ?: null,
+                post_string('is_active') !== '0'
+            );
+            header('Location: index.php?page=profile&success=' . urlencode('Allergy updated.'));
         } catch (RuntimeException $e) {
             header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
         }
@@ -173,6 +248,7 @@ $ownerAge = calculate_age($userRow['birth_date'] !== null ? (string) $userRow['b
 
 $allergyRepo     = new AllergyRepository(db(), $userId);
 $ownerAllergies  = $allergyRepo->allergiesForProfile(null);
+$ownerActiveAllergies = array_values(array_filter($ownerAllergies, static fn(array $a): bool => (int) $a['is_active'] === 1));
 $allergyCatalog  = $allergyRepo->catalogForUser();
 
 $ownerMedRepo       = new MedicationRepository(db(), $userId, null);
@@ -226,7 +302,7 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e((string) $userRow['email']) ?>" aria-label="My profile">
-          <span class="nav-user-avatar" style="background:<?= e($navAvatarColor) ?>"><?= e($navAvatarLetter) ?></span>
+          <?= render_avatar((string) ($navActiveProfile['profile_picture'] ?? $userRow['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top is-active">
@@ -244,18 +320,14 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
             <input type="hidden" name="redirect_to" value="<?= e($_SERVER['REQUEST_URI'] ?? 'index.php') ?>">
             <button type="submit" name="profile_id" value="0"
                     class="profile-option nav-user-menu-owner-option<?= $navActiveProfileId === null ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:#6366f1">
-                <?= e(mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($userRow['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
             </button>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
                     class="profile-option<?= $navActiveProfileId === (int) $fp['id'] ? ' is-active' : '' ?>">
-              <span class="profile-option-avatar" style="background:<?= e((string) ($fp['avatar_color'] ?? '#6366f1')) ?>">
-                <?= e(mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1))) ?>
-              </span>
+              <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'profile-option-avatar') ?>
               <?= e((string) $fp['display_name']) ?>
               <?php if ($fp['relationship']): ?>
                 <span class="profile-option-rel"><?= e((string) $fp['relationship']) ?></span>
@@ -318,6 +390,16 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
           </span>
         </div>
         <?php endif; ?>
+        <?php if (!empty($userRow['height_value'])): ?>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Height</span>
+          <span class="profile-info-value">
+            <?php $ownerHeightInches = height_to_inches((float) $userRow['height_value'], (string) $userRow['height_unit']); ?>
+            <?= e(rtrim(rtrim(number_format((float) $userRow['height_value'], 1), '0'), '.')) ?> <?= e((string) $userRow['height_unit']) ?>
+            (<?= e(format_feet_inches($ownerHeightInches)) ?>)
+          </span>
+        </div>
+        <?php endif; ?>
         <?php if ($memberSince !== ''): ?>
         <div class="profile-info-row">
           <span class="profile-info-label">Member since</span>
@@ -327,9 +409,30 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 
         <hr class="profile-divider">
 
-        <form method="post" action="index.php?page=profile" class="stacked-form">
+        <form method="post" action="index.php?page=profile" class="stacked-form" enctype="multipart/form-data">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="update_profile_info">
+          <div class="form-group">
+            <label class="form-label">Profile Picture</label>
+            <div style="display:flex;align-items:center;gap:.75rem">
+              <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
+                <?= render_avatar(
+                  (string) ($userRow['profile_picture'] ?? '') ?: null,
+                  mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)),
+                  '#6366f1',
+                  'family-profile-card__avatar'
+                ) ?>
+              </span>
+              <div>
+                <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
+                <?php if (!empty($userRow['profile_picture'])): ?>
+                <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
+                  <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
+                </label>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
           <div class="form-group">
             <label for="first_name">First name</label>
             <input type="text" id="first_name" name="first_name" value="<?= e((string) ($userRow['first_name'] ?? '')) ?>" maxlength="50" placeholder="First name" autocomplete="given-name">
@@ -339,7 +442,7 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
             <input type="text" id="last_name" name="last_name" value="<?= e((string) ($userRow['last_name'] ?? '')) ?>" maxlength="50" placeholder="Last name" autocomplete="family-name">
           </div>
           <div class="form-group">
-            <label for="display_name">Display name</label>
+            <label for="display_name">Display name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
             <input
               type="text"
               id="display_name"
@@ -348,12 +451,22 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
               maxlength="100"
               placeholder="Your name"
               autocomplete="name"
-              required
             >
           </div>
           <div class="form-group">
             <label for="birth_date">Birthdate</label>
             <input type="date" id="birth_date" name="birth_date" value="<?= e((string) ($userRow['birth_date'] ?? '')) ?>" max="<?= e(today()) ?>">
+          </div>
+          <div class="form-group">
+            <label for="height_value">Height</label>
+            <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+              <input type="number" id="height_value" name="height_value" step="0.1" min="0" style="max-width:8rem" value="<?= e($userRow['height_value'] !== null ? (string) (float) $userRow['height_value'] : '') ?>">
+              <label class="toggle-control" for="height_unit_toggle">
+                <input type="checkbox" id="height_unit_toggle" name="height_unit_cm"<?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
+                <span class="toggle-slider" aria-hidden="true"></span>
+                <span class="toggle-label" data-height-unit-label><?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
+              </label>
+            </div>
           </div>
           <button type="submit" class="secondary">Save profile</button>
         </form>
@@ -361,70 +474,30 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 
       <!-- Medications and Supplements -->
       <div class="panel">
-        <div class="panel-heading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
-          <h2>Medications and Supplements</h2>
-        </div>
-        <?php if ($ownerActiveMeds === [] && $ownerInactiveMeds === []): ?>
-          <div class="muted">
-            No medications yet.
-            <form method="post" action="index.php?page=profile" style="display:inline">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="switch_family_profile">
-              <input type="hidden" name="profile_id" value="0">
-              <input type="hidden" name="redirect_to" value="index.php?page=medications">
-              <button type="submit" class="btn-text" style="padding:0;font-size:inherit">Add one</button>
-            </form>
-            to see it here.
-          </div>
-        <?php else: ?>
-          <?php if ($ownerActiveMeds !== []): ?>
-          <h3 style="margin:0 0 .5rem;font-size:.85rem;color:var(--rx-text-muted)">Active</h3>
-          <div class="medication-list" style="margin-bottom:1rem">
-            <?php foreach ($ownerActiveMeds as $med): ?>
-              <?= render_simple_medication_line($med) ?>
-            <?php endforeach; ?>
-          </div>
-          <?php endif; ?>
-          <?php if ($ownerInactiveMeds !== []): ?>
-          <h3 style="margin:0 0 .5rem;font-size:.85rem;color:var(--rx-text-muted)">No longer active</h3>
-          <div class="medication-list">
-            <?php foreach ($ownerInactiveMeds as $med): ?>
-              <?= render_simple_medication_line($med, true) ?>
-            <?php endforeach; ?>
-          </div>
-          <?php endif; ?>
-        <?php endif; ?>
+        <button type="button" class="summary-card" data-open-meds-modal>
+          <span class="summary-card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+          </span>
+          <span class="summary-card-body">
+            <span class="summary-card-title">Medications and Supplements</span>
+            <span class="summary-card-meta"><?= count($ownerActiveMeds) ?> active med<?= count($ownerActiveMeds) === 1 ? '' : 's' ?></span>
+          </span>
+          <i class="fa-solid fa-chevron-right summary-card-chevron" aria-hidden="true"></i>
+        </button>
       </div>
 
       <!-- Allergies -->
       <div class="panel">
-        <div class="panel-heading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5c0 3 2 4 2 7a5 5 0 0 0 10 0c0-3 2-4 2-7a5 5 0 0 0-5-5"/></svg>
-          <h2>Allergies</h2>
-          <button type="button" class="btn-text" style="margin-left:auto" data-open-allergy-add-modal>
-            <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Allergy
-          </button>
-        </div>
-        <?php if ($ownerAllergies === []): ?>
-          <p class="muted">No known allergies on file.</p>
-        <?php else: ?>
-          <ul class="sessions-list">
-            <?php foreach ($ownerAllergies as $allergy): ?>
-            <li class="session-row">
-              <div class="session-info">
-                <span class="session-agent"><?= e((string) $allergy['name']) ?></span>
-              </div>
-              <form method="post" action="index.php?page=profile">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="remove_profile_allergy">
-                <input type="hidden" name="allergy_id" value="<?= (int) $allergy['id'] ?>">
-                <button type="submit" class="btn-danger" style="font-size:.8rem;padding:.25rem .6rem">Remove</button>
-              </form>
-            </li>
-            <?php endforeach; ?>
-          </ul>
-        <?php endif; ?>
+        <button type="button" class="summary-card" data-open-allergies-modal>
+          <span class="summary-card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a5 5 0 0 0-5 5c0 3 2 4 2 7a5 5 0 0 0 10 0c0-3 2-4 2-7a5 5 0 0 0-5-5"/></svg>
+          </span>
+          <span class="summary-card-body">
+            <span class="summary-card-title">Allergies &amp; Intolerances</span>
+            <span class="summary-card-meta"><?= count($ownerActiveAllergies) ?> allerg<?= count($ownerActiveAllergies) === 1 ? 'y' : 'ies' ?></span>
+          </span>
+          <i class="fa-solid fa-chevron-right summary-card-chevron" aria-hidden="true"></i>
+        </button>
       </div>
 
       <!-- Connected Accounts -->
@@ -609,41 +682,17 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 
 </main>
 
-<!-- Add Allergy modal -->
-<div class="modal-overlay" data-allergy-add-modal>
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="allergy-add-title">
-    <div class="modal-header">
-      <h2 id="allergy-add-title">Add Allergy</h2>
-      <button type="button" class="modal-close-btn" data-close-allergy-add-modal aria-label="Close">
-        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-      </button>
-    </div>
-    <div class="modal-scroll">
-      <form method="post" action="index.php?page=profile" class="stacked-form">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="add_profile_allergy">
-        <div class="form-group">
-          <label for="allergy_select">Allergy</label>
-          <select id="allergy_select" name="allergy_catalog_id" data-allergy-select>
-            <option value="">— Select —</option>
-            <?php foreach ($allergyCatalog as $item): ?>
-            <option value="<?= (int) $item['id'] ?>"><?= e((string) $item['name']) ?></option>
-            <?php endforeach; ?>
-            <option value="new">+ Add a new allergy…</option>
-          </select>
-        </div>
-        <div class="form-group" data-allergy-new-wrap style="display:none">
-          <label for="new_allergy_name">New allergy name</label>
-          <input type="text" id="new_allergy_name" name="new_allergy_name" maxlength="150" placeholder="e.g. Amoxicillin">
-        </div>
-        <div class="modal-footer">
-          <button type="submit" class="secondary">Add Allergy</button>
-          <button type="button" class="secondary" data-close-allergy-add-modal>Cancel</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
+<?php
+$modalProfileId      = null;
+$modalAllergies      = $ownerAllergies;
+$modalAllergyCatalog = $allergyCatalog;
+$modalActionUrl       = 'index.php?page=profile';
+require __DIR__ . '/../includes/allergies-modal.php';
+
+$modalActiveMeds   = $ownerActiveMeds;
+$modalInactiveMeds = $ownerInactiveMeds;
+require __DIR__ . '/../includes/medications-modal.php';
+?>
 
 <nav class="bottom-nav" aria-label="Main navigation">
   <a href="index.php" class="bottom-nav-item" aria-label="Dashboard">
@@ -684,33 +733,6 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
     </a>
   </div>
 </div>
-<script>
-(function () {
-  document.querySelectorAll('[data-open-allergy-add-modal]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var modal = document.querySelector('[data-allergy-add-modal]');
-      if (modal) modal.classList.add('is-open');
-    });
-  });
-  document.querySelectorAll('[data-close-allergy-add-modal]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      btn.closest('.modal-overlay').classList.remove('is-open');
-    });
-  });
-  var allergyModal = document.querySelector('[data-allergy-add-modal]');
-  if (allergyModal) {
-    allergyModal.addEventListener('click', function (e) {
-      if (e.target === allergyModal) allergyModal.classList.remove('is-open');
-    });
-  }
-  var allergySelect = document.querySelector('[data-allergy-select]');
-  var allergyNewWrap = document.querySelector('[data-allergy-new-wrap]');
-  if (allergySelect && allergyNewWrap) {
-    allergySelect.addEventListener('change', function () {
-      allergyNewWrap.style.display = allergySelect.value === 'new' ? '' : 'none';
-    });
-  }
-})();
-</script>
+<script src="assets/js/profile-cards-modal.js?v=<?= filemtime(__DIR__ . '/../assets/js/profile-cards-modal.js') ?>" defer></script>
 </body>
 </html>

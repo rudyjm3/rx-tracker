@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 5;
+    private const CURRENT_SCHEMA_VERSION = 7;
 
     private static array $schemaSweepDone = [];
 
@@ -160,6 +160,8 @@ final class SchemaInstaller
         $this->ensureEndDateColumn();
         $this->ensureNameAndBirthdateColumns();
         $this->ensureAllergyTables();
+        $this->ensureProfileExtrasColumns();
+        $this->ensureAllergyDetailColumns();
     }
 
     private function ensureGroupTables(): void
@@ -2137,6 +2139,96 @@ final class SchemaInstaller
             foreach ($names as $name) {
                 if (!in_array($name, $existingNames, true)) {
                     $insert->execute(['name' => $name]);
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureProfileExtrasColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $columns = [
+                    'users'           => ['height_value' => 'DECIMAL(5,2) NULL', 'height_unit' => 'VARCHAR(4) NULL'],
+                    'family_profiles' => ['height_value' => 'DECIMAL(5,2) NULL', 'height_unit' => 'VARCHAR(4) NULL', 'profile_picture' => 'VARCHAR(500) NULL'],
+                ];
+                foreach ($columns as $table => $cols) {
+                    foreach ($cols as $column => $definition) {
+                        $check = $this->db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
+                        if ($check !== false && $check->fetchColumn() === false) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $columns = [
+                    'users'           => ['height_value' => 'REAL NULL', 'height_unit' => 'TEXT NULL'],
+                    'family_profiles' => ['height_value' => 'REAL NULL', 'height_unit' => 'TEXT NULL', 'profile_picture' => 'TEXT NULL'],
+                ];
+                foreach ($columns as $table => $cols) {
+                    $check = $this->db->query("PRAGMA table_info({$table})");
+                    if ($check === false) {
+                        continue;
+                    }
+                    $existing = array_map(static fn(array $c): string => (string) ($c['name'] ?? ''), $check->fetchAll());
+                    foreach ($cols as $column => $definition) {
+                        if (!in_array($column, $existing, true)) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
+                    }
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureAllergyDetailColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $columns = [
+                    'allergy_type'     => "VARCHAR(12) NOT NULL DEFAULT 'allergy'",
+                    'life_threatening' => 'TINYINT(1) NOT NULL DEFAULT 0',
+                    'severity'         => 'VARCHAR(12) NULL',
+                    'category'         => 'VARCHAR(20) NULL',
+                    'notes'            => 'TEXT NULL',
+                    'is_active'        => 'TINYINT(1) NOT NULL DEFAULT 1',
+                ];
+                foreach ($columns as $column => $definition) {
+                    $check = $this->db->query("SHOW COLUMNS FROM profile_allergies LIKE '{$column}'");
+                    if ($check !== false && $check->fetchColumn() === false) {
+                        $this->db->exec("ALTER TABLE profile_allergies ADD COLUMN {$column} {$definition}");
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $columns = [
+                    'allergy_type'     => "TEXT NOT NULL DEFAULT 'allergy'",
+                    'life_threatening' => 'INTEGER NOT NULL DEFAULT 0',
+                    'severity'         => 'TEXT NULL',
+                    'category'         => 'TEXT NULL',
+                    'notes'            => 'TEXT NULL',
+                    'is_active'        => 'INTEGER NOT NULL DEFAULT 1',
+                ];
+                $check = $this->db->query('PRAGMA table_info(profile_allergies)');
+                if ($check === false) {
+                    return;
+                }
+                $existing = array_map(static fn(array $c): string => (string) ($c['name'] ?? ''), $check->fetchAll());
+                foreach ($columns as $column => $definition) {
+                    if (!in_array($column, $existing, true)) {
+                        $this->db->exec("ALTER TABLE profile_allergies ADD COLUMN {$column} {$definition}");
+                    }
                 }
             }
         } catch (Throwable) {

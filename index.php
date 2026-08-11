@@ -12,6 +12,7 @@ require __DIR__ . '/includes/MailService.php';
 require __DIR__ . '/includes/MedicationRepository.php';
 require __DIR__ . '/includes/FamilyProfileRepository.php';
 require __DIR__ . '/includes/AllergyRepository.php';
+require __DIR__ . '/includes/AvatarUploadService.php';
 require __DIR__ . '/includes/PushNotificationService.php';
 require __DIR__ . '/includes/SideEffectRepository.php';
 require __DIR__ . '/includes/PainChartRenderer.php';

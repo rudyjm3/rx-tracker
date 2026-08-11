@@ -14,7 +14,8 @@ final class DoctorVisitReport
         private readonly MoodChartRenderer    $moodChartRenderer,
         private readonly string               $displayName,
         private readonly ?string              $lastName = null,
-        private readonly array                $allergies = []
+        private readonly array                $allergies = [],
+        private readonly ?string              $firstName = null
     ) {}
 
     /**
@@ -246,8 +247,13 @@ HTML;
     // already the trailing word of displayName, to avoid "John Doe Doe".
     private function patientDisplayName(): string
     {
+        $first = trim((string) ($this->firstName ?? ''));
+        $last  = trim((string) ($this->lastName ?? ''));
+        if ($first !== '') {
+            return trim($first . ' ' . $last);
+        }
+
         $full = trim($this->displayName);
-        $last = trim((string) ($this->lastName ?? ''));
         if ($last === '') {
             return $full !== '' ? $full : 'Patient';
         }
