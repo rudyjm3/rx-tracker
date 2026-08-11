@@ -296,6 +296,8 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
       <a href="index.php?page=medications">Medications</a>
       <a href="index.php?page=calendar">Calendar</a>
       <a href="index.php?page=export">Export</a>
+      <a href="index.php?page=pain-tracking">Pain Tracking</a>
+      <a href="index.php?page=mood-wellbeing">Mood &amp; Wellbeing</a>
     </div>
     <div class="nav-actions">
       <?php $navShowRefillBtn = false; require __DIR__ . '/../includes/nav-bell.php'; ?>
