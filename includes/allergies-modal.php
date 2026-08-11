@@ -22,6 +22,7 @@ $modalPastAllergies   = array_values(array_filter($modalAllergies, static fn(arr
 $modalAllergyTypes      = AllergyRepository::allowedTypes();
 $modalAllergySeverities = AllergyRepository::allowedSeverities();
 $modalAllergyCategories = AllergyRepository::allowedCategories();
+$modalAllergyCatalogIds = array_map(static fn(array $item): int => (int) $item['id'], $modalAllergyCatalog);
 $modalMedications       = $modalMedications ?? [];
 $modalMedicationNames   = array_values(array_unique(array_map(
     static fn(array $m): string => (string) $m['name'],
@@ -161,6 +162,15 @@ $modalMedicationNames   = array_values(array_unique(array_map(
       </div>
 
       <?php foreach ($modalAllergies as $a): ?>
+      <?php
+        $editCatalogOptions = $modalAllergyCatalog;
+        if (!in_array((int) $a['allergy_catalog_id'], $modalAllergyCatalogIds, true)) {
+            // catalogForUser() collapses duplicate-named catalog rows; if this allergy
+            // references a duplicate id that got collapsed out, keep it selectable here so
+            // editing doesn't silently blank the Substance field and fail validation on save.
+            $editCatalogOptions[] = ['id' => $a['allergy_catalog_id'], 'name' => $a['name']];
+        }
+      ?>
       <div data-allergies-view="edit" data-allergy-edit-id="<?= (int) $a['id'] ?>" hidden>
         <form method="post" action="<?= e($modalActionUrl) ?>" class="stacked-form">
           <?= csrf_field() ?>
@@ -191,7 +201,7 @@ $modalMedicationNames   = array_values(array_unique(array_map(
               <label for="allergy_edit_select_<?= (int) $a['id'] ?>">Substance</label>
               <select id="allergy_edit_select_<?= (int) $a['id'] ?>" name="allergy_catalog_id" data-allergy-select>
                 <option value="">— Select —</option>
-                <?php foreach ($modalAllergyCatalog as $item): ?>
+                <?php foreach ($editCatalogOptions as $item): ?>
                 <option value="<?= (int) $item['id'] ?>"<?= (int) $item['id'] === (int) $a['allergy_catalog_id'] ? ' selected' : '' ?>><?= e((string) $item['name']) ?></option>
                 <?php endforeach; ?>
                 <option value="new">+ Add a new allergy…</option>

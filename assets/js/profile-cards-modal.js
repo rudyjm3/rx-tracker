@@ -128,11 +128,13 @@
         medicationWrap.hidden = !isMed;
         select.disabled = isMed;
         if (isMed) {
-          select.value = '';
+          // Leave select.value untouched (just disabled, so it won't submit) so the prior
+          // Substance choice is restored if the user toggles back without reselecting.
           if (substanceNewWrap) substanceNewWrap.style.display = 'none';
-          if (substanceNewInput) { substanceNewInput.value = ''; substanceNewInput.disabled = true; }
-        } else if (substanceNewInput) {
-          substanceNewInput.disabled = false;
+          if (substanceNewInput) { substanceNewInput.disabled = true; }
+        } else {
+          if (substanceNewInput) substanceNewInput.disabled = false;
+          if (substanceNewWrap) substanceNewWrap.style.display = select.value === 'new' ? '' : 'none';
         }
         medInput.disabled = !isMed;
         if (!isMed) {
