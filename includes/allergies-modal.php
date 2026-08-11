@@ -10,6 +10,8 @@
  *   $modalAllergyCatalog array  rows from AllergyRepository::catalogForUser()
  *   $modalActionUrl      string e.g. 'index.php?page=profile' or 'index.php?page=family-member&id=5'
  *   $modalReopenAllergies ?bool  optional; true reopens the modal already showing the list view
+ *   $flashSuccess         ?string optional; shown inside the modal when it reopens (see $modalReopenAllergies)
+ *   $flashError           ?string optional; shown inside the modal when it reopens (see $modalReopenAllergies)
  */
 
 $modalReopenAllergies = $modalReopenAllergies ?? false;
@@ -28,6 +30,13 @@ $modalAllergyCategories = AllergyRepository::allowedCategories();
       </button>
     </div>
     <div class="modal-scroll">
+
+      <?php if ($modalReopenAllergies && !empty($flashSuccess)): ?>
+        <div class="auth-success profile-flash" role="status"><?= e($flashSuccess) ?></div>
+      <?php endif; ?>
+      <?php if ($modalReopenAllergies && !empty($flashError)): ?>
+        <div class="auth-error profile-flash" role="alert"><?= e($flashError) ?></div>
+      <?php endif; ?>
 
       <div data-allergies-view="list">
         <?php if ($modalPastAllergies !== []): ?>
