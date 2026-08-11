@@ -1727,6 +1727,10 @@ label {
   gap: 0.35rem;
 }
 
+.form-group > .form-label {
+  margin-bottom: 0.3rem;
+}
+
 input,
 select,
 textarea {
@@ -6177,6 +6181,40 @@ a.nav-user-btn.is-active {
   word-break: break-all;
 }
 
+.profile-info-header {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+  text-align: center;
+}
+
+.profile-info-avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 4.75rem;
+  overflow: hidden;
+  width: 4.75rem;
+}
+
+.profile-info-avatar-inner {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 1.75rem;
+  font-weight: 700;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.profile-info-name {
+  color: #0A8AC8;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
 .profile-divider {
   border: none;
   border-top: 1px solid var(--rx-border);
@@ -6204,6 +6242,13 @@ a.nav-user-btn.is-active {
   padding: 0.6rem 0.85rem;
 }
 
+.session-row:hover,
+.session-info:hover {
+  background: var(--rx-bg);
+  box-shadow: none;
+  transform: none;
+}
+
 .session-info {
   display: flex;
   flex-direction: column;
@@ -6223,6 +6268,61 @@ a.nav-user-btn.is-active {
 .session-meta {
   font-size: 0.75rem;
   color: var(--rx-text-muted);
+}
+
+/* Allergy list rows: clickable <li>, name left, severity + meter far right */
+.session-row--allergy {
+  cursor: pointer;
+}
+
+.session-row--allergy:focus-visible {
+  outline: 2px solid var(--rx-blue);
+  outline-offset: 2px;
+}
+
+.session-info--allergy {
+  flex: 1;
+}
+
+.session-allergy-severity {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 0.3rem;
+}
+
+.severity-meter {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.severity-meter-segment {
+  background: var(--rx-border);
+  border-radius: 2px;
+  height: 6px;
+  width: 14px;
+}
+
+.severity-meter-segment--low.is-lit {
+  background: #2fa84f;
+}
+
+.severity-meter-segment--moderate.is-lit {
+  background: #e0b400;
+}
+
+.severity-meter-segment--high.is-lit {
+  background: #e0791f;
+}
+
+.severity-meter-segment--very-high.is-lit {
+  background: var(--rx-danger);
+}
+
+.session-row-chevron {
+  color: var(--rx-text-muted);
+  flex-shrink: 0;
 }
 
 .session-badge {
@@ -6410,6 +6510,12 @@ a.nav-user-btn.is-active {
   width: 100%;
 }
 
+.summary-card:hover {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
 .summary-card-icon {
   align-items: center;
   background: var(--rx-bg);
@@ -6488,10 +6594,16 @@ a.nav-user-btn.is-active {
   border-color: var(--rx-danger);
 }
 
+.form-group--inline {
+  display: inline-block;
+  width: auto;
+}
+
 .pill-tabs {
   border-bottom: 1px solid var(--rx-border);
   display: flex;
   gap: 1.25rem;
+  justify-content: center;
   margin-bottom: 1rem;
 }
 
@@ -6509,6 +6621,12 @@ a.nav-user-btn.is-active {
 .pill-tab.is-active {
   border-bottom-color: var(--rx-deep-blue);
   color: var(--rx-deep-blue);
+}
+
+.pill-tab:hover {
+  background: none;
+  box-shadow: none;
+  transform: none;
 }
 
 .nav-user-menu-panel {

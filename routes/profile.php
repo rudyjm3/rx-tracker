@@ -119,9 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 trim(post_string('category')) ?: null,
                 post_string('notes') ?: null
             );
-            header('Location: index.php?page=profile&success=' . urlencode('Allergy added.'));
+            header('Location: index.php?page=profile&success=' . urlencode('Allergy added.') . '&open=allergies');
         } catch (RuntimeException $e) {
-            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()) . '&open=allergies');
         }
         exit;
     }
@@ -144,9 +144,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 post_string('notes') ?: null,
                 post_string('is_active') !== '0'
             );
-            header('Location: index.php?page=profile&success=' . urlencode('Allergy updated.'));
+            header('Location: index.php?page=profile&success=' . urlencode('Allergy updated.') . '&open=allergies');
         } catch (RuntimeException $e) {
-            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()));
+            header('Location: index.php?page=profile&error=' . urlencode($e->getMessage()) . '&open=allergies');
         }
         exit;
     }
@@ -246,6 +246,11 @@ $memberSince = isset($userRow['created_at']) && $userRow['created_at'] !== ''
     : '';
 $ownerAge = calculate_age($userRow['birth_date'] !== null ? (string) $userRow['birth_date'] : null);
 
+$fullName = trim(trim((string) ($userRow['first_name'] ?? '')) . ' ' . trim((string) ($userRow['last_name'] ?? '')));
+if ($fullName === '') {
+    $fullName = (string) ($userRow['display_name'] ?? '');
+}
+
 $allergyRepo     = new AllergyRepository(db(), $userId);
 $ownerAllergies  = $allergyRepo->allergiesForProfile(null);
 $ownerActiveAllergies = array_values(array_filter($ownerAllergies, static fn(array $a): bool => (int) $a['is_active'] === 1));
@@ -309,10 +314,6 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
             <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
             My Profile
           </a>
-          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-            Manage Family
-          </a>
           <?php if (!empty($familyProfiles)): ?>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
@@ -323,6 +324,10 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
               <?= render_avatar((string) ($userRow['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($userRow['display_name'] ?? 'Me')) ?>
             </button>
+            <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+              <i class="fa-solid fa-users" aria-hidden="true"></i>
+              Manage Family
+            </a>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
@@ -335,6 +340,11 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
             </button>
             <?php endforeach; ?>
           </form>
+          <?php else: ?>
+          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
+          </a>
           <?php endif; ?>
         </div>
       </div>
@@ -375,8 +385,27 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
         <div class="panel-heading">
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <h2>Profile Information</h2>
+          <button type="button" class="panel-heading-link" data-open-profile-edit-modal aria-label="Edit profile">
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </button>
         </div>
 
+        <div class="profile-info-header">
+          <span class="profile-info-avatar">
+            <?= render_avatar(
+              (string) ($userRow['profile_picture'] ?? '') ?: null,
+              mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)),
+              '#6366f1',
+              'profile-info-avatar-inner'
+            ) ?>
+          </span>
+          <div class="profile-info-name"><?= e($fullName) ?></div>
+        </div>
+
+        <div class="profile-info-row">
+          <span class="profile-info-label">Display name</span>
+          <span class="profile-info-value"><?= e((string) ($userRow['display_name'] ?? '')) ?></span>
+        </div>
         <div class="profile-info-row">
           <span class="profile-info-label">Email</span>
           <span class="profile-info-value"><?= e((string) $userRow['email']) ?></span>
@@ -406,70 +435,80 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
           <span class="profile-info-value"><?= e($memberSince) ?></span>
         </div>
         <?php endif; ?>
+      </div>
 
-        <hr class="profile-divider">
-
-        <form method="post" action="index.php?page=profile" class="stacked-form" enctype="multipart/form-data">
-          <?= csrf_field() ?>
-          <input type="hidden" name="action" value="update_profile_info">
-          <div class="form-group">
-            <label class="form-label">Profile Picture</label>
-            <div style="display:flex;align-items:center;gap:.75rem">
-              <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
-                <?= render_avatar(
-                  (string) ($userRow['profile_picture'] ?? '') ?: null,
-                  mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)),
-                  '#6366f1',
-                  'family-profile-card__avatar'
-                ) ?>
-              </span>
-              <div>
-                <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
-                <?php if (!empty($userRow['profile_picture'])): ?>
-                <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
-                  <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
-                </label>
-                <?php endif; ?>
+      <div class="modal-overlay" data-profile-edit-modal>
+        <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-edit-modal-title">
+          <div class="modal-header">
+            <h2 id="profile-edit-modal-title">Edit Profile</h2>
+            <button type="button" class="modal-close-btn" data-close-profile-edit-modal aria-label="Close">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="modal-scroll">
+            <form method="post" action="index.php?page=profile" class="stacked-form" enctype="multipart/form-data">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="update_profile_info">
+              <div class="form-group">
+                <label class="form-label">Profile Picture</label>
+                <div style="display:flex;align-items:center;gap:.75rem">
+                  <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
+                    <?= render_avatar(
+                      (string) ($userRow['profile_picture'] ?? '') ?: null,
+                      mb_strtoupper(mb_substr((string) ($userRow['display_name'] ?? 'U'), 0, 1)),
+                      '#6366f1',
+                      'family-profile-card__avatar'
+                    ) ?>
+                  </span>
+                  <div>
+                    <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
+                    <?php if (!empty($userRow['profile_picture'])): ?>
+                    <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
+                      <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
+                    </label>
+                    <?php endif; ?>
+                  </div>
+                </div>
               </div>
-            </div>
+              <div class="form-group">
+                <label for="first_name">First name</label>
+                <input type="text" id="first_name" name="first_name" value="<?= e((string) ($userRow['first_name'] ?? '')) ?>" maxlength="50" placeholder="First name" autocomplete="given-name">
+              </div>
+              <div class="form-group">
+                <label for="last_name">Last name</label>
+                <input type="text" id="last_name" name="last_name" value="<?= e((string) ($userRow['last_name'] ?? '')) ?>" maxlength="50" placeholder="Last name" autocomplete="family-name">
+              </div>
+              <div class="form-group">
+                <label for="display_name">Display name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
+                <input
+                  type="text"
+                  id="display_name"
+                  name="display_name"
+                  value="<?= e((string) ($userRow['display_name'] ?? '')) ?>"
+                  maxlength="100"
+                  placeholder="Your name"
+                  autocomplete="name"
+                >
+              </div>
+              <div class="form-group">
+                <label for="birth_date">Birthdate</label>
+                <input type="date" id="birth_date" name="birth_date" value="<?= e((string) ($userRow['birth_date'] ?? '')) ?>" max="<?= e(today()) ?>">
+              </div>
+              <div class="form-group">
+                <label for="height_value">Height</label>
+                <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+                  <input type="number" id="height_value" name="height_value" step="0.1" min="0" style="max-width:8rem" value="<?= e($userRow['height_value'] !== null ? (string) (float) $userRow['height_value'] : '') ?>">
+                  <label class="toggle-control" for="height_unit_toggle">
+                    <input type="checkbox" id="height_unit_toggle" name="height_unit_cm"<?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                    <span class="toggle-label" data-height-unit-label><?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
+                  </label>
+                </div>
+              </div>
+              <button type="submit" class="secondary">Save profile</button>
+            </form>
           </div>
-          <div class="form-group">
-            <label for="first_name">First name</label>
-            <input type="text" id="first_name" name="first_name" value="<?= e((string) ($userRow['first_name'] ?? '')) ?>" maxlength="50" placeholder="First name" autocomplete="given-name">
-          </div>
-          <div class="form-group">
-            <label for="last_name">Last name</label>
-            <input type="text" id="last_name" name="last_name" value="<?= e((string) ($userRow['last_name'] ?? '')) ?>" maxlength="50" placeholder="Last name" autocomplete="family-name">
-          </div>
-          <div class="form-group">
-            <label for="display_name">Display name <span class="field-optional">(optional — defaults to first name + last initial)</span></label>
-            <input
-              type="text"
-              id="display_name"
-              name="display_name"
-              value="<?= e((string) ($userRow['display_name'] ?? '')) ?>"
-              maxlength="100"
-              placeholder="Your name"
-              autocomplete="name"
-            >
-          </div>
-          <div class="form-group">
-            <label for="birth_date">Birthdate</label>
-            <input type="date" id="birth_date" name="birth_date" value="<?= e((string) ($userRow['birth_date'] ?? '')) ?>" max="<?= e(today()) ?>">
-          </div>
-          <div class="form-group">
-            <label for="height_value">Height</label>
-            <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-              <input type="number" id="height_value" name="height_value" step="0.1" min="0" style="max-width:8rem" value="<?= e($userRow['height_value'] !== null ? (string) (float) $userRow['height_value'] : '') ?>">
-              <label class="toggle-control" for="height_unit_toggle">
-                <input type="checkbox" id="height_unit_toggle" name="height_unit_cm"<?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
-                <span class="toggle-slider" aria-hidden="true"></span>
-                <span class="toggle-label" data-height-unit-label><?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
-              </label>
-            </div>
-          </div>
-          <button type="submit" class="secondary">Save profile</button>
-        </form>
+        </div>
       </div>
 
       <!-- Medications and Supplements -->
@@ -683,10 +722,11 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
 </main>
 
 <?php
-$modalProfileId      = null;
-$modalAllergies      = $ownerAllergies;
-$modalAllergyCatalog = $allergyCatalog;
-$modalActionUrl       = 'index.php?page=profile';
+$modalProfileId        = null;
+$modalAllergies        = $ownerAllergies;
+$modalAllergyCatalog   = $allergyCatalog;
+$modalActionUrl        = 'index.php?page=profile';
+$modalReopenAllergies  = ($_GET['open'] ?? '') === 'allergies';
 require __DIR__ . '/../includes/allergies-modal.php';
 
 $modalActiveMeds   = $ownerActiveMeds;

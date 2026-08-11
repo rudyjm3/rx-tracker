@@ -53,9 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 trim(post_string('category')) ?: null,
                 post_string('notes') ?: null
             );
-            header('Location: index.php?page=family-member&id=' . $profileId . '&success=' . urlencode('Allergy added.'));
+            header('Location: index.php?page=family-member&id=' . $profileId . '&success=' . urlencode('Allergy added.') . '&open=allergies');
         } catch (RuntimeException $e) {
-            header('Location: index.php?page=family-member&id=' . $profileId . '&error=' . urlencode($e->getMessage()));
+            header('Location: index.php?page=family-member&id=' . $profileId . '&error=' . urlencode($e->getMessage()) . '&open=allergies');
         }
         exit;
     }
@@ -78,9 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 post_string('notes') ?: null,
                 post_string('is_active') !== '0'
             );
-            header('Location: index.php?page=family-member&id=' . $profileId . '&success=' . urlencode('Allergy updated.'));
+            header('Location: index.php?page=family-member&id=' . $profileId . '&success=' . urlencode('Allergy updated.') . '&open=allergies');
         } catch (RuntimeException $e) {
-            header('Location: index.php?page=family-member&id=' . $profileId . '&error=' . urlencode($e->getMessage()));
+            header('Location: index.php?page=family-member&id=' . $profileId . '&error=' . urlencode($e->getMessage()) . '&open=allergies');
         }
         exit;
     }
@@ -314,10 +314,11 @@ $memberInactiveMeds = $memberMedRepo->inactiveMedications();
 </main>
 
 <?php
-$modalProfileId      = $profileId;
-$modalAllergies      = $memberAllergies;
-$modalAllergyCatalog = $allergyCatalog;
-$modalActionUrl       = 'index.php?page=family-member&id=' . $profileId;
+$modalProfileId        = $profileId;
+$modalAllergies        = $memberAllergies;
+$modalAllergyCatalog   = $allergyCatalog;
+$modalActionUrl        = 'index.php?page=family-member&id=' . $profileId;
+$modalReopenAllergies  = ($_GET['open'] ?? '') === 'allergies';
 require __DIR__ . '/../includes/allergies-modal.php';
 
 $modalActiveMeds   = $memberActiveMeds;

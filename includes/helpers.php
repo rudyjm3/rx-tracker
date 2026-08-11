@@ -125,21 +125,51 @@ function allergy_category_label(?string $category): string
     return $labels[$category] ?? '';
 }
 
+function allergy_severity_meter(int $rank, string $colorClass): string
+{
+    $segments = '';
+    for ($i = 1; $i <= 4; $i++) {
+        $classes = 'severity-meter-segment';
+        if ($i <= $rank) {
+            $classes .= ' is-lit severity-meter-segment--' . $colorClass;
+        }
+        $segments .= '<span class="' . $classes . '"></span>';
+    }
+    return '<span class="severity-meter" aria-hidden="true">' . $segments . '</span>';
+}
+
 function render_allergy_row(array $allergy): string
 {
-    if ((int) ($allergy['life_threatening'] ?? 0) === 1) {
-        $meta = '<strong style="color:var(--rx-danger)">Life-threatening</strong>';
+    $lifeThreatening = (int) ($allergy['life_threatening'] ?? 0) === 1;
+    $severityRanks   = ['low' => 1, 'moderate' => 2, 'high' => 3, 'very_high' => 4];
+    $severityColors  = [1 => 'low', 2 => 'moderate', 3 => 'high', 4 => 'very-high'];
+
+    if ($lifeThreatening) {
+        $metaLabel  = '<strong style="color:var(--rx-danger)">Life-threatening</strong>';
+        $rank       = 4;
+        $colorClass = 'very-high';
     } else {
-        $label = allergy_severity_label($allergy['severity'] ?? null);
-        $meta  = $label !== '' ? e($label) : '';
+        $severity   = $allergy['severity'] ?? null;
+        $label      = allergy_severity_label($severity);
+        $metaLabel  = $label !== '' ? e($label) : '';
+        $rank       = $severityRanks[$severity] ?? 0;
+        $colorClass = $severityColors[$rank] ?? '';
     }
 
-    return '<li class="session-row">'
-        . '<button type="button" class="session-info" style="background:none;border:none;text-align:left;cursor:pointer;padding:0;flex:1;color:inherit" data-open-allergy-edit-view="' . (int) $allergy['id'] . '">'
+    $metaHtml = '';
+    if ($metaLabel !== '') {
+        $metaHtml = '<span class="session-allergy-severity">'
+            . '<span class="session-meta">' . $metaLabel . '</span>'
+            . allergy_severity_meter($rank, $colorClass)
+            . '</span>';
+    }
+
+    return '<li class="session-row session-row--allergy" role="button" tabindex="0" data-open-allergy-edit-view="' . (int) $allergy['id'] . '">'
+        . '<span class="session-info session-info--allergy">'
         . '<span class="session-agent">' . e((string) $allergy['name']) . '</span>'
-        . ($meta !== '' ? '<span class="session-meta">' . $meta . '</span>' : '')
-        . '</button>'
-        . '<i class="fa-solid fa-chevron-right" aria-hidden="true" style="color:var(--rx-text-muted);flex-shrink:0"></i>'
+        . '</span>'
+        . $metaHtml
+        . '<i class="fa-solid fa-chevron-right session-row-chevron" aria-hidden="true"></i>'
         . '</li>';
 }
 
