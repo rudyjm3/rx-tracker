@@ -1,4 +1,14 @@
 (function () {
+  var flashParams = new URLSearchParams(window.location.search);
+  if (flashParams.has('success') || flashParams.has('error') || flashParams.has('open')) {
+    flashParams.delete('success');
+    flashParams.delete('error');
+    flashParams.delete('open');
+    var cleanedQuery = flashParams.toString();
+    var cleanedUrl = window.location.pathname + (cleanedQuery ? '?' + cleanedQuery : '');
+    history.replaceState(null, '', cleanedUrl);
+  }
+
   document.querySelectorAll('[data-open-meds-modal]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var modal = document.querySelector('[data-meds-modal]');

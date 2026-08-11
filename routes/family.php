@@ -404,7 +404,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
         <div class="form-group">
           <label for="edit_height_value_<?= (int)$fp['id'] ?>">Height</label>
           <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-            <input type="number" id="edit_height_value_<?= (int)$fp['id'] ?>" name="height_value" step="0.1" min="0" style="max-width:8rem"
+            <input type="number" id="edit_height_value_<?= (int)$fp['id'] ?>" name="height_value" step="0.1" min="0" style="width:8rem;max-width:8rem"
                    value="<?= e($fp['height_value'] !== null ? (string) (float) $fp['height_value'] : '') ?>">
             <label class="toggle-control" for="edit_height_unit_toggle_<?= (int)$fp['id'] ?>">
               <input type="checkbox" id="edit_height_unit_toggle_<?= (int)$fp['id'] ?>" name="height_unit_cm"<?= (string) ($fp['height_unit'] ?? '') === 'cm' ? ' checked' : '' ?>>
@@ -415,14 +415,14 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
         </div>
         <div class="form-group">
           <label class="form-label">Profile Picture</label>
-          <div style="display:flex;align-items:center;gap:.75rem">
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
             <span style="display:inline-flex;width:3rem;height:3rem;flex-shrink:0">
               <?= render_avatar((string) ($fp['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) $fp['display_name'], 0, 1)), (string) ($fp['avatar_color'] ?? '#6366f1'), 'family-profile-card__avatar') ?>
             </span>
-            <div>
+            <div style="min-width:0">
               <input type="file" name="profile_picture" accept="image/png,image/jpeg,image/webp">
               <?php if (!empty($fp['profile_picture'])): ?>
-              <label style="display:block;margin-top:.35rem;font-size:.8rem;font-weight:400">
+              <label style="display:inline-flex;align-items:center;gap:.4rem;width:fit-content;margin-top:.35rem;font-size:.8rem;font-weight:400">
                 <input type="checkbox" name="remove_profile_picture" value="1"> Remove current photo
               </label>
               <?php endif; ?>
@@ -459,45 +459,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
 </div>
 <?php endforeach; ?>
 
-<nav class="bottom-nav" aria-label="Main navigation">
-  <a href="index.php" class="bottom-nav-item" aria-label="Dashboard">
-    <i class="fa-solid fa-house" aria-hidden="true"></i>
-    Dashboard
-  </a>
-  <a href="index.php?page=medications" class="bottom-nav-item" aria-label="Medications">
-    <i class="fa-solid fa-pills" aria-hidden="true"></i>
-    Medications
-  </a>
-  <a href="index.php?page=calendar" class="bottom-nav-item" aria-label="Calendar">
-    <i class="fa-regular fa-calendar" aria-hidden="true"></i>
-    Calendar
-  </a>
-  <a href="index.php?page=export" class="bottom-nav-item" aria-label="Export">
-    <i class="fa-solid fa-file-export" aria-hidden="true"></i>
-    Export
-  </a>
-  <button type="button" class="bottom-nav-item" aria-label="More" onclick="document.getElementById('more-menu').classList.add('is-open')">
-    <i class="fa-solid fa-ellipsis" aria-hidden="true"></i>
-    More
-  </button>
-</nav>
-<div id="more-menu" class="more-menu">
-  <div class="more-menu__backdrop" onclick="document.getElementById('more-menu').classList.remove('is-open')"></div>
-  <div class="more-menu__sheet">
-    <a href="index.php?page=settings" class="more-menu__item">
-      <i class="fa-solid fa-gear" aria-hidden="true"></i>
-      Settings
-    </a>
-    <a href="index.php?page=help" class="more-menu__item">
-      <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
-      Help
-    </a>
-    <a href="index.php?page=profile" class="more-menu__item">
-      <i class="fa-solid fa-user" aria-hidden="true"></i>
-      My Profile
-    </a>
-  </div>
-</div>
+<?php include __DIR__ . '/../includes/bottom-nav.php'; ?>
 <script>
 (function () {
   function setupColorPicker(radioName, customInputId, finalInputId) {
