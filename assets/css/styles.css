@@ -299,8 +299,9 @@ button:disabled {
 }
 
 .notif-mark-all-btn:hover {
+  background: none;
   box-shadow: none;
-  color: var(--rx-deep-blue);
+  color: var(--rx-blue);
   transform: none;
 }
 

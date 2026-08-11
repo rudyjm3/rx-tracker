@@ -54,7 +54,7 @@
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e($currentUser['email'] ?? '') ?>" aria-label="My profile">
-          <?= render_avatar((string) ($activeProfile['profile_picture'] ?? $currentUser['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
+          <?= render_avatar((string) ($activeProfile ? ($activeProfile['profile_picture'] ?? '') : ($currentUser['profile_picture'] ?? '')) ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top">

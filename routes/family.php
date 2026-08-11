@@ -166,7 +166,7 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
       <div class="nav-user-menu" data-user-menu>
         <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false" data-user-menu-btn
                 title="<?= e((string) $userRow['email']) ?>" aria-label="My profile">
-          <?= render_avatar((string) ($navActiveProfile['profile_picture'] ?? $userRow['profile_picture'] ?? '') ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
+          <?= render_avatar((string) ($navActiveProfile ? ($navActiveProfile['profile_picture'] ?? '') : ($userRow['profile_picture'] ?? '')) ?: null, $navAvatarLetter, $navAvatarColor, 'nav-user-avatar') ?>
         </button>
         <div class="nav-user-menu-panel" data-user-menu-panel hidden>
           <a href="index.php?page=profile" class="nav-user-menu-link nav-user-menu-link--top">
