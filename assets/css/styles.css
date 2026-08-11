@@ -7491,8 +7491,8 @@ a.nav-user-btn.is-active {
   margin-bottom: 0.5rem;
 }
 
-.history-edit-time-field input {
-  width: 100%;
+.stacked-label.history-edit-time-field {
+  width: fit-content;
 }
 
 /* Inline edit form within a history entry */
