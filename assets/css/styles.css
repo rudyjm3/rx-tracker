@@ -1498,7 +1498,8 @@ button.medications-overview-row:active {
    Real-device font metrics (Roboto, etc.) make this worse than desktop
    devtools emulation shows, so guard every direct child explicitly. */
 .medication-form > *,
-.form-section > * {
+.form-section > *,
+.stacked-form > * {
   min-width: 0;
 }
 
@@ -7488,6 +7489,10 @@ a.nav-user-btn.is-active {
 
 .history-edit-time-field {
   margin-bottom: 0.5rem;
+}
+
+.stacked-label.history-edit-time-field {
+  width: fit-content;
 }
 
 /* Inline edit form within a history entry */

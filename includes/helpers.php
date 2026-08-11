@@ -125,13 +125,14 @@ function allergy_category_label(?string $category): string
     return $labels[$category] ?? '';
 }
 
-function allergy_severity_meter(int $rank, string $colorClass): string
+function allergy_severity_meter(int $rank): string
 {
+    $positionColors = [1 => 'low', 2 => 'moderate', 3 => 'high', 4 => 'very-high'];
     $segments = '';
     for ($i = 1; $i <= 4; $i++) {
         $classes = 'severity-meter-segment';
         if ($i <= $rank) {
-            $classes .= ' is-lit severity-meter-segment--' . $colorClass;
+            $classes .= ' is-lit severity-meter-segment--' . $positionColors[$i];
         }
         $segments .= '<span class="' . $classes . '"></span>';
     }
@@ -142,25 +143,22 @@ function render_allergy_row(array $allergy): string
 {
     $lifeThreatening = (int) ($allergy['life_threatening'] ?? 0) === 1;
     $severityRanks   = ['low' => 1, 'moderate' => 2, 'high' => 3, 'very_high' => 4];
-    $severityColors  = [1 => 'low', 2 => 'moderate', 3 => 'high', 4 => 'very-high'];
 
     if ($lifeThreatening) {
         $metaLabel  = '<strong style="color:var(--rx-danger)">Life-threatening</strong>';
         $rank       = 4;
-        $colorClass = 'very-high';
     } else {
         $severity   = $allergy['severity'] ?? null;
         $label      = allergy_severity_label($severity);
         $metaLabel  = $label !== '' ? e($label) : '';
         $rank       = $severityRanks[$severity] ?? 0;
-        $colorClass = $severityColors[$rank] ?? '';
     }
 
     $metaHtml = '';
     if ($metaLabel !== '') {
         $metaHtml = '<span class="session-allergy-severity">'
             . '<span class="session-meta">' . $metaLabel . '</span>'
-            . allergy_severity_meter($rank, $colorClass)
+            . allergy_severity_meter($rank)
             . '</span>';
     }
 
