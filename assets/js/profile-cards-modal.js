@@ -3,17 +3,22 @@
     btn.addEventListener('click', function () {
       var modal = document.querySelector('[data-meds-modal]');
       if (modal) modal.classList.add('is-open');
+      window.lockBodyScroll();
     });
   });
   document.querySelectorAll('[data-close-meds-modal]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       btn.closest('.modal-overlay').classList.remove('is-open');
+      window.unlockBodyScroll();
     });
   });
   var medsModal = document.querySelector('[data-meds-modal]');
   if (medsModal) {
     medsModal.addEventListener('click', function (e) {
-      if (e.target === medsModal) medsModal.classList.remove('is-open');
+      if (e.target === medsModal) {
+        medsModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      }
     });
   }
 
@@ -28,15 +33,20 @@
       btn.addEventListener('click', function () {
         showAllergyView(allergiesModal.querySelector('[data-allergies-view="list"]'));
         allergiesModal.classList.add('is-open');
+        window.lockBodyScroll();
       });
     });
     document.querySelectorAll('[data-close-allergies-modal]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         allergiesModal.classList.remove('is-open');
+        window.unlockBodyScroll();
       });
     });
     allergiesModal.addEventListener('click', function (e) {
-      if (e.target === allergiesModal) allergiesModal.classList.remove('is-open');
+      if (e.target === allergiesModal) {
+        allergiesModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      }
     });
 
     allergiesModal.querySelectorAll('[data-open-allergy-add-view]').forEach(function (btn) {
@@ -44,10 +54,17 @@
         showAllergyView(allergiesModal.querySelector('[data-allergies-view="add"]'));
       });
     });
-    allergiesModal.querySelectorAll('[data-open-allergy-edit-view]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var id = btn.getAttribute('data-open-allergy-edit-view');
+    allergiesModal.querySelectorAll('[data-open-allergy-edit-view]').forEach(function (row) {
+      function openRowEditView() {
+        var id = row.getAttribute('data-open-allergy-edit-view');
         showAllergyView(allergiesModal.querySelector('[data-allergies-view="edit"][data-allergy-edit-id="' + id + '"]'));
+      }
+      row.addEventListener('click', openRowEditView);
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openRowEditView();
+        }
       });
     });
     allergiesModal.querySelectorAll('[data-back-to-allergy-list]').forEach(function (btn) {
@@ -74,6 +91,65 @@
       select.addEventListener('change', function () {
         wrap.style.display = select.value === 'new' ? '' : 'none';
       });
+    });
+
+    allergiesModal.querySelectorAll('[data-life-threatening-toggle]').forEach(function (toggle) {
+      var form = toggle.closest('form');
+      var severityGroup = form ? form.querySelector('[data-severity-group]') : null;
+      if (!severityGroup) return;
+      function syncSeverityGroup() {
+        severityGroup.hidden = toggle.checked;
+      }
+      toggle.addEventListener('change', syncSeverityGroup);
+      syncSeverityGroup();
+    });
+
+    if (allergiesModal.classList.contains('is-open')) {
+      window.lockBodyScroll();
+    }
+  }
+
+  var profileEditModal = document.querySelector('[data-profile-edit-modal]');
+  if (profileEditModal) {
+    document.querySelectorAll('[data-open-profile-edit-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        profileEditModal.classList.add('is-open');
+        window.lockBodyScroll();
+      });
+    });
+    profileEditModal.querySelectorAll('[data-close-profile-edit-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        profileEditModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      });
+    });
+    profileEditModal.addEventListener('click', function (e) {
+      if (e.target === profileEditModal) {
+        profileEditModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      }
+    });
+  }
+
+  var allergyTypeInfoModal = document.querySelector('[data-allergy-type-info-modal]');
+  if (allergyTypeInfoModal) {
+    document.querySelectorAll('[data-open-allergy-type-info]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        allergyTypeInfoModal.classList.add('is-open');
+        window.lockBodyScroll();
+      });
+    });
+    allergyTypeInfoModal.querySelectorAll('[data-close-allergy-type-info-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        allergyTypeInfoModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      });
+    });
+    allergyTypeInfoModal.addEventListener('click', function (e) {
+      if (e.target === allergyTypeInfoModal) {
+        allergyTypeInfoModal.classList.remove('is-open');
+        window.unlockBodyScroll();
+      }
     });
   }
 

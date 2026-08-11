@@ -61,10 +61,6 @@
             <i class="fa-solid fa-circle-user" aria-hidden="true"></i>
             My Profile
           </a>
-          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
-            <i class="fa-solid fa-users" aria-hidden="true"></i>
-            Manage Family
-          </a>
           <?php if (!empty($familyProfiles)): ?>
           <form method="post" action="index.php?page=profile" class="nav-user-menu-switcher-form">
             <?= csrf_field() ?>
@@ -75,6 +71,10 @@
               <?= render_avatar((string) ($currentUser['profile_picture'] ?? '') ?: null, mb_strtoupper(mb_substr((string) ($currentUser['display_name'] ?? 'U'), 0, 1)), '#6366f1', 'profile-option-avatar') ?>
               <?= e((string) ($currentUser['display_name'] ?? 'Me')) ?>
             </button>
+            <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+              <i class="fa-solid fa-users" aria-hidden="true"></i>
+              Manage Family
+            </a>
             <div class="nav-user-menu-section-label">Family Members</div>
             <?php foreach ($familyProfiles as $fp): ?>
             <button type="submit" name="profile_id" value="<?= (int) $fp['id'] ?>"
@@ -87,6 +87,11 @@
             </button>
             <?php endforeach; ?>
           </form>
+          <?php else: ?>
+          <a href="index.php?page=family" class="nav-user-menu-link nav-user-menu-link--manage">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Manage Family
+          </a>
           <?php endif; ?>
         </div>
       </div>
