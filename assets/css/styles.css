@@ -125,7 +125,7 @@ button:disabled {
   border-radius: var(--rx-radius-sm);
   color: var(--rx-navy);
   font-size: 0.875rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 0.6rem 0.9rem;
   text-decoration: none;
 }
