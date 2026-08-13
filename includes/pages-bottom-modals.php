@@ -54,8 +54,11 @@
       <label>Refill date
         <input type="date" name="refill_date" data-refill-date required>
       </label>
-      <label>Amount (pills)
-        <input type="number" min="1" name="amount" required placeholder="e.g. 30">
+      <label>Amount
+        <span class="input-with-unit">
+          <input type="number" step="0.001" min="0.001" name="amount" required placeholder="e.g. 30">
+          <span data-refill-amount-unit>tablets</span>
+        </span>
       </label>
       <label>Note <span class="field-optional">(optional)</span>
         <input name="note" placeholder="e.g. 30-day supply" maxlength="255">
