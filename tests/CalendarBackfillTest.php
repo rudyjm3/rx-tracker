@@ -359,3 +359,65 @@ $partialRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE m
 assertCB(2, $partialRowCount, 'Re-backfilling a partially-logged day is idempotent: no duplicate rows');
 
 echo "CalendarBackfillTest (partially-logged day still backfills remaining slots) passed.\n";
+
+// ── Test: a group's schedule-time change must not fabricate a wrong missed dose ──
+// Reproduces a reviewer-caught bug: MedicationGroupRepository::syncGroupScheduleTime()
+// used to relocate a group-owned schedule row in place (UPDATE reminder_time only),
+// leaving created_at pointed at the row's original creation. Since
+// medicationConfigurationValidForDate() trusts created_at as "how far back the
+// current schedule can be trusted," a group's scheduled_time edit would silently
+// make backfill treat every earlier date as if the group's *new* time had always
+// applied -- especially relevant now that the calendar backfills every past day in
+// the month, not just marker-less ones, inventing a missed dose at a time that
+// never actually existed on that historical day.
+
+$repo->createMedication(
+    'GroupTimeMed',
+    '',
+    'fixed_times',
+    ['07:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-08-01'
+);
+$allGroupTime = $repo->activeMedications();
+$groupTimeMedId = (int) array_values(array_filter($allGroupTime, static fn(array $r): bool => $r['name'] === 'GroupTimeMed'))[0]['id'];
+$db->exec("UPDATE medication_schedule_times SET created_at = '2026-07-01 00:00:00' WHERE medication_id = {$groupTimeMedId}");
+
+$morningGroupId = $repo->createGroup('Morning Group', '07:00:00');
+$repo->addMedicationToGroup($morningGroupId, $groupTimeMedId);
+
+// The 07:00 dose is logged as taken on 2026-08-10, back when the group really did fire at 07:00.
+$repo->recordDoseStatus($groupTimeMedId, '2026-08-10', '07:00:00', 'taken', '');
+
+// The group's time is later moved to 08:00 -- this relocates the group-owned schedule
+// row in place rather than deleting/recreating it.
+$repo->updateGroup($morningGroupId, 'Morning Group', '08:00:00');
+
+// Backfilling 2026-08-10 (which predates the time change) must NOT invent a missed
+// dose at the new 08:00 time -- the schedule-stability guard must refuse to trust the
+// current (post-edit) configuration for a date this old.
+$repo->backfillMissedDosesForDates(['2026-08-10'], new DateTimeImmutable('2026-08-12 12:00:00'), 60);
+
+$groupTimeLogs = $db->query(
+    "SELECT scheduled_time, status FROM dose_logs WHERE medication_id = {$groupTimeMedId} AND scheduled_for_date = '2026-08-10' ORDER BY scheduled_time"
+)->fetchAll();
+assertCB(
+    [['scheduled_time' => '07:00:00', 'status' => 'taken']],
+    $groupTimeLogs,
+    "Backfill does not fabricate a missed dose at the group's new time for a date that predates the group's schedule change"
+);
+
+echo "CalendarBackfillTest (group schedule-time change guard) passed.\n";

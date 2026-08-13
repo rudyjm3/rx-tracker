@@ -863,22 +863,42 @@ final class ScheduleRepository
     // days don't stay permanently blank. Safe to re-run: todaySchedule() already
     // excludes dates outside a medication's tracked range, and recordDoseStatus()
     // is idempotent per (medication, date, time).
+    //
+    // Fetches active/inactive medications once and reuses them for every date rather than
+    // letting each date independently re-fetch identical lists — the calendar page now
+    // calls this with every past date in the displayed month (up to 31), and
+    // finalizeMissedDosesForDate() re-fetching medications, schedule times, and inactive
+    // medications' status history per date turned that into hundreds of duplicate queries
+    // per page view.
     public function backfillMissedDosesForDates(array $dates, DateTimeImmutable $now, int $graceMinutes): void
     {
+        if ($dates === []) {
+            return;
+        }
+        $activeMedications = $this->activeMedications();
+        $needsInactive = false;
         foreach ($dates as $date) {
-            $this->finalizeMissedDosesForDate((string) $date, $now, $graceMinutes);
+            if ((string) $date < $now->format('Y-m-d')) {
+                $needsInactive = true;
+                break;
+            }
+        }
+        $inactiveMedications = $needsInactive ? $this->inactiveMedications() : [];
+        foreach ($dates as $date) {
+            $this->finalizeMissedDosesForDate((string) $date, $now, $graceMinutes, $activeMedications, $inactiveMedications);
         }
     }
 
-    private function finalizeMissedDosesForDate(string $date, DateTimeImmutable $now, int $graceMinutes): void
+    private function finalizeMissedDosesForDate(string $date, DateTimeImmutable $now, int $graceMinutes, ?array $activeMedications = null, ?array $inactiveMedications = null): void
     {
+        $activeMedications ??= $this->activeMedications();
         $isHistoricalBackfill = $date < $now->format('Y-m-d');
         // For historical backfill, also consider medications that are inactive *now* but
         // were active on $date (e.g. discontinued after the blank day) — activeMedications()
         // alone only reflects "right now" and would otherwise leave that day permanently blank.
         $schedule = $isHistoricalBackfill
-            ? $this->buildScheduleRows($date, array_merge($this->activeMedications(), $this->historicallyActiveMedications($date)))
-            : $this->todaySchedule($date);
+            ? $this->buildScheduleRows($date, array_merge($activeMedications, $this->historicallyActiveMedications($date, $inactiveMedications)))
+            : $this->buildScheduleRows($date, $activeMedications);
         foreach ($schedule as $row) {
             if ((bool) $row['as_needed']) {
                 continue;
@@ -992,10 +1012,10 @@ final class ScheduleRepository
     // that's inactive now with zero events (e.g. discontinued before medication_status_events
     // existed, on a database upgraded via migration 006 without backfilling old events) has
     // genuinely unknown history and must be skipped, not treated as active for every past date.
-    private function historicallyActiveMedications(string $date): array
+    private function historicallyActiveMedications(string $date, ?array $inactiveMedications = null): array
     {
         return array_values(array_filter(
-            $this->inactiveMedications(),
+            $inactiveMedications ?? $this->inactiveMedications(),
             fn (array $medication): bool => $this->hasAnyStatusEvents((int) $medication['id'])
                 && $this->wasMedicationActiveOnDate((int) $medication['id'], $date)
         ));

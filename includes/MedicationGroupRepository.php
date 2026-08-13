@@ -163,14 +163,33 @@ final class MedicationGroupRepository
         // row in place rather than deleting it and re-running the claim heuristic below, which
         // would otherwise steal an unrelated individual dose on every re-sync.
         $existing = $this->db->prepare(
-            'SELECT id FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id LIMIT 1'
+            'SELECT id, reminder_time FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id = :group_id LIMIT 1'
         );
         $existing->execute(['medication_id' => $medicationId, 'group_id' => $groupId]);
-        $existingId = $existing->fetchColumn();
-        if ($existingId !== false) {
-            $this->db->prepare(
-                'UPDATE medication_schedule_times SET reminder_time = :reminder_time WHERE id = :id'
-            )->execute(['reminder_time' => $scheduledTime, 'id' => (int) $existingId]);
+        $existingRow = $existing->fetch();
+        if ($existingRow !== false) {
+            $existingId = (int) $existingRow['id'];
+            if ((string) $existingRow['reminder_time'] === $scheduledTime) {
+                return;
+            }
+            // Bump created_at whenever the time actually moves: ScheduleRepository::
+            // medicationConfigurationValidForDate() reads this column as its "how far back
+            // can the current schedule be trusted" signal for historical missed-dose
+            // backfill. Relocating the row in place (rather than delete+insert, which is
+            // what individual-dose edits do) would otherwise leave that signal pointing at
+            // the row's original creation time, letting backfill treat every earlier date
+            // as if the group's *new* time had always applied and fabricate a missed dose
+            // at a time that never existed on that historical day.
+            try {
+                $this->db->prepare(
+                    'UPDATE medication_schedule_times SET reminder_time = :reminder_time, created_at = CURRENT_TIMESTAMP WHERE id = :id'
+                )->execute(['reminder_time' => $scheduledTime, 'id' => $existingId]);
+            } catch (Throwable) {
+                // No created_at column on this install/test double: still relocate the row.
+                $this->db->prepare(
+                    'UPDATE medication_schedule_times SET reminder_time = :reminder_time WHERE id = :id'
+                )->execute(['reminder_time' => $scheduledTime, 'id' => $existingId]);
+            }
             return;
         }
 
