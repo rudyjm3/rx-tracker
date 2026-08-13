@@ -23,16 +23,22 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     $monthEnd = $calMonthDt->modify('last day of this month')->format('Y-m-d');
     $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
     $todayForBackfill = date('Y-m-d');
-    $missingPastDates = [];
+    // Backfill every past day in the visible month, not just days with zero markers —
+    // a day can already have a marker (e.g. one dose group logged as taken) while other
+    // scheduled slots on that same day were never logged at all, and those slots must
+    // still be finalized as missed. backfillMissedDosesForDates() is safe to re-run: it's
+    // idempotent per (medication, date, time) and already skips dates outside a
+    // medication's tracked range.
+    $pastDatesToBackfill = [];
     $daysInMonthForBackfill = (int) $calMonthDt->modify('last day of this month')->format('j');
     for ($bfDay = 1; $bfDay <= $daysInMonthForBackfill; $bfDay++) {
         $bfDate = sprintf('%s-%02d', $monthParam, $bfDay);
-        if ($bfDate < $todayForBackfill && !isset($calendarMarkers[$bfDate])) {
-            $missingPastDates[] = $bfDate;
+        if ($bfDate < $todayForBackfill) {
+            $pastDatesToBackfill[] = $bfDate;
         }
     }
-    if ($missingPastDates !== []) {
-        $repository->backfillMissedDosesForDates($missingPastDates, new DateTimeImmutable('now'), $graceMinutes);
+    if ($pastDatesToBackfill !== []) {
+        $repository->backfillMissedDosesForDates($pastDatesToBackfill, new DateTimeImmutable('now'), $graceMinutes);
         $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
     }
     $calendarDayData = [];
