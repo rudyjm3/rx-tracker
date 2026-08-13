@@ -2218,10 +2218,19 @@ button.danger:hover {
   font-size: 0.82rem;
   margin: 0.15rem 0 0;
   display: block;
-  overflow-x: auto;
-  white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
+}
+
+.discontinued-comment-full[hidden] {
+  display: none;
+}
+
+.discontinued-comment-toggle {
+  display: inline;
+  margin: 0 0 0 0.3rem;
+  font-size: inherit;
 }
 
 .inactive-history {
@@ -2245,9 +2254,8 @@ button.danger:hover {
 .inactive-history-comment {
   color: var(--rx-text-muted);
   display: block;
-  overflow-x: auto;
-  white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 
@@ -5168,40 +5176,6 @@ details.med-detail-section[open] .med-detail-section-title::after {
   margin-top: 0.5rem;
 }
 
-.group-form-wrap {
-  display: none;
-  background: var(--rx-bg);
-  border: 1px solid var(--rx-border);
-  border-radius: var(--rx-radius-sm);
-  padding: 1rem;
-}
-
-.group-form-wrap.is-open {
-  display: block;
-}
-
-.group-inline-form {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: 1fr 1fr;
-}
-
-.group-inline-form input {
-  background: #f6f6f6;
-}
-
-.group-inline-form label {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.group-form-actions {
-  display: flex;
-  gap: 0.5rem;
-  grid-column: 1 / -1;
-  margin-top: 0.8rem;
-}
-
 .drag-handle {
   align-items: center;
   align-self: stretch;
@@ -5235,7 +5209,7 @@ details.med-detail-section[open] .med-detail-section-title::after {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.5rem;
 }
 
 .sortable-ghost {
@@ -5332,46 +5306,12 @@ details.med-detail-section[open] .med-detail-section-title::after {
 }
 
 .group-remove-btn {
-  display: none;
+  display: inline-flex;
   font-size: 0.78rem;
   font-weight: 700;
   margin-left: auto;
   padding: 0.3rem 0.6rem;
 }
-.group-card.is-editing .group-remove-btn {
-  display: inline-flex;
-}
-
-.group-name-input,
-.group-time-input {
-  background: #f6f6f6;
-  border: 1px solid var(--rx-border);
-  border-radius: var(--rx-radius-sm);
-  font-size: 0.95rem;
-  font-weight: 600;
-  padding: 0.2rem 0.45rem;
-}
-
-.group-name-input {
-  max-width: 180px;
-  width: 100%;
-}
-
-.group-time-input {
-  max-width: 110px;
-  width: 100%;
-}
-
-.group-time-input[hidden] { display: none; }
-
-.group-card-edit-actions {
-  border-top: 1px solid var(--rx-border);
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  padding: 0.65rem 1rem;
-}
-.group-card-edit-actions[hidden] { display: none; }
 
 .group-add-med-form {
   align-items: center;
@@ -5380,7 +5320,6 @@ details.med-detail-section[open] .med-detail-section-title::after {
   gap: 0.5rem;
   padding: 0.65rem 1rem;
 }
-.group-add-med-form[hidden] { display: none; }
 
 .group-dose-override-label {
   white-space: nowrap;
@@ -5452,10 +5391,6 @@ details.med-detail-section[open] .med-detail-section-title::after {
 }
 
 @media (max-width: 800px) {
-  .group-inline-form {
-    grid-template-columns: 1fr;
-  }
-
   .group-card-header {
     gap: 0.5rem;
   }
@@ -5567,6 +5502,45 @@ details.med-detail-section[open] .med-detail-section-title::after {
 .zero-pill-stepper input[data-zero-pill-delta] {
   text-align: center;
   width: 4.5rem;
+}
+
+/* ── Group member dose-qty stepper ────────────────────────────────────────────── */
+
+.group-dose-stepper {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.group-dose-step-btn {
+  align-items: center;
+  background: #0A8AC8;
+  border: 1px solid var(--rx-border);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-weight: 700;
+  height: 1.9rem;
+  justify-content: center;
+  padding: 0;
+  width: 1.9rem;
+}
+
+.group-dose-step-btn:hover {
+  background: #14CFE0;
+  box-shadow: none;
+  transform: none;
+}
+
+.group-dose-value {
+  font-weight: 700;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.group-dose-unit {
+  color: var(--rx-text-muted);
+  font-size: 0.78rem;
 }
 
 .zero-pill-actions {

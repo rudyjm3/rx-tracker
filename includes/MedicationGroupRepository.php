@@ -142,6 +142,42 @@ final class MedicationGroupRepository
         $this->syncGroupScheduleTime($groupId, $medicationId, $groupTime);
     }
 
+    public function updateMemberDose(int $groupId, int $medicationId, ?float $quantityPerDose): void
+    {
+        // Ownership gate: never touch a membership row the caller does not own.
+        if (!$this->groupBelongsToUser($groupId) || !$this->medicationBelongsToUser($medicationId)) {
+            return;
+        }
+        $statement = $this->db->prepare(
+            'UPDATE medication_group_members SET quantity_per_dose = :quantity_per_dose WHERE group_id = :group_id AND medication_id = :medication_id'
+        );
+        $statement->execute(['quantity_per_dose' => $quantityPerDose, 'group_id' => $groupId, 'medication_id' => $medicationId]);
+    }
+
+    public function createGroupWithMembers(string $name, string $scheduledTime, array $members): int
+    {
+        $this->db->beginTransaction();
+        try {
+            $id = $this->createGroup($name, $scheduledTime);
+            foreach ($members as $member) {
+                $medicationId = (int) ($member['medication_id'] ?? 0);
+                if ($medicationId <= 0) {
+                    continue;
+                }
+                $quantityPerDose = isset($member['quantity_per_dose']) && $member['quantity_per_dose'] !== null
+                    ? (float) $member['quantity_per_dose']
+                    : null;
+                $this->addMedicationToGroup($id, $medicationId, $quantityPerDose);
+            }
+            $this->db->commit();
+        } catch (Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        return $id;
+    }
+
     private function scheduledTimeForGroup(int $groupId): ?string
     {
         $statement = $this->db->prepare('SELECT scheduled_time FROM medication_groups WHERE id = :id');
@@ -305,8 +341,8 @@ final class MedicationGroupRepository
     {
         try {
             $statement = $this->db->prepare(
-                'SELECT m.id AS medication_id, m.name, m.dose, m.dose_amount, m.dose_unit,
-                        m.inventory_unit, m.track_dose_feedback,
+                'SELECT m.id AS medication_id, m.name, m.medication_type, m.dose, m.dose_amount, m.dose_unit,
+                        m.inventory_unit, m.track_dose_feedback, m.feedback_type, m.quantity_per_dose AS medication_default_quantity_per_dose,
                         mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id
@@ -344,7 +380,7 @@ final class MedicationGroupRepository
         try {
             $statement = $this->db->prepare(
                 'SELECT mgm.group_id, m.id AS medication_id, m.name, m.medication_type, m.dose, m.dose_amount, m.dose_unit,
-                        m.inventory_unit, m.track_dose_feedback,
+                        m.inventory_unit, m.track_dose_feedback, m.feedback_type, m.quantity_per_dose AS medication_default_quantity_per_dose,
                         mgm.sort_order, mgm.quantity_per_dose AS group_quantity_per_dose
                  FROM medications m
                  INNER JOIN medication_group_members mgm ON mgm.medication_id = m.id

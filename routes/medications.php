@@ -711,6 +711,43 @@ require __DIR__ . '/../includes/pages-shell-top.php';
   </div>
 </div>
 
+<div class="modal-overlay" data-group-modal>
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="group-modal-title">
+    <div class="modal-header">
+      <h2 id="group-modal-title" data-group-modal-title>Create group</h2>
+      <button type="button" class="modal-close-btn" data-close-group-modal aria-label="Close">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="modal-scroll">
+      <input type="hidden" data-group-modal-id value="">
+      <label>Group name
+        <input type="text" data-group-modal-name-input placeholder="e.g. Morning Medications">
+      </label>
+      <label>Scheduled time
+        <input type="text" data-group-modal-time-input placeholder="8:00 AM">
+      </label>
+      <div class="group-modal-members" data-group-modal-members>
+        <p class="group-empty-hint" data-group-modal-empty-hint>No medications in this group yet.</p>
+      </div>
+      <div class="group-add-med-form" data-group-modal-add-form>
+        <select class="group-add-select" data-group-modal-add-select>
+          <option value="">Add a medication&hellip;</option>
+        </select>
+        <label class="group-dose-override-label">Dose qty for this group
+          <input type="number" min="0.001" step="any" placeholder="e.g. 2" data-group-modal-add-qpd>
+          <span class="field-optional">(optional — leave blank to use default)</span>
+        </label>
+        <button type="button" class="secondary group-add-btn" data-group-modal-add-btn>Add</button>
+      </div>
+      <div class="modal-footer">
+        <button type="button" data-group-modal-save>Create group</button>
+        <button type="button" class="secondary" data-close-group-modal>Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="alarm-overlay" data-alarm-overlay aria-modal="true" role="alertdialog" aria-labelledby="alarm-title">
   <div class="alarm-dialog">
     <div class="alarm-pulse-ring"></div>

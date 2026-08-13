@@ -330,25 +330,6 @@
       <button type="button" class="secondary" data-open-create-group-form>+ Create group</button>
     </div>
 
-    <!-- Create/edit group inline form -->
-    <div class="group-form-wrap" data-group-form-wrap>
-      <form class="group-inline-form" method="post" action="index.php" data-group-form>
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="create_group" data-group-form-action>
-        <input type="hidden" name="group_id" value="" data-group-form-id>
-        <label>Group name
-          <input name="group_name" required placeholder="e.g. Morning Medications" data-group-form-name value="">
-        </label>
-        <label>Scheduled time
-          <input name="group_time" required placeholder="8:00 AM" data-group-form-time value="">
-        </label>
-        <div class="group-form-actions">
-          <button type="submit" data-group-form-submit>Create group</button>
-          <button type="button" class="secondary" data-cancel-group-form>Cancel</button>
-        </div>
-      </form>
-    </div>
-
     <?php if ($groups === []): ?>
       <div class="empty-state groups-empty-state"><p>No groups yet. Create a group to bundle medications taken at the same time.</p></div>
     <?php endif; ?>
@@ -361,9 +342,7 @@
         <div class="group-card-header">
           <div class="group-card-title">
             <strong data-group-card-name><?= e($group['name']) ?></strong>
-            <input type="text" class="group-name-input" data-group-name-input value="<?= e($group['name']) ?>" aria-label="Group name" hidden>
             <span class="group-time-badge" data-group-card-time><?= e(to12h($group['scheduled_time'])) ?></span>
-            <input type="text" class="group-time-input" data-group-time-input value="<?= e(to12h($group['scheduled_time'])) ?>" aria-label="Scheduled time (e.g. 8:00 AM)" placeholder="e.g. 8:00 AM" hidden>
             <span class="count-badge" data-group-card-count><?= e((string) count($group['members'])) ?> med<?= count($group['members']) !== 1 ? 's' : '' ?></span>
           </div>
           <div class="med-actions-menu" data-group-actions-menu>
@@ -406,43 +385,8 @@
               <?php if ((string) ($member['feedback_type'] ?? 'none') !== 'none'): ?>
                 <span class="group-feedback-badge">tracks feedback</span>
               <?php endif; ?>
-              <form method="post" action="index.php" data-ajax-remove>
-                <?= csrf_field() ?>
-                <input type="hidden" name="json_response" value="1">
-                <input type="hidden" name="action" value="remove_medication_from_group">
-                <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
-                <input type="hidden" name="medication_id" value="<?= e((string) $member['medication_id']) ?>">
-                <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
-              </form>
             </div>
           <?php endforeach; ?>
-        </div>
-
-        <?php $eligibleToAdd = $repository->ungroupedActiveMedications((int) $group['id']); ?>
-        <?php if ($eligibleToAdd !== []): ?>
-          <form class="group-add-med-form" method="post" action="index.php" data-ajax-add hidden>
-            <?= csrf_field() ?>
-            <input type="hidden" name="json_response" value="1">
-            <input type="hidden" name="action" value="add_medication_to_group">
-            <input type="hidden" name="group_id" value="<?= e((string) $group['id']) ?>">
-            <select name="medication_id" class="group-add-select">
-              <option value="">Add a medication&hellip;</option>
-              <?php foreach ($eligibleToAdd as $eligible): ?>
-                <?php $eligibleDose = formattedDose($eligible); ?>
-                <?php $existingGroups = (string) ($eligible['existing_groups'] ?? ''); ?>
-                <option value="<?= e((string) $eligible['id']) ?>" data-name="<?= e((string) $eligible['name']) ?>" data-dose="<?= e($eligibleDose) ?>"><?= e((string) $eligible['name']) ?><?= $eligibleDose !== '' ? ' &mdash; ' . e($eligibleDose) : '' ?><?= $existingGroups !== '' ? ' (also in: ' . e($existingGroups) . ')' : '' ?></option>
-              <?php endforeach; ?>
-            </select>
-            <label class="group-dose-override-label">Dose qty for this group
-              <input type="number" name="quantity_per_dose" min="0.001" step="any" placeholder="e.g. 2" class="group-dose-override-input">
-              <span class="field-optional">(optional — leave blank to use default)</span>
-            </label>
-            <button type="submit" class="secondary group-add-btn">Add</button>
-          </form>
-        <?php endif; ?>
-        <div class="group-card-edit-actions" data-group-edit-actions hidden>
-          <button type="button" class="secondary" data-group-cancel-edit>Cancel</button>
-          <button type="button" data-group-save-edit data-group-id="<?= e((string) $group['id']) ?>">Save changes</button>
         </div>
         </div><!-- /.group-card-body -->
       </div>
@@ -450,3 +394,4 @@
     </div><!-- /.groups-sortable-list -->
   </div>
 </div>
+<script>window.__ungroupedMedications = <?= json_encode($ungroupedMedications) ?>;</script>
