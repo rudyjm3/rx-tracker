@@ -265,7 +265,6 @@ try {
                 'group_id' => $groupId,
                 'group_name' => $groupName,
                 'group_time_display' => to12h($parsedTime),
-                'members' => format_group_members_for_json($repository->findGroup($groupId)['members'] ?? []),
             ], JSON_THROW_ON_ERROR);
             exit;
         }

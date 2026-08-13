@@ -5278,11 +5278,52 @@ const groupModalRenderMembers = (members) => {
   groupModalMembers.innerHTML = members.length ? members.map(renderGroupModalMemberRow).join('') : groupModalEmptyHintHtml;
 };
 
+let groupModalRequestId = 0;
+
+const refreshGroupCardFromServer = async (groupId) => {
+  const card = document.querySelector(`.group-card[data-group-card-id="${groupId}"]`);
+  if (!card) return;
+  try {
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'get_group_detail',
+        csrf_token: getCsrfToken(),
+        json_response: '1',
+        group_id: String(groupId),
+      }).toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) return;
+    const nameEl = card.querySelector('[data-group-card-name]');
+    const timeEl = card.querySelector('[data-group-card-time]');
+    const editBtn = card.querySelector('[data-edit-group]');
+    if (nameEl) nameEl.textContent = json.group.name;
+    if (timeEl) timeEl.textContent = json.group.scheduled_time_display;
+    if (editBtn) {
+      editBtn.dataset.groupName = json.group.name;
+      editBtn.dataset.groupTime = json.group.scheduled_time_display;
+    }
+    const membersList = card.querySelector('[data-group-members]');
+    if (membersList) {
+      membersList.innerHTML = json.members.length
+        ? json.members.map(buildGroupCardMemberRowHtml).join('')
+        : '<p class="group-empty-hint">No medications in this group yet.</p>';
+    }
+    const countBadge = card.querySelector('[data-group-card-count]');
+    if (countBadge) countBadge.textContent = `${json.members.length} med${json.members.length !== 1 ? 's' : ''}`;
+  } catch {
+    // Best-effort refresh — a manual page reload still shows the correct, already-persisted state.
+  }
+};
+
 const openGroupModal = (mode, groupId = null, groupName = '', groupTime = '') => {
   if (!groupModal) return;
   groupModalMode = mode;
   groupModalGroupId = mode === 'edit' ? groupId : null;
   stagedGroupMembers = [];
+  const requestId = ++groupModalRequestId;
   if (groupModalIdInput) groupModalIdInput.value = groupId ?? '';
   if (groupModalNameInput) groupModalNameInput.value = groupName;
   if (groupModalTimeInput) groupModalTimeInput.value = groupTime;
@@ -5308,6 +5349,8 @@ const openGroupModal = (mode, groupId = null, groupName = '', groupTime = '') =>
     })
       .then((r) => r.json())
       .then((json) => {
+        // Ignore stale responses — a newer openGroupModal() call has since superseded this one.
+        if (requestId !== groupModalRequestId) return;
         if (!json.ok) throw new Error(json.error ?? 'Failed to load group.');
         if (groupModalNameInput) groupModalNameInput.value = json.group.name;
         if (groupModalTimeInput) groupModalTimeInput.value = json.group.scheduled_time_display;
@@ -5315,6 +5358,7 @@ const openGroupModal = (mode, groupId = null, groupName = '', groupTime = '') =>
         if (groupModalAddSelect) groupModalAddSelect.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
       })
       .catch((err) => {
+        if (requestId !== groupModalRequestId) return;
         alert(err.message ?? 'Failed to load group.');
       });
   }
@@ -5327,6 +5371,12 @@ const closeGroupModal = () => {
   if (!groupModal) return;
   groupModal.classList.remove('is-open');
   unlockBodyScroll();
+  // Edit mode writes add/remove/dose-qty changes immediately, so the card behind the modal can be
+  // stale by the time it closes — regardless of whether the user clicked Save, Cancel, or the
+  // backdrop. Sync it from the server rather than only refreshing on a successful Save.
+  if (groupModalMode === 'edit' && groupModalGroupId) {
+    refreshGroupCardFromServer(groupModalGroupId);
+  }
 };
 
 document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {
@@ -5404,7 +5454,9 @@ groupModalMembers?.addEventListener('click', async (e) => {
     const valueEl = row?.querySelector('[data-group-dose-value]');
     const delta = parseInt(stepBtn.dataset.groupDoseStep ?? '0', 10);
     const current = parseFloat(valueEl?.textContent ?? '1') || 1;
-    const next = Math.max(0.5, Math.round((current + delta) * 1000) / 1000);
+    // Floor matches the min="0.001" already enforced on dose-qty inputs elsewhere in the app —
+    // using 0.5 here would let a Decrease click raise a dose below 0.5 (e.g. 0.25 -> 0.5).
+    const next = Math.max(0.001, Math.round((current + delta) * 1000) / 1000);
 
     if (groupModalMode === 'create') {
       const staged = stagedGroupMembers.find((m) => String(m.medication_id) === medId);
@@ -5528,29 +5580,9 @@ groupModalSaveBtn?.addEventListener('click', async () => {
 
       const ng = document.querySelectorAll('.group-card').length;
       document.querySelectorAll('[data-plan-tab="groups"]').forEach((t) => { t.textContent = `Groups (${ng})`; });
-    } else {
-      const card = groupsList?.querySelector(`[data-group-card-id="${json.group_id}"]`);
-      if (card) {
-        const nameEl = card.querySelector('[data-group-card-name]');
-        const timeEl = card.querySelector('[data-group-card-time]');
-        const editBtn = card.querySelector('[data-edit-group]');
-        if (nameEl) nameEl.textContent = json.group_name;
-        if (timeEl) timeEl.textContent = json.group_time_display;
-        if (editBtn) {
-          editBtn.dataset.groupName = json.group_name;
-          editBtn.dataset.groupTime = json.group_time_display;
-        }
-        const members = json.members ?? [];
-        const membersList = card.querySelector('[data-group-members]');
-        if (membersList) {
-          membersList.innerHTML = members.length
-            ? members.map(buildGroupCardMemberRowHtml).join('')
-            : '<p class="group-empty-hint">No medications in this group yet.</p>';
-        }
-        const countBadge = card.querySelector('[data-group-card-count]');
-        if (countBadge) countBadge.textContent = `${members.length} med${members.length !== 1 ? 's' : ''}`;
-      }
     }
+    // Edit mode: closeGroupModal() (called above) already refreshes the card's name/time/members
+    // from the server, since it does that unconditionally whenever an edit-mode session ends.
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
   } finally {
