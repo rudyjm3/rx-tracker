@@ -5234,75 +5234,278 @@ document.querySelectorAll('[data-view-details]').forEach((btn) => {
 
 // ── Group management UI ───────────────────────────────────────────────────────
 
-const groupFormWrap = document.querySelector('[data-group-form-wrap]');
-const groupForm = document.querySelector('[data-group-form]');
-const groupFormAction = document.querySelector('[data-group-form-action]');
-const groupFormId = document.querySelector('[data-group-form-id]');
-const groupFormName = document.querySelector('[data-group-form-name]');
-const groupFormTime = document.querySelector('[data-group-form-time]');
-const groupFormSubmit = document.querySelector('[data-group-form-submit]');
+const medGroupTypeLabels = { prescription: 'Rx', otc: 'OTC', supplement: 'Supplement' };
 
-const openGroupForm = (mode, id = '', name = '', time = '') => {
-  if (!groupFormWrap) return;
-  if (groupFormAction) groupFormAction.value = mode === 'edit' ? 'update_group' : 'create_group';
-  if (groupFormId) groupFormId.value = id;
-  if (groupFormName) groupFormName.value = name;
-  if (groupFormTime) groupFormTime.value = time;
-  if (groupFormSubmit) groupFormSubmit.textContent = mode === 'edit' ? 'Save changes' : 'Create group';
-  groupFormWrap.classList.add('is-open');
-  groupFormName?.focus();
+const groupModal = document.querySelector('[data-group-modal]');
+const groupModalTitle = document.querySelector('[data-group-modal-title]');
+const groupModalIdInput = document.querySelector('[data-group-modal-id]');
+const groupModalNameInput = document.querySelector('[data-group-modal-name-input]');
+const groupModalTimeInput = document.querySelector('[data-group-modal-time-input]');
+const groupModalMembers = document.querySelector('[data-group-modal-members]');
+const groupModalAddSelect = document.querySelector('[data-group-modal-add-select]');
+const groupModalAddQpd = document.querySelector('[data-group-modal-add-qpd]');
+const groupModalSaveBtn = document.querySelector('[data-group-modal-save]');
+const groupModalEmptyHintHtml = '<p class="group-empty-hint" data-group-modal-empty-hint>No medications in this group yet.</p>';
+
+let groupModalMode = 'create';
+let groupModalGroupId = null;
+let stagedGroupMembers = [];
+
+const renderGroupModalMemberRow = (member) => {
+  const doseValue = member.group_quantity_per_dose ?? member.medication_default_quantity_per_dose ?? member.quantity_per_dose ?? 1;
+  const unit = member.inventory_unit || 'tablets';
+  const typeBadge = member.medication_type
+    ? `<span class="med-type-badge med-type-badge--${escHtml(member.medication_type)}">${escHtml(medGroupTypeLabels[member.medication_type] ?? 'Rx')}</span>`
+    : '';
+  const feedbackBadge = member.feedback_type && member.feedback_type !== 'none'
+    ? '<span class="group-feedback-badge">tracks feedback</span>'
+    : '';
+  const doseText = member.dose ? `<span class="group-member-dose">${escHtml(member.dose)}</span>` : '';
+  return `<div class="group-member-row" data-group-modal-member data-medication-id="${escHtml(String(member.medication_id))}">
+      <span class="group-member-name">${escHtml(member.name)}</span>${doseText}${typeBadge}${feedbackBadge}
+      <div class="group-dose-stepper" data-group-dose-stepper>
+        <button type="button" class="group-dose-step-btn" data-group-dose-step="-1" aria-label="Decrease dose quantity">&minus;</button>
+        <span class="group-dose-value" data-group-dose-value>${escHtml(formatQty(doseValue))}</span>
+        <button type="button" class="group-dose-step-btn" data-group-dose-step="1" aria-label="Increase dose quantity">+</button>
+        <span class="group-dose-unit" data-group-dose-unit>${escHtml(unit)}</span>
+      </div>
+      <button type="button" class="secondary group-remove-btn" data-group-modal-remove>&times; Remove</button>
+    </div>`;
 };
 
-const closeGroupForm = () => {
-  if (groupFormWrap) groupFormWrap.classList.remove('is-open');
+const groupModalRenderMembers = (members) => {
+  if (!groupModalMembers) return;
+  groupModalMembers.innerHTML = members.length ? members.map(renderGroupModalMemberRow).join('') : groupModalEmptyHintHtml;
 };
 
-const exitGroupEditMode = (card) => {
-  if (!card) return;
-  card.classList.remove('is-editing');
-  const nameView   = card.querySelector('[data-group-card-name]');
-  const nameInput  = card.querySelector('[data-group-name-input]');
-  if (nameView)  nameView.hidden  = false;
-  if (nameInput) {
-    nameInput.hidden = true;
-    nameInput.value  = nameView?.textContent ?? nameInput.value;
+const openGroupModal = (mode, groupId = null, groupName = '', groupTime = '') => {
+  if (!groupModal) return;
+  groupModalMode = mode;
+  groupModalGroupId = mode === 'edit' ? groupId : null;
+  stagedGroupMembers = [];
+  if (groupModalIdInput) groupModalIdInput.value = groupId ?? '';
+  if (groupModalNameInput) groupModalNameInput.value = groupName;
+  if (groupModalTimeInput) groupModalTimeInput.value = groupTime;
+  if (groupModalTitle) groupModalTitle.textContent = mode === 'edit' ? 'Edit group' : 'Create group';
+  if (groupModalSaveBtn) { groupModalSaveBtn.textContent = mode === 'edit' ? 'Save changes' : 'Create group'; groupModalSaveBtn.disabled = false; }
+  if (groupModalAddQpd) groupModalAddQpd.value = '';
+  groupModalRenderMembers([]);
+
+  if (mode === 'create') {
+    const ungrouped = window.__ungroupedMedications ?? [];
+    if (groupModalAddSelect) groupModalAddSelect.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(ungrouped)}`;
+  } else {
+    if (groupModalAddSelect) groupModalAddSelect.innerHTML = '<option value="">Add a medication&hellip;</option>';
+    fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        action: 'get_group_detail',
+        csrf_token: getCsrfToken(),
+        json_response: '1',
+        group_id: String(groupId),
+      }).toString(),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!json.ok) throw new Error(json.error ?? 'Failed to load group.');
+        if (groupModalNameInput) groupModalNameInput.value = json.group.name;
+        if (groupModalTimeInput) groupModalTimeInput.value = json.group.scheduled_time_display;
+        groupModalRenderMembers(json.members);
+        if (groupModalAddSelect) groupModalAddSelect.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
+      })
+      .catch((err) => {
+        alert(err.message ?? 'Failed to load group.');
+      });
   }
-  const timeBadge = card.querySelector('[data-group-card-time]');
-  const timeInput = card.querySelector('[data-group-time-input]');
-  if (timeBadge) timeBadge.hidden = false;
-  if (timeInput) {
-    timeInput.hidden = true;
-    timeInput.value  = timeBadge?.textContent ?? timeInput.value;
-  }
-  const addForm     = card.querySelector('.group-add-med-form');
-  const editActions = card.querySelector('[data-group-edit-actions]');
-  if (addForm)     addForm.hidden     = true;
-  if (editActions) editActions.hidden = true;
+
+  groupModal.classList.add('is-open');
+  lockBodyScroll();
+};
+
+const closeGroupModal = () => {
+  if (!groupModal) return;
+  groupModal.classList.remove('is-open');
+  unlockBodyScroll();
 };
 
 document.querySelectorAll('[data-open-create-group-form], [data-open-create-group-form-header]').forEach((btn) => {
   btn.addEventListener('click', () => {
     setPlanTab('groups');
-    openGroupForm('create');
+    openGroupModal('create');
   });
 });
 
-document.querySelector('[data-cancel-group-form]')?.addEventListener('click', closeGroupForm);
+document.querySelectorAll('[data-close-group-modal]').forEach((btn) => btn.addEventListener('click', closeGroupModal));
+groupModal?.addEventListener('click', (e) => {
+  if (e.target === groupModal) closeGroupModal();
+});
 
-groupForm?.addEventListener('submit', async (e) => {
-  const action = groupFormAction?.value;
-  if (action !== 'create_group' && action !== 'update_group') return;
-  e.preventDefault();
+document.querySelector('[data-group-modal-add-btn]')?.addEventListener('click', async () => {
+  const select = groupModalAddSelect;
+  if (!select?.value) return;
+  const selectedOption = select.options[select.selectedIndex];
+  const medId = select.value;
+  const medName = selectedOption.dataset.name ?? '';
+  const medDose = selectedOption.dataset.dose ?? '';
+  const qpdValue = groupModalAddQpd?.value ?? '';
 
+  if (groupModalMode === 'create') {
+    stagedGroupMembers.push({ medication_id: medId, name: medName, dose: medDose, quantity_per_dose: qpdValue ? parseFloat(qpdValue) : null });
+    groupModalMembers?.querySelector('[data-group-modal-empty-hint]')?.remove();
+    groupModalMembers?.insertAdjacentHTML('beforeend', renderGroupModalMemberRow(stagedGroupMembers[stagedGroupMembers.length - 1]));
+    select.remove(select.selectedIndex);
+    select.value = '';
+    if (groupModalAddQpd) groupModalAddQpd.value = '';
+    return;
+  }
+
+  const addBtn = document.querySelector('[data-group-modal-add-btn]');
+  if (addBtn) addBtn.disabled = true;
+  try {
+    const params = new URLSearchParams();
+    params.set('action', 'add_medication_to_group');
+    params.set('csrf_token', getCsrfToken());
+    params.set('json_response', '1');
+    params.set('group_id', String(groupModalGroupId));
+    params.set('medication_id', medId);
+    if (qpdValue) params.set('quantity_per_dose', qpdValue);
+
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error('Failed to add medication.');
+
+    groupModalMembers?.querySelector('[data-group-modal-empty-hint]')?.remove();
+    groupModalMembers?.insertAdjacentHTML('beforeend', renderGroupModalMemberRow({
+      medication_id: medId,
+      name: medName,
+      dose: medDose,
+      quantity_per_dose: qpdValue ? parseFloat(qpdValue) : null,
+    }));
+    select.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
+    select.value = '';
+    if (groupModalAddQpd) groupModalAddQpd.value = '';
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+  } finally {
+    if (addBtn) addBtn.disabled = false;
+  }
+});
+
+groupModalMembers?.addEventListener('click', async (e) => {
+  const stepBtn = e.target.closest('[data-group-dose-step]');
+  if (stepBtn) {
+    const row = stepBtn.closest('[data-group-modal-member]');
+    const medId = row?.dataset.medicationId ?? '';
+    const valueEl = row?.querySelector('[data-group-dose-value]');
+    const delta = parseInt(stepBtn.dataset.groupDoseStep ?? '0', 10);
+    const current = parseFloat(valueEl?.textContent ?? '1') || 1;
+    const next = Math.max(0.5, Math.round((current + delta) * 1000) / 1000);
+
+    if (groupModalMode === 'create') {
+      const staged = stagedGroupMembers.find((m) => String(m.medication_id) === medId);
+      if (staged) staged.quantity_per_dose = next;
+      if (valueEl) valueEl.textContent = String(next);
+      return;
+    }
+
+    const stepBtns = row?.querySelectorAll('[data-group-dose-step]') ?? [];
+    stepBtns.forEach((b) => { b.disabled = true; });
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'update_group_member_dose');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('group_id', String(groupModalGroupId));
+      params.set('medication_id', medId);
+      params.set('quantity_per_dose', String(next));
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to update dose quantity.');
+      if (valueEl) valueEl.textContent = formatQty(json.quantity_per_dose ?? json.medication_default_quantity_per_dose ?? next);
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+    } finally {
+      stepBtns.forEach((b) => { b.disabled = false; });
+    }
+    return;
+  }
+
+  const removeBtn = e.target.closest('[data-group-modal-remove]');
+  if (removeBtn) {
+    const row = removeBtn.closest('[data-group-modal-member]');
+    const medId = row?.dataset.medicationId ?? '';
+
+    if (groupModalMode === 'create') {
+      stagedGroupMembers = stagedGroupMembers.filter((m) => String(m.medication_id) !== medId);
+      row?.remove();
+      if (groupModalMembers && groupModalMembers.children.length === 0) groupModalRenderMembers([]);
+      const ungrouped = window.__ungroupedMedications ?? [];
+      const restored = ungrouped.find((m) => String(m.id) === medId);
+      if (restored && groupModalAddSelect) {
+        groupModalAddSelect.insertAdjacentHTML('beforeend', buildMedOptions([restored]));
+      }
+      return;
+    }
+
+    removeBtn.disabled = true;
+    try {
+      const params = new URLSearchParams();
+      params.set('action', 'remove_medication_from_group');
+      params.set('csrf_token', getCsrfToken());
+      params.set('json_response', '1');
+      params.set('medication_id', medId);
+      params.set('group_id', String(groupModalGroupId));
+
+      const res = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error('Failed to remove medication.');
+      row?.remove();
+      if (groupModalMembers && groupModalMembers.children.length === 0) groupModalRenderMembers([]);
+      if (groupModalAddSelect) groupModalAddSelect.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
+    } catch (err) {
+      alert(err.message ?? 'Something went wrong.');
+      removeBtn.disabled = false;
+    }
+  }
+});
+
+groupModalSaveBtn?.addEventListener('click', async () => {
+  const name = (groupModalNameInput?.value ?? '').trim();
+  const time = (groupModalTimeInput?.value ?? '').trim();
+  if (!name) { groupModalNameInput?.focus(); return; }
+  if (!time) { groupModalTimeInput?.focus(); return; }
+
+  groupModalSaveBtn.disabled = true;
   const params = new URLSearchParams();
-  params.set('action', action);
   params.set('csrf_token', getCsrfToken());
   params.set('json_response', '1');
-  params.set('group_name', groupFormName?.value ?? '');
-  params.set('group_time', groupFormTime?.value ?? '');
-  if (action === 'update_group') params.set('group_id', groupFormId?.value ?? '');
+  params.set('group_name', name);
+  params.set('group_time', time);
 
-  if (groupFormSubmit) groupFormSubmit.disabled = true;
+  if (groupModalMode === 'create') {
+    params.set('action', 'create_group');
+    params.set('members', JSON.stringify(stagedGroupMembers.map((m) => ({
+      medication_id: m.medication_id,
+      quantity_per_dose: m.quantity_per_dose ?? null,
+    }))));
+  } else {
+    params.set('action', 'update_group');
+    params.set('group_id', String(groupModalGroupId));
+  }
 
   try {
     const res = await fetch('index.php', {
@@ -5313,13 +5516,12 @@ groupForm?.addEventListener('submit', async (e) => {
     const json = await res.json();
     if (!json.ok) throw new Error(json.error ?? 'Something went wrong.');
 
-    closeGroupForm();
-
+    closeGroupModal();
     const groupsList = document.querySelector('.groups-list');
 
-    if (action === 'create_group') {
+    if (groupModalMode === 'create') {
       groupsList?.querySelector('.groups-empty-state')?.remove();
-      const card = buildGroupCard(json.group_id, json.group_name, json.group_time_display, json.ungrouped);
+      const card = buildGroupCard(json.group_id, json.group_name, json.group_time_display, json.ungrouped, json.members);
       const createRow = groupsList?.querySelector('.groups-create-row');
       createRow ? createRow.after(card) : groupsList?.appendChild(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -5338,12 +5540,21 @@ groupForm?.addEventListener('submit', async (e) => {
           editBtn.dataset.groupName = json.group_name;
           editBtn.dataset.groupTime = json.group_time_display;
         }
+        const members = json.members ?? [];
+        const membersList = card.querySelector('[data-group-members]');
+        if (membersList) {
+          membersList.innerHTML = members.length
+            ? members.map(buildGroupCardMemberRowHtml).join('')
+            : '<p class="group-empty-hint">No medications in this group yet.</p>';
+        }
+        const countBadge = card.querySelector('[data-group-card-count]');
+        if (countBadge) countBadge.textContent = `${members.length} med${members.length !== 1 ? 's' : ''}`;
       }
     }
   } catch (err) {
     alert(err.message ?? 'Something went wrong.');
   } finally {
-    if (groupFormSubmit) groupFormSubmit.disabled = false;
+    groupModalSaveBtn.disabled = false;
   }
 });
 
@@ -5382,69 +5593,9 @@ document.querySelector('[data-plan-panel="groups"]')?.addEventListener('click', 
 
   const editBtn = e.target.closest('[data-edit-group]');
   if (editBtn) {
-    const card = editBtn.closest('.group-card');
     closeAllGroupMenus();
-    card?.classList.add('is-editing');
-    const nameView  = card?.querySelector('[data-group-card-name]');
-    const nameInput = card?.querySelector('[data-group-name-input]');
-    if (nameView)  nameView.hidden  = true;
-    if (nameInput) nameInput.hidden = false;
-    const timeBadge = card?.querySelector('[data-group-card-time]');
-    const timeInput = card?.querySelector('[data-group-time-input]');
-    if (timeBadge) timeBadge.hidden = true;
-    if (timeInput) timeInput.hidden = false;
-    const addForm     = card?.querySelector('.group-add-med-form');
-    const editActions = card?.querySelector('[data-group-edit-actions]');
-    if (addForm)     addForm.hidden     = false;
-    if (editActions) editActions.hidden = false;
-    card?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    return;
-  }
-
-  const cancelEditBtn = e.target.closest('[data-group-cancel-edit]');
-  if (cancelEditBtn) {
-    exitGroupEditMode(cancelEditBtn.closest('.group-card'));
-    return;
-  }
-
-  const saveEditBtn = e.target.closest('[data-group-save-edit]');
-  if (saveEditBtn) {
-    const card    = saveEditBtn.closest('.group-card');
-    const groupId = saveEditBtn.dataset.groupId ?? '';
-    const name    = (card?.querySelector('[data-group-name-input]')?.value ?? '').trim();
-    const time    = (card?.querySelector('[data-group-time-input]')?.value ?? '').trim();
-    if (!name) { card?.querySelector('[data-group-name-input]')?.focus(); return; }
-    if (!time) { card?.querySelector('[data-group-time-input]')?.focus(); return; }
-    saveEditBtn.disabled = true;
-    const params = new URLSearchParams();
-    params.set('action', 'update_group');
-    params.set('csrf_token', getCsrfToken());
-    params.set('json_response', '1');
-    params.set('group_id', groupId);
-    params.set('group_name', name);
-    params.set('group_time', time);
-    fetch('index.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() })
-      .then((r) => r.json())
-      .then((json) => {
-        if (!json.ok) throw new Error(json.error ?? 'Save failed.');
-        const nameView    = card?.querySelector('[data-group-card-name]');
-        const nameInput   = card?.querySelector('[data-group-name-input]');
-        const timeBadge   = card?.querySelector('[data-group-card-time]');
-        const timeInput   = card?.querySelector('[data-group-time-input]');
-        const editDataBtn = card?.querySelector('[data-edit-group]');
-        if (nameView)    nameView.textContent          = json.group_name;
-        if (nameInput)   nameInput.value               = json.group_name;
-        if (timeBadge)   timeBadge.textContent         = json.group_time_display;
-        if (timeInput)   timeInput.value               = json.group_time_display;
-        if (editDataBtn) editDataBtn.dataset.groupName = json.group_name;
-        exitGroupEditMode(card);
-      })
-      .catch((err) => {
-        alert(err.message ?? 'Something went wrong.');
-      })
-      .finally(() => {
-        saveEditBtn.disabled = false;
-      });
+    const { groupId = '', groupName = '', groupTime = '' } = editBtn.dataset;
+    openGroupModal('edit', groupId, groupName, groupTime);
     return;
   }
 });
@@ -5455,26 +5606,26 @@ const buildMedOptions = (ungrouped) =>
     return `<option value="${escHtml(String(m.id))}" data-name="${escHtml(m.name)}" data-dose="${escHtml(m.dose)}">${escHtml(m.name)} &mdash; ${escHtml(m.dose)}${hint}</option>`;
   }).join('');
 
-const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
+const buildGroupCardMemberRowHtml = (member) => {
+  const typeSlug = member.medication_type || 'prescription';
+  const doseText = member.dose ? `<span class="group-member-dose">${escHtml(member.dose)}</span>` : '';
+  const overrideHtml = member.group_quantity_per_dose !== null && member.group_quantity_per_dose !== undefined
+    ? `<span class="group-member-dose">${escHtml(formatQty(member.group_quantity_per_dose))} ${escHtml(member.inventory_unit || 'tablets')} <em class="group-dose-override-hint">(override)</em></span>`
+    : '';
+  const feedbackHtml = member.feedback_type && member.feedback_type !== 'none'
+    ? '<span class="group-feedback-badge">tracks feedback</span>'
+    : '';
+  return `<div class="group-member-row">
+      <span class="group-member-name">${escHtml(member.name)}</span>${doseText}<span class="med-type-badge med-type-badge--${escHtml(typeSlug)}">${escHtml(medGroupTypeLabels[typeSlug] ?? 'Rx')}</span>${overrideHtml}${feedbackHtml}
+    </div>`;
+};
+
+const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped, members = []) => {
   const card = document.createElement('div');
   card.className = 'group-card';
   card.dataset.groupCardId = String(groupId);
 
-  const addMedFormHtml = ungrouped.length > 0
-    ? `<form class="group-add-med-form" method="post" action="index.php" data-ajax-add hidden>
-        <input type="hidden" name="action" value="add_medication_to_group">
-        <input type="hidden" name="group_id" value="${groupId}">
-        <select name="medication_id" class="group-add-select">
-          <option value="">Add a medication&hellip;</option>
-          ${buildMedOptions(ungrouped)}
-        </select>
-        <label class="group-dose-override-label">Dose qty for this group
-          <input type="number" name="quantity_per_dose" min="0.001" step="any" placeholder="e.g. 2" class="group-dose-override-input">
-          <span class="field-optional">(optional)</span>
-        </label>
-        <button type="submit" class="secondary group-add-btn">Add</button>
-      </form>`
-    : '';
+  const membersHtml = members.length ? members.map(buildGroupCardMemberRowHtml).join('') : '<p class="group-empty-hint">No medications in this group yet.</p>';
 
   card.innerHTML = `
     <button type="button" class="drag-handle drag-handle--group" aria-label="Drag to reorder" tabindex="-1"><i class="fa-solid fa-grip-vertical" aria-hidden="true"></i></button>
@@ -5482,10 +5633,8 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
     <div class="group-card-header">
       <div class="group-card-title">
         <strong data-group-card-name>${escHtml(groupName)}</strong>
-        <input type="text" class="group-name-input" data-group-name-input value="${escHtml(groupName)}" aria-label="Group name" hidden>
         <span class="group-time-badge" data-group-card-time>${escHtml(groupTimeDisplay)}</span>
-        <input type="text" class="group-time-input" data-group-time-input value="${escHtml(groupTimeDisplay)}" aria-label="Scheduled time (e.g. 8:00 AM)" placeholder="e.g. 8:00 AM" hidden>
-        <span class="count-badge" data-group-card-count>0 meds</span>
+        <span class="count-badge" data-group-card-count>${members.length} med${members.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="med-actions-menu" data-group-actions-menu>
         <button type="button" class="icon-button med-actions-trigger" data-group-actions-trigger aria-expanded="false" aria-haspopup="true">
@@ -5512,12 +5661,7 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
       </div>
     </div>
     <div class="group-members-list" data-group-members>
-      <p class="group-empty-hint">No medications in this group yet.</p>
-    </div>
-    ${addMedFormHtml}
-    <div class="group-card-edit-actions" data-group-edit-actions hidden>
-      <button type="button" class="secondary" data-group-cancel-edit>Cancel</button>
-      <button type="button" data-group-save-edit data-group-id="${groupId}">Save changes</button>
+      ${membersHtml}
     </div>
     </div>`;
 
@@ -5525,163 +5669,12 @@ const buildGroupCard = (groupId, groupName, groupTimeDisplay, ungrouped) => {
     if (!window.confirm(e.currentTarget.getAttribute('data-confirm') ?? '')) e.preventDefault();
   });
 
-  const timeInput = card.querySelector('[data-group-time-input]');
-  if (timeInput) setupTimeAutoColon(timeInput, false);
-
   return card;
 };
 
-// ── Group panel delegated AJAX (add-med + delete) ─────────────────────────────
+// ── Group panel delegated AJAX (delete) ────────────────────────────────────────
 
 document.querySelector('[data-plan-panel="groups"]')?.addEventListener('submit', async (e) => {
-  // ── Add medication to group ───────────────────────────────────────────────
-  const addForm = e.target.closest('.group-add-med-form[data-ajax-add]');
-  if (addForm) {
-    e.preventDefault();
-    const select = addForm.querySelector('.group-add-select');
-    if (!select?.value) return;
-
-    const selectedOption = select.options[select.selectedIndex];
-    const medId = select.value;
-    const medName = selectedOption.dataset.name ?? selectedOption.textContent.split('—')[0].trim();
-    const medDose = selectedOption.dataset.dose ?? selectedOption.textContent.split('—')[1]?.trim() ?? '';
-    const groupId = addForm.querySelector('input[name="group_id"]')?.value ?? '';
-    const qpdInput = addForm.querySelector('input[name="quantity_per_dose"]');
-    const qpdValue = qpdInput?.value ?? '';
-
-    const submitBtn = addForm.querySelector('.group-add-btn');
-    if (submitBtn) submitBtn.disabled = true;
-
-    try {
-      const params = new URLSearchParams();
-      params.set('action', 'add_medication_to_group');
-      params.set('csrf_token', getCsrfToken());
-      params.set('json_response', '1');
-      params.set('group_id', groupId);
-      params.set('medication_id', medId);
-      if (qpdValue) params.set('quantity_per_dose', qpdValue);
-
-      const res = await fetch('index.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error('Failed to add medication.');
-
-      const card = addForm.closest('.group-card');
-      const membersList = card?.querySelector('[data-group-members]');
-      if (membersList) {
-        membersList.querySelector('.group-empty-hint')?.remove();
-        const row = document.createElement('div');
-        row.className = 'group-member-row';
-        row.innerHTML = `
-          <span class="group-member-name">${escHtml(medName)}</span>
-          <span class="group-member-dose">${escHtml(medDose)}</span>
-          <form method="post" action="index.php" data-ajax-remove>
-            <input type="hidden" name="csrf_token" value="${escHtml(getCsrfToken())}">
-            <input type="hidden" name="json_response" value="1">
-            <input type="hidden" name="action" value="remove_medication_from_group">
-            <input type="hidden" name="group_id" value="${escHtml(groupId)}">
-            <input type="hidden" name="medication_id" value="${escHtml(medId)}">
-            <button type="submit" class="secondary group-remove-btn">&times; Remove</button>
-          </form>`;
-        membersList.appendChild(row);
-      }
-
-      const countBadge = card?.querySelector('[data-group-card-count]');
-      if (countBadge) {
-        const n = card?.querySelectorAll('.group-member-row').length ?? 0;
-        countBadge.textContent = `${n} med${n !== 1 ? 's' : ''}`;
-      }
-
-      if (qpdInput) qpdInput.value = '';
-      if (json.ungrouped.length === 0) {
-        addForm.remove();
-      } else {
-        select.innerHTML = `<option value="">Add a medication&hellip;</option>${buildMedOptions(json.ungrouped)}`;
-        select.value = '';
-      }
-    } catch (err) {
-      alert(err.message ?? 'Something went wrong.');
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-    }
-    return;
-  }
-
-  // ── Remove medication from group ──────────────────────────────────────────────
-  const removeForm = e.target.closest('form[data-ajax-remove]');
-  if (removeForm) {
-    e.preventDefault();
-    const medId = removeForm.querySelector('input[name="medication_id"]')?.value ?? '';
-    const groupIdForRemove = removeForm.querySelector('input[name="group_id"]')?.value ?? '';
-    const card = removeForm.closest('.group-card');
-    const memberRow = removeForm.closest('.group-member-row');
-    const submitBtn = removeForm.querySelector('button[type="submit"]');
-    if (submitBtn) submitBtn.disabled = true;
-
-    try {
-      const params = new URLSearchParams();
-      params.set('action', 'remove_medication_from_group');
-      params.set('csrf_token', getCsrfToken());
-      params.set('json_response', '1');
-      params.set('medication_id', medId);
-      if (groupIdForRemove) params.set('group_id', groupIdForRemove);
-
-      const res = await fetch('index.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error('Failed to remove medication.');
-
-      memberRow?.remove();
-
-      const membersList = card?.querySelector('[data-group-members]');
-      if (membersList && (card?.querySelectorAll('.group-member-row').length ?? 0) === 0) {
-        const hint = document.createElement('p');
-        hint.className = 'group-empty-hint';
-        hint.textContent = 'No medications in this group yet.';
-        membersList.appendChild(hint);
-      }
-
-      const countBadge = card?.querySelector('[data-group-card-count]');
-      if (countBadge) {
-        const n = card?.querySelectorAll('.group-member-row').length ?? 0;
-        countBadge.textContent = `${n} med${n !== 1 ? 's' : ''}`;
-      }
-
-      const existingAddForm = card?.querySelector('.group-add-med-form[data-ajax-add]');
-      if (existingAddForm && json.ungrouped.length > 0) {
-        const select = existingAddForm.querySelector('.group-add-select');
-        if (select) select.innerHTML = `<option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}`;
-        existingAddForm.hidden = !card?.classList.contains('is-editing');
-      } else if (!existingAddForm && json.ungrouped.length > 0 && card) {
-        const groupId = card.dataset.groupCardId ?? '';
-        const newForm = document.createElement('form');
-        newForm.className = 'group-add-med-form';
-        newForm.setAttribute('method', 'post');
-        newForm.setAttribute('action', 'index.php');
-        newForm.dataset.ajaxAdd = '';
-        newForm.hidden = !card.classList.contains('is-editing');
-        newForm.innerHTML = `<input type="hidden" name="action" value="add_medication_to_group">
-          <input type="hidden" name="group_id" value="${escHtml(groupId)}">
-          <select name="medication_id" class="group-add-select">
-            <option value="">Add a medication…</option>${buildMedOptions(json.ungrouped)}
-          </select>
-          <button type="submit" class="secondary group-add-btn">Add</button>`;
-        const editActionsEl = card.querySelector('[data-group-edit-actions]');
-        editActionsEl ? card.insertBefore(newForm, editActionsEl) : card.appendChild(newForm);
-      }
-    } catch (err) {
-      alert(err.message ?? 'Something went wrong.');
-      if (submitBtn) submitBtn.disabled = false;
-    }
-    return;
-  }
-
   // ── Delete group ──────────────────────────────────────────────────────────
   const deleteForm = e.target.closest('form');
   if (deleteForm?.querySelector('input[name="action"]')?.value !== 'delete_group') return;
@@ -6034,6 +6027,19 @@ document.querySelectorAll('[data-close-resume-modal]').forEach((btn) => {
 
 resumeModal?.addEventListener('click', (event) => {
   if (event.target === resumeModal) closeResumeModal();
+});
+
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('[data-toggle-discontinued-comment]');
+  if (!btn) return;
+  const wrap = btn.closest('[data-discontinued-comment]');
+  const shortEl = wrap?.querySelector('[data-comment-short]');
+  const fullEl = wrap?.querySelector('[data-comment-full]');
+  if (!shortEl || !fullEl) return;
+  const expanding = fullEl.hidden;
+  shortEl.hidden = expanding;
+  fullEl.hidden = !expanding;
+  btn.textContent = expanding ? 'View less' : 'View more';
 });
 
 // ── Mood chart color scheme toggle (saved to account) ────────────────────────
@@ -6803,9 +6809,10 @@ const setupTimeAutoColon = (input, isMulti = false) => {
   });
 };
 
-document.querySelectorAll('[name="first_dose_time"], [data-group-form-time], [data-group-time-input]').forEach((el) => {
+document.querySelectorAll('[name="first_dose_time"]').forEach((el) => {
   setupTimeAutoColon(el, false);
 });
+if (groupModalTimeInput) setupTimeAutoColon(groupModalTimeInput, false);
 document.querySelectorAll('[data-dose-time-rows] .dose-time-field').forEach((el) => {
   setupTimeAutoColon(el, false);
 });

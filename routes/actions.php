@@ -187,7 +187,11 @@ try {
             throw new RuntimeException('Group name is required.');
         }
         $parsedTime = parseTimeValue($groupTime);
-        $newGroupId = $repository->createGroup($groupName, $parsedTime);
+        $membersRaw = json_decode(post_string('members'), true);
+        $members = is_array($membersRaw) ? $membersRaw : [];
+        $newGroupId = $members !== []
+            ? $repository->createGroupWithMembers($groupName, $parsedTime, $members)
+            : $repository->createGroup($groupName, $parsedTime);
         if ($jsonResponse) {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
@@ -195,11 +199,54 @@ try {
                 'group_id' => $newGroupId,
                 'group_name' => $groupName,
                 'group_time_display' => to12h($parsedTime),
+                'members' => format_group_members_for_json($repository->findGroup($newGroupId)['members'] ?? []),
                 'ungrouped' => $repository->ungroupedActiveMedications($newGroupId),
             ], JSON_THROW_ON_ERROR);
             exit;
         }
         redirect_home();
+    }
+
+    if ($action === 'get_group_detail') {
+        $groupId = (int) post_string('group_id');
+        $group = $repository->findGroup($groupId);
+        if ($group === null) {
+            throw new RuntimeException('Group not found.');
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => true,
+            'group' => [
+                'id' => $group['id'],
+                'name' => $group['name'],
+                'scheduled_time_display' => to12h((string) $group['scheduled_time']),
+            ],
+            'members' => format_group_members_for_json($group['members']),
+            'ungrouped' => $repository->ungroupedActiveMedications($groupId),
+        ], JSON_THROW_ON_ERROR);
+        exit;
+    }
+
+    if ($action === 'update_group_member_dose') {
+        $groupId = (int) post_string('group_id');
+        $medicationId = (int) post_string('medication_id');
+        $qpdRaw = post_string('quantity_per_dose');
+        $qpdValue = $qpdRaw !== '' && (float) $qpdRaw > 0 ? (float) $qpdRaw : null;
+        $repository->updateMemberDose($groupId, $medicationId, $qpdValue);
+        $updatedMember = null;
+        foreach ($repository->findGroup($groupId)['members'] ?? [] as $member) {
+            if ((int) $member['medication_id'] === $medicationId) {
+                $updatedMember = $member;
+                break;
+            }
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => true,
+            'quantity_per_dose' => $updatedMember['group_quantity_per_dose'] ?? null,
+            'medication_default_quantity_per_dose' => $updatedMember['medication_default_quantity_per_dose'] ?? null,
+        ], JSON_THROW_ON_ERROR);
+        exit;
     }
 
     if ($action === 'update_group') {
@@ -218,6 +265,7 @@ try {
                 'group_id' => $groupId,
                 'group_name' => $groupName,
                 'group_time_display' => to12h($parsedTime),
+                'members' => format_group_members_for_json($repository->findGroup($groupId)['members'] ?? []),
             ], JSON_THROW_ON_ERROR);
             exit;
         }

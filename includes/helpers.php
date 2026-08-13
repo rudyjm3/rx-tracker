@@ -59,6 +59,16 @@ function formattedDose(array $medication): string
     return $structured !== '' ? $structured : (string) ($medication['dose'] ?? '');
 }
 
+function format_group_members_for_json(array $members): array
+{
+    foreach ($members as &$member) {
+        $member['dose'] = formattedDose($member);
+    }
+    unset($member);
+
+    return $members;
+}
+
 function calculate_age(?string $birthDate, ?int $birthYear = null): ?int
 {
     if ($birthDate !== null && $birthDate !== '') {
@@ -341,7 +351,7 @@ function render_inactive_medication_row(array $medication): string
     };
 
     $html  = '<div class="medication-row" data-med-type="' . e($medTypeSlug) . '" data-inactive-med-id="' . e((string) $medication['id']) . '">';
-    $html .= '<div>';
+    $html .= '<div class="medication-content">';
     $html .= '<strong>' . e((string) $medication['name']) . '</strong>';
     $html .= '<span class="med-type-badge med-type-badge--' . e($medTypeSlug) . '">' . e($medTypeLabels[$medTypeSlug] ?? 'Rx') . '</span>';
     if ($dose !== '') {
@@ -353,8 +363,18 @@ function render_inactive_medication_row(array $medication): string
             $line .= ' — ' . (string) $lastDiscontinued['reason'];
         }
         $html .= '<p class="inactive-discontinued-line">' . e($line) . '</p>';
-        if ((string) $lastDiscontinued['comment'] !== '') {
-            $html .= '<p class="inactive-discontinued-comment">' . e((string) $lastDiscontinued['comment']) . '</p>';
+        $comment = (string) $lastDiscontinued['comment'];
+        if ($comment !== '') {
+            if (mb_strlen($comment) > 150) {
+                $truncated = mb_substr($comment, 0, 150) . '…';
+                $html .= '<p class="inactive-discontinued-comment" data-discontinued-comment>';
+                $html .= '<span class="discontinued-comment-short" data-comment-short>' . e($truncated) . '</span>';
+                $html .= '<span class="discontinued-comment-full" data-comment-full hidden>' . e($comment) . '</span>';
+                $html .= ' <button type="button" class="history-view-more discontinued-comment-toggle" data-toggle-discontinued-comment>View more</button>';
+                $html .= '</p>';
+            } else {
+                $html .= '<p class="inactive-discontinued-comment">' . e($comment) . '</p>';
+            }
         }
     }
     if (count($events) > 1) {

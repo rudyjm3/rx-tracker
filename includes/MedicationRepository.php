@@ -885,6 +885,16 @@ final class MedicationRepository
         $this->groupRepo->addMedicationToGroup($groupId, $medicationId, $quantityPerDose);
     }
 
+    public function updateMemberDose(int $groupId, int $medicationId, ?float $quantityPerDose): void
+    {
+        $this->groupRepo->updateMemberDose($groupId, $medicationId, $quantityPerDose);
+    }
+
+    public function createGroupWithMembers(string $name, string $scheduledTime, array $members): int
+    {
+        return $this->groupRepo->createGroupWithMembers($name, $scheduledTime, $members);
+    }
+
     public function removeMedicationFromGroup(int $medicationId, ?int $groupId = null): void
     {
         $this->groupRepo->removeMedicationFromGroup($medicationId, $groupId);
