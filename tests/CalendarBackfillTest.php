@@ -288,3 +288,74 @@ $legacyRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE me
 assertCB(0, $legacyRowCount, 'An inactive medication with no status-event history is not backfilled (unknown history, stays blank)');
 
 echo "CalendarBackfillTest (eventless inactive medication stays blank) passed.\n";
+
+// ── Test: a day with SOME doses already logged still backfills the rest ────────
+// Reproduces the reported bug: a day that already has a calendar marker (because
+// one dose group was logged) was treated by the calendar page's self-heal as
+// "fully accounted for" and skipped, permanently hiding any other scheduled slot
+// on that same day that was never logged at all — e.g. a morning group logged as
+// taken while an evening group is never touched.
+
+$repo->createMedication(
+    'PartialDayMed',
+    '',
+    'fixed_times',
+    ['07:00:00', '19:00:00'],
+    null,
+    null,
+    false,
+    0,
+    false,
+    '',
+    'prescription',
+    null,
+    null,
+    null,
+    'pills',
+    30.0,
+    1.0,
+    [],
+    '2026-08-01'
+);
+$allPartial = $repo->activeMedications();
+$partialMedId = (int) array_values(array_filter($allPartial, static fn(array $r): bool => $r['name'] === 'PartialDayMed'))[0]['id'];
+$db->exec("UPDATE medication_schedule_times SET created_at = '2026-07-01 00:00:00' WHERE medication_id = {$partialMedId}");
+
+// Only the morning slot was ever logged (as taken) for 2026-08-20; the evening slot
+// was never touched by the user and no finalize ever ran for that date.
+$repo->recordDoseStatus($partialMedId, '2026-08-20', '07:00:00', 'taken', '');
+
+// Other medications from earlier tests in this shared DB (DailyMed, ScheduleChanged,
+// DiscontinuedMed) are still active with open-ended schedules, so they legitimately
+// also get missed doses backfilled for 2026-08-20 — scope assertions to
+// PartialDayMed's own dose_logs rows rather than the month's aggregate markers.
+$partialBeforeStatuses = $db->query(
+    "SELECT scheduled_time, status FROM dose_logs WHERE medication_id = {$partialMedId} AND scheduled_for_date = '2026-08-20' ORDER BY scheduled_time"
+)->fetchAll();
+assertCB([['scheduled_time' => '07:00:00', 'status' => 'taken']], $partialBeforeStatuses, 'Only the logged morning slot exists before backfill; evening slot is not yet reflected as missed');
+
+// The calendar page's self-heal now backfills every past day in the visible month,
+// not just marker-less ones -- re-running it against 2026-08-20 (which already has a
+// marker from PartialDayMed's own morning dose) must still finalize the unlogged
+// 19:00 slot as missed.
+$repo->backfillMissedDosesForDates(['2026-08-20'], new DateTimeImmutable('2026-08-21 12:00:00'), 60);
+
+$partialAfterStatuses = $db->query(
+    "SELECT scheduled_time, status FROM dose_logs WHERE medication_id = {$partialMedId} AND scheduled_for_date = '2026-08-20' ORDER BY scheduled_time"
+)->fetchAll();
+assertCB(
+    [['scheduled_time' => '07:00:00', 'status' => 'taken'], ['scheduled_time' => '19:00:00', 'status' => 'missed']],
+    $partialAfterStatuses,
+    'Previously-logged morning slot is untouched and the previously-unlogged evening slot is now finalized as missed'
+);
+
+$partialLogs = $repo->calendarLogsForMonth('2026-08-20', '2026-08-20');
+$partialLogsForMed = array_values(array_filter($partialLogs, static fn(array $r): bool => (int) $r['medication_id'] === $partialMedId));
+assertCB(2, count($partialLogsForMed), 'Day-detail data now includes both the taken and the missed slot');
+
+// Re-running (e.g. viewing the calendar twice) must stay idempotent.
+$repo->backfillMissedDosesForDates(['2026-08-20'], new DateTimeImmutable('2026-08-21 12:00:00'), 60);
+$partialRowCount = (int) $db->query("SELECT COUNT(*) AS c FROM dose_logs WHERE medication_id = {$partialMedId} AND scheduled_for_date = '2026-08-20'")->fetch()['c'];
+assertCB(2, $partialRowCount, 'Re-backfilling a partially-logged day is idempotent: no duplicate rows');
+
+echo "CalendarBackfillTest (partially-logged day still backfills remaining slots) passed.\n";
