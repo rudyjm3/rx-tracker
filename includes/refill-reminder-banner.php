@@ -29,7 +29,8 @@
               data-open-refill-modal
               data-medication-id="<?= $lowMedId ?>"
               data-medication-name="<?= e((string) $lowMed['name']) ?>"
-              data-medication-dose="<?= e($lowDose) ?>">
+              data-medication-dose="<?= e($lowDose) ?>"
+              data-inventory-unit="<?= e($lowUnit) ?>">
         Refill <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
       </button>
       <button type="button" class="refill-reminder-close" data-refill-reminder-dismiss

@@ -65,6 +65,7 @@
                     data-open-refill-modal
                     data-medication-id="<?= e((string) $notif['medication_id']) ?>"
                     data-medication-name="<?= e((string) $notif['medication_name']) ?>"
+                    data-inventory-unit="<?= e($notifUnit) ?>"
                     title="Log a refill for <?= e((string) $notif['medication_name']) ?>">
               Refill
             </button>

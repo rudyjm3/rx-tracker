@@ -606,7 +606,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         <div style="display:flex;gap:.5rem;margin-top:.25rem">
           <input type="number" step="0.001" min="0" data-update-dose-amount placeholder="e.g. 15" style="flex:1">
           <select data-update-dose-unit>
-            <?php foreach (['mg','mcg','g','mL','tsp','tbsp','oz','IU','units','drops','puffs','patches'] as $u): ?>
+            <?php foreach (dose_unit_options() as $u): ?>
             <option value="<?= e($u) ?>"><?= e($u) ?></option>
             <?php endforeach; ?>
           </select>

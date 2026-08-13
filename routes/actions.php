@@ -94,6 +94,9 @@ try {
         if ($name === '') {
             throw new RuntimeException('Medication name is required.');
         }
+        if (mb_strlen($name) > 120) {
+            throw new RuntimeException('Medication name must be 120 characters or fewer.');
+        }
 
         if ($scheduleMode === 'interval') {
             $doseTimes = [];
@@ -651,7 +654,7 @@ try {
     if ($action === 'log_refill') {
         $medicationId = (int) post_string('medication_id');
         $refillDate = post_string('refill_date');
-        $amount = (int) post_string('amount');
+        $amount = (float) post_string('amount');
         $note = mb_substr(trim(post_string('note')), 0, 255);
         if ($medicationId <= 0) {
             throw new RuntimeException('Invalid medication.');

@@ -5757,14 +5757,16 @@ const refillMedDoseEl = document.querySelector('[data-refill-med-dose]');
 const refillMedicationIdEl = document.querySelector('[data-refill-medication-id]');
 const refillDateInput = document.querySelector('[data-refill-date]');
 const refillForm = document.querySelector('[data-refill-form]');
+const refillAmountUnitEl = document.querySelector('[data-refill-amount-unit]');
 
-const openRefillModal = (medicationId, medicationName, medicationDose = '') => {
+const openRefillModal = (medicationId, medicationName, medicationDose = '', inventoryUnit = 'tablets') => {
   if (!refillModal) return;
   if (refillForm) refillForm.reset();
   if (refillMedNameEl) refillMedNameEl.textContent = medicationName;
   if (refillMedDoseEl) refillMedDoseEl.textContent = medicationDose;
   if (refillMedicationIdEl) refillMedicationIdEl.value = medicationId;
   if (refillDateInput) refillDateInput.value = serverToday();
+  if (refillAmountUnitEl) refillAmountUnitEl.textContent = inventoryUnit;
   closeMedPlanModal();
   refillModal.classList.add('is-open');
   lockBodyScroll();
@@ -5792,10 +5794,10 @@ const closeRefillModal = ({ resumeZeroPill = true } = {}) => {
 
 document.querySelectorAll('[data-open-refill-modal]').forEach((btn) => {
   btn.addEventListener('click', () => {
-    const { medicationId = '', medicationName = '', medicationDose = '' } = btn.dataset;
+    const { medicationId = '', medicationName = '', medicationDose = '', inventoryUnit = 'tablets' } = btn.dataset;
     if (!medicationId) return;
     refillOpenedFromZeroPillContext = false;
-    openRefillModal(medicationId, medicationName, medicationDose);
+    openRefillModal(medicationId, medicationName, medicationDose, inventoryUnit);
   });
 });
 

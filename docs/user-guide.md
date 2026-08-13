@@ -20,11 +20,12 @@ RxTracker is a personal medication tracking app you can install on your phone or
 12. [History & Calendar](#history--calendar)
 13. [Export & Doctor Visit Report](#export--doctor-visit-report)
 14. [Family Members & Profiles](#family-members--profiles)
-15. [Signing In & Google Account](#signing-in--google-account)
-16. [Settings](#settings)
-17. [Push Notifications](#push-notifications)
-18. [Installing as an App (PWA)](#installing-as-an-app-pwa)
-19. [Troubleshooting](#troubleshooting)
+15. [Allergies & Intolerances](#allergies--intolerances)
+16. [Signing In & Google Account](#signing-in--google-account)
+17. [Settings](#settings)
+18. [Push Notifications](#push-notifications)
+19. [Installing as an App (PWA)](#installing-as-an-app-pwa)
+20. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -209,22 +210,24 @@ If your doctor changes how much you should take per dose (not how much you have 
 Groups let you bundle medications that are always taken together at the same time. When a group reminder fires, all medications in it appear in one alarm.
 
 ### Creating a Group
-1. Go to **Medications** → **Groups** tab.
-2. Click **Create group**.
-3. Enter a group name (e.g., "Morning meds") and the shared scheduled time (e.g., `8:00 AM`).
-4. Click **Save**.
+1. Go to **Medications** → **Groups** tab and click **Create group**.
+2. In the group modal, enter a group name (e.g., "Morning meds") and the shared scheduled time (e.g., `8:00 AM`).
+3. Use the **Add a medication…** dropdown to pick a medication, optionally set a **Dose qty for this group** (leave blank to use the medication's default), then click **Add**. Repeat for each medication in the group. **A medication can belong to more than one group.**
+4. Click **Create group** to save.
 
-### Adding a Medication to a Group
-On the Groups tab, find your group and use the **Add medication** dropdown to select which medication to add — or assign a group directly from the Schedule step when adding a new medication. **A medication can belong to more than one group**; the dropdown shows "(also in: [group names])" next to medications already assigned elsewhere.
+You can also assign a medication to a group directly from the Schedule step when adding or editing that medication, instead of opening the group modal.
+
+### Editing a Group
+Open a group card's **⋮** menu and choose **Edit** to reopen the same modal, pre-filled with its name, time, and members. Adding or removing a member, or changing a dose-qty override, while editing saves immediately — you don't need to click Save again for those changes.
 
 ### Group Dose Overrides
-When adding a medication to a group, you can set a different **quantity per dose** for that medication specifically within the group (e.g. 2 tablets in the group vs. its default of 1). Each medication in a group keeps its own inventory tracking and feedback settings regardless of group membership.
+Each member row has a **− qty +** stepper for its quantity per dose within the group (e.g. 2 tablets in the group vs. its default of 1). Each medication in a group keeps its own inventory tracking and feedback settings regardless of group membership.
 
 ### Removing a Medication from a Group
-Click the **×** remove button next to a medication name within the group. The medication returns to its own independent schedule (or to any other groups it's still a member of).
+In the group's edit view, click **× Remove** next to a medication. The medication returns to its own independent schedule (or to any other groups it's still a member of).
 
 ### Deleting a Group
-Click **Delete** on the group card. The group is removed, but all its medications remain active on their individual schedules.
+Open the group card's **⋮** menu and choose **Delete**, then confirm. The group is removed, but all its medications remain active on their individual schedules.
 
 ---
 
@@ -314,6 +317,23 @@ RxTracker supports multiple profiles so you can track medications for family mem
 - **Edit or remove a member**: Go to My Profile → Family Members and use the edit/remove buttons on each member card.
 
 From **My Profile** you can also update your display name, change your password, export or delete your account data, and view/revoke active remember-me sessions.
+
+---
+
+## Allergies & Intolerances
+
+Each profile — you or a family member — keeps its own allergy/intolerance list, separate from medication records. Open it from the **Allergies & Intolerances** card on **My Profile** (or on a family member's profile page). The list shows **Active** and **Past** tabs, so a reaction you no longer have doesn't clutter the current list.
+
+### Adding an Entry
+1. On the Allergies list, click **Add**.
+2. Choose what triggers it: toggle between **Substance** (pick from a shared list of common allergens, or type a new one) and **Medication** (search your own medications by name).
+3. Choose **Type** — **Allergy** (immune-system reaction: hives, swelling, trouble breathing, anaphylaxis) or **Intolerance** (milder reaction without immune involvement, like digestive discomfort). Tap the ⓘ next to Type if you're not sure which applies.
+4. If a reaction has ever been sudden, severe, or life-threatening, check **Life-threatening (e.g. Anaphylaxis)**.
+5. Set an **Estimated Severity** (Low, Moderate, High, Very High) and a **Category** (Drug, Food, Environment/Animal, Other).
+6. Add optional **Notes**, then click **Add**.
+
+### Editing or Removing an Entry
+Open an entry from the list to edit any of its fields, including **I currently have this** (Yes keeps it Active, No moves it to Past). Click **Delete** inside the edit view to remove it entirely.
 
 ---
 

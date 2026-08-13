@@ -30,6 +30,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <a href="#help-export">Export &amp; Reports</a> &bull;
       <a href="#help-family">Family Profiles</a> &bull;
       <a href="#help-profile">My Profile</a> &bull;
+      <a href="#help-allergies">Allergies</a> &bull;
       <a href="#help-signin">Signing In &amp; Google</a> &bull;
       <a href="#help-settings">Settings</a> &bull;
       <a href="#help-push">Notifications</a> &bull;
@@ -74,11 +75,13 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     <p>If your on-hand count drifts from reality (e.g. after a recount or a dropped pill), use <strong>Adjust quantity</strong> on the card to enter a corrected count and an optional reason. This directly corrects the supply count without adding to inventory or creating a refill-history entry &mdash; use Log refill instead when you&rsquo;ve actually received more medication. To change the prescribed dose amount itself (e.g. your doctor adjusted it), use <strong>Update dose</strong> from the card&rsquo;s actions menu &mdash; this is saved to the medication&rsquo;s Dose Change History.</p>
 
     <h3 id="help-groups">Medication Groups</h3>
-    <p>Groups bundle medications taken at the same time into a single scheduled alarm. Go to <strong>Medications &rarr; Groups tab</strong> to create a group (name + scheduled time) and add medications to it, or assign a group directly from the Schedule step of the Add Medication wizard. Notes:</p>
+    <p>Groups bundle medications taken at the same time into a single scheduled alarm. Go to <strong>Medications &rarr; Groups tab</strong> and click <strong>Create group</strong> to open the group modal: enter a name and scheduled time, then use the <strong>Add a medication&hellip;</strong> dropdown (with an optional per-medication dose-qty override) to build the member list before saving. You can also assign a group directly from the Schedule step of the Add Medication wizard. Notes:</p>
     <ul>
-      <li>A medication can belong to more than one group &mdash; the &ldquo;Add a medication&rdquo; dropdown shows which other group(s) a medication is already in.</li>
-      <li>You can set a <strong>group dose override</strong> — a different quantity-per-dose for a specific medication when taken as part of this group (e.g. 2 tablets in the group vs. the default 1).</li>
+      <li>A medication can belong to more than one group.</li>
+      <li>To change an existing group, open its card&rsquo;s <strong>&#8942;</strong> menu &rarr; <strong>Edit</strong>. Adding/removing a member or adjusting its dose-qty stepper while editing saves immediately.</li>
+      <li>You can set a <strong>group dose override</strong> — a different quantity-per-dose for a specific medication when taken as part of this group (e.g. 2 tablets in the group vs. the default 1), adjustable with a &minus;/+ stepper.</li>
       <li>Each medication in a group retains its own inventory tracking and feedback settings.</li>
+      <li>To delete a group, use its card&rsquo;s <strong>&#8942;</strong> menu &rarr; <strong>Delete</strong> and confirm. Its medications remain active on their individual schedules.</li>
     </ul>
 
     <h3 id="help-feedback">Pain &amp; Mood Tracking</h3>
@@ -117,6 +120,13 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <li>Manage <strong>family member profiles</strong> (add, edit, remove, set avatar colors).</li>
       <li>Export or delete your <strong>account data</strong>.</li>
       <li>View and revoke active <strong>remember-me sessions</strong>.</li>
+    </ul>
+
+    <h3 id="help-allergies">Allergies &amp; Intolerances</h3>
+    <p>Each profile keeps its own allergy/intolerance list, separate from medication records. Open it from the <strong>Allergies &amp; Intolerances</strong> card on <strong>My Profile</strong> (or a family member&rsquo;s profile page). The list has <strong>Active</strong> and <strong>Past</strong> tabs.</p>
+    <ul>
+      <li><strong>Add</strong> an entry: choose <strong>Substance</strong> (pick from a shared list or type a new one) or <strong>Medication</strong> (search your own medications), then set <strong>Type</strong> (Allergy or Intolerance &mdash; tap the &#9432; icon for the difference), <strong>Life-threatening</strong> if applicable, <strong>Estimated Severity</strong> (Low/Moderate/High/Very High), <strong>Category</strong> (Drug/Food/Environment &amp; Animal/Other), and optional notes.</li>
+      <li><strong>Edit or remove</strong>: open an entry to change any field, including <strong>I currently have this</strong> (No moves it to the Past tab), or click <strong>Delete</strong> to remove it entirely.</li>
     </ul>
 
     <h3 id="help-signin">Signing In &amp; Google Account</h3>

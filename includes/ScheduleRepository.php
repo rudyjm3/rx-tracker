@@ -402,6 +402,12 @@ final class ScheduleRepository
             $this->db->commit();
 
             return $logId;
+        } catch (PDOException $exception) {
+            $this->db->rollBack();
+            if ((string) $exception->getCode() === '23000') {
+                throw new RuntimeException('Dose already logged. Please refresh to see the latest history.');
+            }
+            throw $exception;
         } catch (Throwable $exception) {
             $this->db->rollBack();
             throw $exception;
