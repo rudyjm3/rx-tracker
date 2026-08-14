@@ -292,13 +292,19 @@ final class ScheduleRepository
         $this->db->beginTransaction();
         try {
             // Fetch existing record first so we can skip the interval check for missed→taken updates.
+            // Locked (MySQL only — SQLite has no row-level FOR UPDATE and the tests that run
+            // against it are single-threaded) so two concurrent requests targeting the same
+            // slot serialize instead of both reading the pre-transition status and both
+            // deducting/restoring inventory: the second request blocks until the first commits,
+            // then re-reads the now-updated status and correctly treats it as a no-op.
+            $lockClause = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
             $existing = $this->db->prepare(
                 'SELECT id, status, note, taken_at, deducted_quantity, pre_take_status, pre_take_note, pre_take_taken_at
                  FROM dose_logs
                  WHERE medication_id = :medication_id
                    AND scheduled_for_date = :scheduled_for_date
                    AND scheduled_time = :scheduled_time
-                 LIMIT 1'
+                 LIMIT 1' . $lockClause
             );
             $existing->execute([
                 'medication_id' => $medicationId,
@@ -402,6 +408,12 @@ final class ScheduleRepository
             $this->db->commit();
 
             return $logId;
+        } catch (PDOException $exception) {
+            $this->db->rollBack();
+            if ((string) $exception->getCode() === '23000') {
+                throw new RuntimeException('Dose already logged. Please refresh to see the latest history.');
+            }
+            throw $exception;
         } catch (Throwable $exception) {
             $this->db->rollBack();
             throw $exception;

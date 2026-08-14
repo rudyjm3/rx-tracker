@@ -199,7 +199,7 @@ final class InventoryRepository
     public function deductInventory(int $medicationId, ?float $quantityOverride = null): float
     {
         $stmt = $this->db->prepare(
-            'SELECT current_quantity, quantity_per_dose FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            'SELECT quantity_per_dose FROM medications WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
         );
         $stmt->execute(array_merge(['id' => $medicationId, 'user_id' => $this->userId], $this->profileParam()));
         $row = $stmt->fetch();
@@ -207,13 +207,14 @@ final class InventoryRepository
             return 0.0;
         }
 
-        $current = (float) ($row['current_quantity'] ?? 0);
         $dose = max(0.0, $quantityOverride ?? (float) ($row['quantity_per_dose'] ?? 1));
 
+        // Atomic (SQL-side) arithmetic, matching restoreInventory() below — avoids a
+        // read-modify-write race between two concurrent deductions on the same medication.
         $this->db->prepare(
-            'UPDATE medications SET current_quantity = :current_quantity WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
+            'UPDATE medications SET current_quantity = COALESCE(current_quantity, 0) - :dose WHERE id = :id AND user_id = :user_id ' . $this->profileSql('')
         )->execute(array_merge([
-            'current_quantity' => $current - $dose,
+            'dose' => $dose,
             'id' => $medicationId,
             'user_id' => $this->userId,
         ], $this->profileParam()));

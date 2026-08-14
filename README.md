@@ -4,15 +4,22 @@ Medication tracking and reminder web app built with HTML, CSS3, JavaScript, PHP,
 
 **App name:** RxTracker
 
-## MVP scope
+## What it does
 
-RxTracker validates the core product experience for medication tracking:
+RxTracker has grown well past its original MVP slice. Today it supports, per user account:
 
-- Maintain an active medication plan with dose, reminder time, and instructions.
-- See the next unlogged dose and a daily adherence percentage.
-- Log doses with optional notes.
-- Review recent dose history.
-- Store application data in MySQL using PHP PDO prepared statements.
+- Email/password and Google sign-in, with optional family member profiles tracked under one account.
+- Adding medications (tablets, capsules, liquid, inhaler, injection, patch, drops, or other) via a guided
+  wizard, including starting an already-in-progress prescription.
+- Fixed-time or interval dosing schedules, plus medication groups that bundle same-time doses into one alarm.
+- Taken / Skipped / Missed dose tracking with inventory deduction, refill logging, quantity adjustment, and
+  low-supply / out-of-stock notifications with a days-remaining estimate.
+- Pain and mood tracking tied to a dose or logged independently, with trend charts and tags.
+- Side-effect logging, dose/history editing, a calendar view, and a full data export / Doctor Visit Report PDF.
+- Background reminders via web push (installed as a PWA) plus in-app polling and an alarm overlay while a tab is open.
+- An in-app Help page (`?page=help`) kept in sync with `docs/user-guide.md`.
+
+See `docs/CODEBASE_AUDIT.md` for the current Feature Traceability Matrix and build-health assessment.
 
 > This project is a tracking aid only and does not provide medical advice or clinical decision support.
 
@@ -88,7 +95,7 @@ On Linux/macOS, use cron. On Windows, use Task Scheduler.
 
 ## Testing
 
-Run syntax checks for the PHP entry point and includes:
+There's no PHPUnit — syntax-check and test manually:
 
 ```bash
 php -l index.php
@@ -97,19 +104,43 @@ php -l includes/helpers.php
 php -l includes/MedicationRepository.php
 ```
 
-Run the lightweight repository test harness:
+`tests/` holds 15 standalone PHP scripts, each runnable directly against an in-memory SQLite database:
 
 ```bash
 php tests/MedicationRepositoryTest.php
+php tests/OwnershipTest.php
+# ...and so on for AdherenceTest, CalendarBackfillTest, DaysUntilRunoutTest, DeleteDoseLogTest,
+# EditTakenIntervalDoseTest, GoogleAuthServiceJwksCacheTest, GroupScheduleOverrideTest,
+# GroupTakeAllTest, InventorySimulationTest, NextDoseTest, RanOutOnDateTest, RevertDoseTest,
+# TrackingStartTest
 ```
+
+There is no CI configuration in this repository, so these must be run manually before/after a change.
 
 ## Project structure
 
-- `index.php` handles page rendering and form submissions.
-- `config/database.php` creates the PDO MySQL connection.
-- `includes/MedicationRepository.php` contains database queries and mutations.
-- `includes/helpers.php` contains escaping, request, and redirect helpers.
-- `assets/css/styles.css` contains the CSS3 UI styling.
-- `assets/js/app.js` contains lightweight JavaScript enhancements.
-- `database/schema.sql` and `database/seed.sql` set up MySQL data storage.
-- `tests/MedicationRepositoryTest.php` verifies repository behavior with an in-memory PDO database.
+- `index.php` — single front controller: bootstraps includes, runs the schema installer, handles auth
+  gating, resolves the active family profile, and dispatches to `routes/`.
+- `api-proxy.php` — separate authenticated, rate-limited, allowlisted proxy to the DailyMed/OpenFDA/RxImage
+  drug-info APIs (keeps API calls and any future keys server-side).
+- `config/` — `database.php` (PDO MySQL factory) and `load_env.php` (`.env` loader).
+- `routes/` — one file per page/route (dashboard, medications, family, calendar, export, settings, help,
+  auth pages, etc.) plus `actions.php` (POST mutations) and `api.php` (GET/JSON endpoints).
+- `includes/` — repositories and shared logic: `MedicationRepository.php` is now a thin facade over
+  `ScheduleRepository.php`, `InventoryRepository.php`, `MedicationGroupRepository.php`,
+  `StockNotificationRepository.php`, `PushRepository.php`, `AdherenceRepository.php`,
+  `AllergyRepository.php`, and others, plus `AuthService.php`, `SessionManager.php`,
+  `GoogleAuthService.php`, `MailService.php`, `SchemaInstaller.php`, and `helpers.php`
+  (escaping, CSRF, request helpers). Also holds shared view partials (`pages-shell-top.php`,
+  `pages-data.php`, modal templates, nav/bell/banner includes) so pages aren't duplicated markup.
+- `assets/css/styles.css` + `assets/css/rxtracker-brand-tokens.css` — UI styling.
+- `assets/js/app.js` — main client-side logic, plus a handful of smaller feature-specific JS files.
+- `database/schema.sql`, `database/seed.sql`, `database/migrations/*.sql` — fresh-install schema, seed
+  data, and numbered migration history. `includes/SchemaInstaller.php` is what actually keeps a live
+  database in sync at runtime; the SQL files are kept as best-effort mirrors of what it does.
+- `scripts/` — cron/CLI maintenance scripts (`send_due_push.php`, `finalize_missed.php`,
+  `generate_vapid_keys.php`, `migrate_to_first_user.php`, etc.).
+- `tests/` — 15 hand-rolled PHP test scripts (see Testing above).
+- `docs/` — `CODEBASE_AUDIT.md` (latest full audit), `CODE_REVIEW.md` (prior security/architecture
+  review), `user-guide.md` (end-user documentation, mirrored by the in-app `?page=help`), plus
+  `account-roadmap.md` and `rxtracker-style-guide.md`.

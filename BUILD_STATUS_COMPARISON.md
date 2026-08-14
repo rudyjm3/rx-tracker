@@ -1,5 +1,11 @@
 # Build Status Comparison
 
+> **⚠ Superseded.** This snapshot is from 2026-05-08 and is badly out of date — nearly every
+> item marked "Not Built" or "Partial" below (notification/alarm reminders, snooze, calendar UI,
+> refill-date prediction, export/share, side-effect logging, doctor/pharmacy metadata) has since
+> shipped. Kept as a historical record of project status at that point in time; **see
+> `docs/CODEBASE_AUDIT.md` for the current Feature Traceability Matrix and build status.**
+
 Comparison date: 2026-05-08
 Source outline: `BUILD_OUTLINE.md`
 

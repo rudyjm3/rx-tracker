@@ -1,5 +1,11 @@
 # RxTracker Build Outline
 
+> **⚠ Superseded.** This is the original MVP planning document. All 10 implementation milestones
+> below have since shipped and been substantially exceeded (auth, family profiles, medication
+> groups, pain/mood tracking, allergies, calendar, PDF export, and more). Kept as a historical
+> record of the initial product plan; **see `docs/CODEBASE_AUDIT.md` for the current state of the
+> application.**
+
 ## Product Goal
 Build a standalone, low-friction medication reminder and adherence tracker where users can quickly see what is due, log taken/skipped doses, and monitor supply/refill risk.
 

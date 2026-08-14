@@ -344,8 +344,11 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <label>Refill date
         <input type="date" name="refill_date" data-refill-date required>
       </label>
-      <label>Amount (pills)
-        <input type="number" min="1" name="amount" required placeholder="e.g. 30">
+      <label>Amount
+        <span class="input-with-unit">
+          <input type="number" step="0.001" min="0.001" name="amount" required placeholder="e.g. 30">
+          <span data-refill-amount-unit>tablets</span>
+        </span>
       </label>
       <label>Note <span class="field-optional">(optional)</span>
         <input name="note" placeholder="e.g. 30-day supply" maxlength="255">
@@ -534,7 +537,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         <div style="display:flex;gap:.5rem;margin-top:.25rem">
           <input type="number" step="0.001" min="0" data-update-dose-amount placeholder="e.g. 15" style="flex:1">
           <select data-update-dose-unit>
-            <?php foreach (['mg','mcg','g','mL','tsp','tbsp','oz','IU','units','drops','puffs','patches'] as $u): ?>
+            <?php foreach (dose_unit_options() as $u): ?>
             <option value="<?= e($u) ?>"><?= e($u) ?></option>
             <?php endforeach; ?>
           </select>

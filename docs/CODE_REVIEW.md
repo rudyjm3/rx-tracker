@@ -2,6 +2,12 @@
 
 _Date: 2026-07-16 · Branch: `claude/rxtracker-codebase-review-zv6hom` · Reviewer: automated code review_
 
+> **See also `docs/CODEBASE_AUDIT.md`** for the latest full-repository audit (functional bugs,
+> documentation reconciliation, MVP readiness). This document remains the accurate historical
+> record of the security/architecture findings below and when they were fixed; two small
+> corrections have been added inline (marked "Correction, [date]") where later refactors made a
+> specific citation stale.
+
 ## Scope & method
 
 Full-codebase review of RxTracker (PHP 8.1+ / MySQL, ~21k LOC) covering security, correctness,
@@ -29,6 +35,11 @@ Secondary themes: a spoofable/fail-open rate limiter, an SSRF redirect gap in th
 significant maintainability drag from three god-files (`MedicationRepository.php` 4,491 lines with 25
 schema-migration methods running on every request, `assets/js/app.js` 6,949 lines, `routes/pages.php`
 2,234 lines).
+
+> **Correction, 2026-08-13:** `routes/pages.php` no longer exists — routing has since been split
+> into ~30 per-page files under `routes/`, and `MedicationRepository.php` has shrunk to a ~1,000-line
+> facade over dedicated `ScheduleRepository`/`InventoryRepository`/`MedicationGroupRepository`/etc.
+> classes. See `docs/CODEBASE_AUDIT.md` for the current state of this god-file finding.
 
 ### Remediation status (this branch)
 
@@ -236,10 +247,9 @@ exists) and drop them from the constructor, or gate them behind a one-time "sche
   medications, schedules, dose logs, groups, refills/inventory, notifications, push, pain/mood, and
   onboarding. Natural seams: `ScheduleRepository`, `InventoryRepository`, `FeedbackRepository`,
   `PushRepository`, and a separate `SchemaInstaller`.
-- `assets/js/app.js` — 6,949 lines in one IIFE, with **three** independent HTML-escapers
-  (`escHtml` at `app.js:4455`, another `escHtml` at `app.js:6330`, plus inline `.replace()` chains at
-  `app.js:1962` and `:2343`). The escaping itself is applied consistently to user data (good — no DOM
-  XSS found), but the duplication invites future divergence. Consolidate to one shared `escHtml`.
+- `assets/js/app.js` — grown to 7,173 lines in one IIFE. The triple-`escHtml` duplication noted here
+  has since been resolved: **Correction, 2026-08-13** — only one `escHtml` definition remains
+  (`app.js:3`, exported via `window.escHtml`), used consistently throughout the file.
 - `routes/pages.php` — 2,234 lines mixing controller logic and full HTML for every page. Splitting per
   page/view would greatly improve navigability.
 

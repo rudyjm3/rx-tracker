@@ -78,7 +78,7 @@ $steps = [
 ];
 
 // Shared dose unit options
-$doseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches', '%'];
+$doseUnits = dose_unit_options(true);
 $doseForms = ['tablet', 'capsule', 'liquid', 'inhaler', 'injection', 'patch', 'drops', 'other'];
 
 $csrfToken = csrf_token();

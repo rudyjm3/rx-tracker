@@ -156,7 +156,7 @@
                     <i class="fa-regular fa-calendar-check" aria-hidden="true"></i>
                     Log past dose
                   </button>
-                  <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>" data-medication-dose="<?= e(formattedDose($medication)) ?>">
+                  <button type="button" class="med-actions-item" data-open-refill-modal data-medication-id="<?= e((string) $medication['id']) ?>" data-medication-name="<?= e((string) $medication['name']) ?>" data-medication-dose="<?= e(formattedDose($medication)) ?>" data-inventory-unit="<?= e((string) ($medication['inventory_unit'] ?? 'tablets')) ?>">
                     <i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>
                     Log refill
                   </button>

@@ -40,6 +40,20 @@ function redirect_home(): never
     exit;
 }
 
+// The dose-unit dropdown offered wherever a medication's dose amount/unit is
+// entered or edited (add/edit medication, update-prescribed-dose modals,
+// onboarding). Onboarding additionally offers '%' for concentration-based
+// dosing (e.g. topical creams), which isn't relevant elsewhere.
+function dose_unit_options(bool $includePercent = false): array
+{
+    $units = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
+    if ($includePercent) {
+        $units[] = '%';
+    }
+
+    return $units;
+}
+
 function post_string(string $key): string
 {
     return trim((string) ($_POST[$key] ?? ''));

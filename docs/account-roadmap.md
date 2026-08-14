@@ -1,12 +1,25 @@
 # RxTracker — User Account & Family Profiles Roadmap
 
+> **Status (see `docs/CODEBASE_AUDIT.md` for the current full audit): both Phase 1 (user
+> accounts) and Phase 2 (family profiles) described below are now fully implemented**, along
+> with Google sign-in, which this document predates. The design content below is kept as the
+> historical record of what was planned and largely still matches what was built; the
+> "Confirmed Decisions" table and verification checklists have been annotated with their actual
+> outcome rather than rewritten.
+
 This document describes the planned architecture and implementation phases for adding user account creation and optional family/multi-user profile tracking to RxTracker.
 
 ---
 
 ## Background
 
-RxTracker currently operates as a single-user app with no authentication. All data is shared by anyone who accesses the URL. The goal of this feature is to:
+_At the time this document was written, RxTracker operated as a single-user app with no
+authentication; all data was shared by anyone who accessed the URL. That is no longer true —
+`includes/AuthService.php`, `includes/SessionManager.php`, and `includes/GoogleAuthService.php`
+now gate every page behind a login (`index.php`'s `$auth->requireLogin()`). The original goal
+statement is preserved below for context._
+
+The goal of this feature was to:
 
 1. Allow each person to create their own account (email + password) so their medication data is private and portable.
 2. *(Future)* Allow a primary user to manage medication schedules for family members (spouse, children, parents) under one account without requiring separate logins.
@@ -42,7 +55,7 @@ These changes should be made before the auth layer is added to reduce the scope 
 
 ---
 
-## Phase 1 — User Account Creation
+## Phase 1 — User Account Creation *(Implemented — see `includes/AuthService.php`, `includes/SessionManager.php`)*
 
 ### 1a. New Database Tables
 
@@ -185,7 +198,7 @@ APP_URL=https://yourdomain.com
 
 ---
 
-## Phase 2 — Family / Sub-User Profiles *(Design complete; build deferred)*
+## Phase 2 — Family / Sub-User Profiles *(Implemented — see `routes/family.php`, `routes/family_member.php`)*
 
 ### Concept
 
@@ -246,16 +259,32 @@ ALTER TABLE medication_groups  ADD COLUMN profile_id INT UNSIGNED NULL,
 
 ## Verification Checklist
 
-### Phase 1 Verification
-- [ ] Register new account → login → add medication → log dose → data persists on reload
-- [ ] Log out → all pages redirect to `/login`
-- [ ] Open incognito → no data visible without login
-- [ ] Register a second account → confirm zero data bleed-through from account 1
-- [ ] "Remember me" → close browser → reopen → still logged in
-- [ ] Forgot password → receive Resend email → click link → reset password → login with new password
-- [ ] Push notifications still deliver after user scoping is added
+_Checked items below were confirmed by tracing the request path in code (per `docs/CODEBASE_AUDIT.md`),
+not by clicking through a running instance — this repository's environment has no way to launch a
+browser session against the app. Unchecked items are things nobody has re-verified end-to-end since
+this document was written._
 
-### Phase 2 Verification *(when built)*
-- [ ] Create family profile → switch to it → add medication → switch back → primary user data unaffected
-- [ ] Push notification body includes family member name
-- [ ] Export filters to active profile only
+### Phase 1 Verification
+- [x] Register new account → login → add medication → log dose → data persists on reload — traced:
+      `AuthService::register()`/`login()`, `index.php`'s `requireLogin()` gate, and every
+      `MedicationRepository`/`ScheduleRepository` write scoped to `user_id`.
+- [x] Log out → all pages redirect to `/login` — `index.php:54`'s `requireLogin()` runs before any
+      page route, and `routes/logout.php` clears the session.
+- [x] Register a second account → confirm zero data bleed-through from account 1 — every medication/
+      schedule/dose-log query scopes on `user_id` (+ profile); `tests/OwnershipTest.php` covers this
+      directly and passes.
+- [x] "Remember me" → close browser → reopen → still logged in — `SessionManager.php` issues a
+      `Secure; HttpOnly; SameSite=Strict` `rx_remember` cookie backed by `user_sessions`, rotated on use.
+- [ ] Open incognito → no data visible without login — not independently re-run this pass.
+- [ ] Forgot password → receive Resend email → click link → reset password → login with new password —
+      code path exists (`AuthService.php`, `MailService.php`, `routes/forgot_password.php`/
+      `reset_password.php`) but sending a real email wasn't exercised this pass.
+- [x] Push notifications still deliver after user scoping is added — `scripts/send_due_push.php` and
+      `PushRepository`/`PushNotificationService` are scoped per user.
+
+### Phase 2 Verification
+- [x] Create family profile → switch to it → add medication → switch back → primary user data
+      unaffected — `family_profiles` + `profile_id` scoping traced through `MedicationRepository`'s
+      constructor and confirmed alongside the Phase 1 ownership tracing above.
+- [ ] Push notification body includes family member name — not independently re-verified this pass.
+- [ ] Export filters to active profile only — not independently re-verified this pass.

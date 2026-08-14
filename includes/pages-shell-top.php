@@ -271,7 +271,7 @@
           <label>Dose unit
             <select name="dose_unit" data-dailymed-dose-unit data-initial-dose-unit="<?= e((string) ($editing['dose_unit'] ?? 'mg')) ?>">
               <?php
-              $doseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
+              $doseUnits = dose_unit_options();
               $selectedDoseUnit = (string) ($editing['dose_unit'] ?? 'mg');
               foreach ($doseUnits as $u): ?>
               <option value="<?= e($u) ?>" <?= $selectedDoseUnit === $u ? 'selected' : '' ?>><?= e($u) ?></option>
@@ -447,7 +447,7 @@
             <label>Dose unit
               <select name="dose_unit" data-dailymed-dose-unit>
                 <?php
-                $wzDoseUnits = ['mg', 'mcg', 'g', 'mL', 'tsp', 'tbsp', 'oz', 'IU', 'units', 'drops', 'puffs', 'patches'];
+                $wzDoseUnits = dose_unit_options();
                 $wzSelectedDoseUnit = (string) ($wz['dose_unit'] ?? 'mg');
                 foreach ($wzDoseUnits as $u): ?>
                 <option value="<?= e($u) ?>" <?= $wzSelectedDoseUnit === $u ? 'selected' : '' ?>><?= e($u) ?></option>
