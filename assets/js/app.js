@@ -2133,7 +2133,8 @@ const painPageEmpty = document.querySelector('[data-pain-page-empty]');
 const painPageMedName = document.querySelector('[data-pain-page-med-name]');
 
 if (painPageBody) {
-  let painPageMedId = 0;
+  // null = no chip selected yet; 0 = "Independent" (no medication) is a valid selection.
+  let painPageMedId = null;
   let painPageDays = 0;
   let painPageDate = null;
   let painPagePrevDays = 0;
@@ -2141,7 +2142,7 @@ if (painPageBody) {
   const painPageDayLabel = document.querySelector('[data-pain-page-day-label]');
 
   const loadPainPageGraph = async () => {
-    if (!painPageMedId) return;
+    if (painPageMedId === null) return;
     painPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     painPageEmpty.hidden = true;
 
@@ -2179,6 +2180,8 @@ if (painPageBody) {
   const painLogToggle     = document.querySelector('[data-pain-log-toggle]');
   const painLogCancel     = document.querySelector('[data-pain-log-cancel]');
   const painLogMedIdInput = document.querySelector('[data-pain-log-medication-id]');
+  const painLogMedSelectWrap = document.querySelector('[data-pain-log-medication-select-wrap]');
+  const painLogMedSelect     = document.querySelector('[data-pain-log-medication-select]');
   const painLogLevelInput = document.querySelector('[data-pain-log-level]');
   const painLogNoteInput  = document.querySelector('[data-pain-log-note]');
   const painLogError      = document.querySelector('[data-pain-log-error]');
@@ -2218,6 +2221,10 @@ if (painPageBody) {
   const openPainLogModal = () => {
     if (!painLogModal) return;
     if (painLogMedIdInput) painLogMedIdInput.value = String(painPageMedId);
+    if (painLogMedSelectWrap && painLogMedSelect) {
+      painLogMedSelectWrap.hidden = painPageMedId !== 0;
+      painLogMedSelect.value = '0';
+    }
     resetPainLogForm();
     painLogModal.classList.add('is-open');
     lockBodyScroll();
@@ -2264,9 +2271,12 @@ if (painPageBody) {
     }
     const note = (painLogNoteInput?.value ?? '').trim();
     const loggedAt = combineDateTime(painLogDateInput?.value, painLogTimeInput?.value);
+    const chosenMedId = (painLogMedSelectWrap && !painLogMedSelectWrap.hidden && painLogMedSelect)
+      ? parseInt(painLogMedSelect.value, 10)
+      : painPageMedId;
     const submitBtn = painLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: painPageMedId, logType: 'pain', painLevel: level, moodLevel: null, note, loggedAt });
+    const result = await postStandalonePainMoodLog({ medicationId: chosenMedId, logType: 'pain', painLevel: level, moodLevel: null, note, loggedAt });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (painLogError) { painLogError.textContent = result.error ?? 'Could not save log. Please try again.'; painLogError.hidden = false; }
@@ -2327,7 +2337,7 @@ if (painPageBody) {
   };
 
   const loadPainHistory = async () => {
-    if (!painHistoryList || !painPageMedId) return;
+    if (!painHistoryList || painPageMedId === null) return;
     if (painPageHistoryLoaded) return;
     if (painHistoryLoading) painHistoryLoading.hidden = false;
     if (painHistoryEmpty)   painHistoryEmpty.hidden   = true;
@@ -2556,7 +2566,8 @@ const moodPageEmpty = document.querySelector('[data-mood-page-empty]');
 const moodPageMedName = document.querySelector('[data-mood-page-med-name]');
 
 if (moodPageBody) {
-  let moodPageMedId = 0;
+  // null = no chip selected yet; 0 = "Independent" (no medication) is a valid selection.
+  let moodPageMedId = null;
   let moodPageDays = 0;
   let moodPageDate = null;
   let moodPagePrevDays = 0;
@@ -2564,7 +2575,7 @@ if (moodPageBody) {
   const moodPageDayLabel = document.querySelector('[data-mood-page-day-label]');
 
   const loadMoodPageGraph = async () => {
-    if (!moodPageMedId) return;
+    if (moodPageMedId === null) return;
     moodPageBody.innerHTML = '<p class="pain-graph-loading">Loading…</p>';
     moodPageEmpty.hidden = true;
 
@@ -2602,6 +2613,8 @@ if (moodPageBody) {
   const moodLogToggle     = document.querySelector('[data-mood-log-toggle]');
   const moodLogCancel     = document.querySelector('[data-mood-log-cancel]');
   const moodLogMedIdInput = document.querySelector('[data-mood-log-medication-id]');
+  const moodLogMedSelectWrap = document.querySelector('[data-mood-log-medication-select-wrap]');
+  const moodLogMedSelect     = document.querySelector('[data-mood-log-medication-select]');
   const moodLogLevelInput = document.querySelector('[data-mood-log-level]');
   const moodLogNoteInput  = document.querySelector('[data-mood-log-note]');
   const moodLogError      = document.querySelector('[data-mood-log-error]');
@@ -2709,6 +2722,10 @@ if (moodPageBody) {
     if (!moodLogModal) return;
     if (!preserveState) {
       if (moodLogMedIdInput) moodLogMedIdInput.value = String(moodPageMedId);
+      if (moodLogMedSelectWrap && moodLogMedSelect) {
+        moodLogMedSelectWrap.hidden = moodPageMedId !== 0;
+        moodLogMedSelect.value = '0';
+      }
       resetMoodLogForm();
     }
     renderMoodTagChips(preserveState);
@@ -2987,9 +3004,12 @@ if (moodPageBody) {
     const note = (moodLogNoteInput?.value ?? '').trim();
     const loggedAt = combineDateTime(moodLogDateInput?.value, moodLogTimeInput?.value);
     const tags = moodLogTagsInput?.value ?? '';
+    const chosenMedId = (moodLogMedSelectWrap && !moodLogMedSelectWrap.hidden && moodLogMedSelect)
+      ? parseInt(moodLogMedSelect.value, 10)
+      : moodPageMedId;
     const submitBtn = moodLogForm.querySelector('[type="submit"]');
     if (submitBtn) submitBtn.disabled = true;
-    const result = await postStandalonePainMoodLog({ medicationId: moodPageMedId, logType: 'mood', painLevel: null, moodLevel: level, note, loggedAt, tags });
+    const result = await postStandalonePainMoodLog({ medicationId: chosenMedId, logType: 'mood', painLevel: null, moodLevel: level, note, loggedAt, tags });
     if (submitBtn) submitBtn.disabled = false;
     if (!result.ok) {
       if (moodLogError) { moodLogError.textContent = result.error ?? 'Could not save log. Please try again.'; moodLogError.hidden = false; }
@@ -3057,7 +3077,7 @@ if (moodPageBody) {
   };
 
   const loadMoodHistory = async () => {
-    if (!moodHistoryList || !moodPageMedId) return;
+    if (!moodHistoryList || moodPageMedId === null) return;
     if (moodPageHistoryLoaded) return;
     if (moodHistoryLoading) moodHistoryLoading.hidden = false;
     if (moodHistoryEmpty)   moodHistoryEmpty.hidden   = true;

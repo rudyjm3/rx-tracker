@@ -381,7 +381,7 @@ CREATE TABLE IF NOT EXISTS medication_notes (
 CREATE TABLE IF NOT EXISTS standalone_pain_mood_logs (
     id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id       INT UNSIGNED NOT NULL,
-    medication_id INT UNSIGNED NOT NULL,
+    medication_id INT UNSIGNED NULL,
     log_type      ENUM('pain','mood','both') NOT NULL,
     pain_level    TINYINT UNSIGNED NULL,
     mood_level    TINYINT UNSIGNED NULL,

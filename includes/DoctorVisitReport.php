@@ -28,6 +28,7 @@ final class DoctorVisitReport
         string $startDate,
         string $endDate,
         array $perMedChartDays,
+        bool $includePain,
         bool $includeMood,
         array $perMedMoodChartDays = []
     ): string {
@@ -35,9 +36,13 @@ final class DoctorVisitReport
             'Doctor Visit Report',
             $startDate,
             $endDate,
+            $includePain,
             $includeMood,
-            function (array $meds, string $s, string $e) use ($perMedChartDays, $includeMood, $perMedMoodChartDays): string {
-                $out = $this->sectionPainCharts($meds, $s, $e, $perMedChartDays);
+            function (array $meds, string $s, string $e) use ($perMedChartDays, $includePain, $includeMood, $perMedMoodChartDays): string {
+                $out = '';
+                if ($includePain) {
+                    $out .= $this->sectionPainCharts($meds, $s, $e, $perMedChartDays);
+                }
                 if ($includeMood) {
                     $out .= $this->sectionMoodCharts($meds, $s, $e, $perMedMoodChartDays);
                 }
@@ -72,7 +77,7 @@ final class DoctorVisitReport
     /**
      * @param callable(array,string,string):string $chartSection Renders the report-specific chart section.
      */
-    private function buildHtml(string $title, string $startDate, string $endDate, bool $includeMood, callable $chartSection): string
+    private function buildHtml(string $title, string $startDate, string $endDate, bool $includePain, bool $includeMood, callable $chartSection): string
     {
         $periodLabel = date('M j, Y', (int) strtotime($startDate))
             . ' – '
@@ -123,9 +128,9 @@ final class DoctorVisitReport
         $html .= $this->sectionHeader($title, $periodLabel, $generatedDate);
         $html .= '<div style="padding:0.5in 0.65in 0.55in 0.65in;">';
         $html .= $this->sectionAllergies($this->allergies);
-        $html .= $this->sectionAdherence($adherence, $medications, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
-        $html .= $this->sectionMedications($medications, $includeMood);
-        $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includeMood);
+        $html .= $this->sectionAdherence($adherence, $medications, $includePain, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
+        $html .= $this->sectionMedications($medications, $includePain, $includeMood);
+        $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includePain, $includeMood);
         $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses, $doseChangesByMed);
         $html .= $chartSection($medications, $startDate, $endDate);
@@ -339,6 +344,7 @@ HTML;
     private function sectionAdherence(
         array $adherence,
         array $medications,
+        bool $includePain,
         bool $includeMood,
         array $discontinuedDates = [],
         string $startDate = '',
@@ -380,7 +386,7 @@ HTML;
                 '<tr><td>%s%s%s%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($trackingMed, $includeMood),
+                $this->medTrackingBadgeHtml($trackingMed, $includePain, $includeMood),
                 $doseHtml,
                 $discontinuedHtml,
                 $mColor,
@@ -424,7 +430,7 @@ HTML;
     // Section 3: Current Medications
     // -------------------------------------------------------------------------
 
-    private function sectionMedications(array $medications, bool $includeMood): string
+    private function sectionMedications(array $medications, bool $includePain, bool $includeMood): string
     {
         $rows = '';
         foreach ($medications as $med) {
@@ -441,7 +447,7 @@ HTML;
                 '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($med, $includeMood),
+                $this->medTrackingBadgeHtml($med, $includePain, $includeMood),
                 $dose,
                 $startDate,
                 $this->h($schedule),
@@ -468,7 +474,7 @@ HTML;
     // Section 3a: Discontinued Medications
     // -------------------------------------------------------------------------
 
-    private function sectionDiscontinuedMedications(array $inactiveMeds, bool $includeMood): string
+    private function sectionDiscontinuedMedications(array $inactiveMeds, bool $includePain, bool $includeMood): string
     {
         if ($inactiveMeds === []) {
             return <<<HTML
@@ -493,7 +499,7 @@ HTML;
                 '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($med, $includeMood),
+                $this->medTrackingBadgeHtml($med, $includePain, $includeMood),
                 $dose,
                 $reason,
                 $note,
@@ -613,8 +619,9 @@ HTML;
             $medications,
             fn(array $m): bool => $this->repository->medicationTracksPain($m)
         );
+        $independentData = $this->repository->painLevelTrendForRange(0, $startDate, $endDate);
 
-        if ($trackedMeds === []) {
+        if ($trackedMeds === [] && $independentData === []) {
             return '';
         }
 
@@ -668,6 +675,24 @@ HTML;
             $html .= '</div>'; // .chart-section
         }
 
+        if ($independentData !== []) {
+            $svg        = $this->chartRenderer->renderSvg($independentData, $startDate, $endDate);
+            $avgPain    = $this->avgPain($independentData);
+            $daysLogged = count(array_unique(array_column($independentData, 'date')));
+            $rangeLabel = $this->h(date('M j', strtotime($startDate)) . ' – ' . date('M j, Y', strtotime($endDate)));
+
+            $html .= '<div class="chart-section">';
+            $html .= '<div class="chart-medname">Independent <span style="font-weight:normal;color:#60708A;">(no medication)</span></div>';
+            $html .= '<div class="chart-summary">';
+            $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+            $html .= "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
+            $html .= '</div>';
+            $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                . '" width="500" height="200" style="display:block;">';
+            $html .= $this->renderPatientNotes($independentData, 'Independent');
+            $html .= '</div>'; // .chart-section
+        }
+
         return $html;
     }
 
@@ -685,8 +710,9 @@ HTML;
             $medications,
             fn(array $m): bool => $this->repository->medicationTracksMood($m)
         );
+        $independentData = $this->repository->moodLevelTrendForRange(0, $startDate, $endDate);
 
-        if ($trackedMeds === []) {
+        if ($trackedMeds === [] && $independentData === []) {
             return '';
         }
 
@@ -737,6 +763,24 @@ HTML;
                 }
             }
 
+            $html .= '</div>'; // .chart-section
+        }
+
+        if ($independentData !== []) {
+            $svg        = $this->moodChartRenderer->renderSvg($independentData, $startDate, $endDate);
+            $avgMood    = $this->avgMood($independentData);
+            $daysLogged = count(array_unique(array_column($independentData, 'date')));
+            $rangeLabel = $this->h(date('M j', strtotime($startDate)) . ' – ' . date('M j, Y', strtotime($endDate)));
+
+            $html .= '<div class="chart-section">';
+            $html .= '<div class="chart-medname">Independent <span style="font-weight:normal;color:#60708A;">(no medication)</span></div>';
+            $html .= '<div class="chart-summary">';
+            $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+            $html .= "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
+            $html .= '</div>';
+            $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                . '" width="500" height="200" style="display:block;">';
+            $html .= $this->renderPatientNotes($independentData, 'Independent');
             $html .= '</div>'; // .chart-section
         }
 
@@ -1063,12 +1107,12 @@ HTML;
 
     /**
      * Small outlined badge(s) showing whether a medication tracks pain and/or mood.
-     * The Mood badge is suppressed when the report excludes the mood section, so the
-     * tables don't advertise mood data that isn't included in this PDF.
+     * Each badge is suppressed when the report excludes that section, so the
+     * tables don't advertise data that isn't included in this PDF.
      */
-    private function medTrackingBadgeHtml(array $med, bool $includeMood): string
+    private function medTrackingBadgeHtml(array $med, bool $includePain, bool $includeMood): string
     {
-        $tracksPain = $this->repository->medicationTracksPain($med);
+        $tracksPain = $includePain && $this->repository->medicationTracksPain($med);
         $tracksMood = $includeMood && $this->repository->medicationTracksMood($med);
 
         $style = 'display:inline-block;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;border:1pt solid;background:#fff;';
