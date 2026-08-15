@@ -157,10 +157,15 @@ final class DoctorVisitReport
 <title>{$titleEsc} — {$generatedDate}</title>
 <style>
 * { box-sizing: border-box; }
-/* Reset on body's descendants only — not body itself. dompdf silently drops the
-   @page margin below whenever body has its own explicit margin/padding (even 0),
-   so zeroing body here would make the page-margin rule below a no-op. */
-body * { margin: 0; padding: 0; }
+/* Reset margin/padding by tag rather than `*` or `body *`. dompdf's specificity
+   calculation counts the descendant-combinator space in `body *` as extra weight,
+   so that selector silently outranks and overrides the more specific padding/margin
+   rules declared further down (table cell padding, badge padding, etc.) regardless
+   of source order. A plain tag list ties those rules' specificity instead, so the
+   normal "later rule wins" cascade applies. Body itself is deliberately excluded
+   from the reset: dompdf silently drops the @page margin rule below whenever body
+   has its own explicit margin/padding (even 0). */
+div, span, table, thead, tbody, tr, th, td, strong, img { margin: 0; padding: 0; }
 body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #172033; background: #fff; }
 /* Pages after the 1st get top margin so content doesn't butt against the physical page
    edge on breaks; the 1st page keeps 0 since the header band already fills that space. */
