@@ -5297,7 +5297,7 @@ const renderGroupModalMemberRow = (member) => {
       <span class="group-member-name">${escHtml(member.name)}</span>${doseText}${typeBadge}${feedbackBadge}
       <div class="group-dose-stepper" data-group-dose-stepper>
         <button type="button" class="group-dose-step-btn" data-group-dose-step="-1" aria-label="Decrease dose quantity">&minus;</button>
-        <span class="group-dose-value" data-group-dose-value>${escHtml(formatQty(doseValue))}</span>
+        <input type="number" class="group-dose-value" data-group-dose-value min="0" step="any" value="${escHtml(formatQty(doseValue))}" aria-label="Dose quantity">
         <button type="button" class="group-dose-step-btn" data-group-dose-step="1" aria-label="Increase dose quantity">+</button>
         <span class="group-dose-unit" data-group-dose-unit>${escHtml(unit)}</span>
       </div>
@@ -5478,6 +5478,60 @@ document.querySelector('[data-group-modal-add-btn]')?.addEventListener('click', 
   }
 });
 
+const commitGroupDoseChange = async (row, medId, next, valueEl) => {
+  if (groupModalMode === 'create') {
+    const staged = stagedGroupMembers.find((m) => String(m.medication_id) === medId);
+    if (staged) staged.quantity_per_dose = next;
+    if (valueEl) valueEl.value = String(next);
+    return;
+  }
+
+  const stepBtns = row?.querySelectorAll('[data-group-dose-step]') ?? [];
+  stepBtns.forEach((b) => { b.disabled = true; });
+  if (valueEl) valueEl.disabled = true;
+  try {
+    const params = new URLSearchParams();
+    params.set('action', 'update_group_member_dose');
+    params.set('csrf_token', getCsrfToken());
+    params.set('json_response', '1');
+    params.set('group_id', String(groupModalGroupId));
+    params.set('medication_id', medId);
+    params.set('quantity_per_dose', String(next));
+
+    const res = await fetch('index.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error('Failed to update dose quantity.');
+    if (valueEl) valueEl.value = formatQty(json.quantity_per_dose ?? json.medication_default_quantity_per_dose ?? next);
+  } catch (err) {
+    alert(err.message ?? 'Something went wrong.');
+  } finally {
+    stepBtns.forEach((b) => { b.disabled = false; });
+    if (valueEl) valueEl.disabled = false;
+  }
+};
+
+groupModalMembers?.addEventListener('change', async (e) => {
+  const input = e.target.closest('[data-group-dose-value]');
+  if (!input) return;
+  const row = input.closest('[data-group-modal-member]');
+  const medId = row?.dataset.medicationId ?? '';
+  const parsed = parseFloat(input.value);
+  const next = Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 1000) / 1000) : 0;
+  input.value = String(next);
+  await commitGroupDoseChange(row, medId, next, input);
+});
+
+groupModalMembers?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('[data-group-dose-value]')) {
+    e.preventDefault();
+    e.target.blur();
+  }
+});
+
 groupModalMembers?.addEventListener('click', async (e) => {
   const stepBtn = e.target.closest('[data-group-dose-step]');
   if (stepBtn) {
@@ -5485,42 +5539,9 @@ groupModalMembers?.addEventListener('click', async (e) => {
     const medId = row?.dataset.medicationId ?? '';
     const valueEl = row?.querySelector('[data-group-dose-value]');
     const delta = parseInt(stepBtn.dataset.groupDoseStep ?? '0', 10);
-    const current = parseFloat(valueEl?.textContent ?? '1') || 1;
-    // Floor matches the min="0.001" already enforced on dose-qty inputs elsewhere in the app —
-    // using 0.5 here would let a Decrease click raise a dose below 0.5 (e.g. 0.25 -> 0.5).
-    const next = Math.max(0.001, Math.round((current + delta) * 1000) / 1000);
-
-    if (groupModalMode === 'create') {
-      const staged = stagedGroupMembers.find((m) => String(m.medication_id) === medId);
-      if (staged) staged.quantity_per_dose = next;
-      if (valueEl) valueEl.textContent = String(next);
-      return;
-    }
-
-    const stepBtns = row?.querySelectorAll('[data-group-dose-step]') ?? [];
-    stepBtns.forEach((b) => { b.disabled = true; });
-    try {
-      const params = new URLSearchParams();
-      params.set('action', 'update_group_member_dose');
-      params.set('csrf_token', getCsrfToken());
-      params.set('json_response', '1');
-      params.set('group_id', String(groupModalGroupId));
-      params.set('medication_id', medId);
-      params.set('quantity_per_dose', String(next));
-
-      const res = await fetch('index.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error('Failed to update dose quantity.');
-      if (valueEl) valueEl.textContent = formatQty(json.quantity_per_dose ?? json.medication_default_quantity_per_dose ?? next);
-    } catch (err) {
-      alert(err.message ?? 'Something went wrong.');
-    } finally {
-      stepBtns.forEach((b) => { b.disabled = false; });
-    }
+    const current = parseFloat(valueEl?.value ?? '1') || 1;
+    const next = Math.max(0, Math.round((current + delta) * 1000) / 1000);
+    await commitGroupDoseChange(row, medId, next, valueEl);
     return;
   }
 
