@@ -38,13 +38,13 @@ final class DoctorVisitReport
             $endDate,
             $includePain,
             $includeMood,
-            function (array $meds, string $s, string $e) use ($perMedChartDays, $includePain, $includeMood, $perMedMoodChartDays): string {
+            function (array $meds, array $inactiveMeds, string $s, string $e) use ($perMedChartDays, $includePain, $includeMood, $perMedMoodChartDays): string {
                 $out = '';
                 if ($includePain) {
-                    $out .= $this->sectionPainCharts($meds, $s, $e, $perMedChartDays);
+                    $out .= $this->sectionPainCharts($meds, $inactiveMeds, $s, $e, $perMedChartDays);
                 }
                 if ($includeMood) {
-                    $out .= $this->sectionMoodCharts($meds, $s, $e, $perMedMoodChartDays);
+                    $out .= $this->sectionMoodCharts($meds, $inactiveMeds, $s, $e, $perMedMoodChartDays);
                 }
                 return $out;
             }
@@ -75,7 +75,7 @@ final class DoctorVisitReport
     }
 
     /**
-     * @param callable(array,string,string):string $chartSection Renders the report-specific chart section.
+     * @param callable(array,array,string,string):string $chartSection Renders the report-specific chart section.
      */
     private function buildHtml(string $title, string $startDate, string $endDate, bool $includePain, bool $includeMood, callable $chartSection): string
     {
@@ -133,7 +133,7 @@ final class DoctorVisitReport
         $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includePain, $includeMood);
         $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses, $doseChangesByMed);
-        $html .= $chartSection($medications, $startDate, $endDate);
+        $html .= $chartSection($medications, $inactiveMeds, $startDate, $endDate);
         $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
         $html .= '</div>';
@@ -605,19 +605,63 @@ HTML;
 HTML;
     }
 
+    /**
+     * Medications to include in a pain/mood chart section: those currently configured to
+     * track the metric, plus any active-or-discontinued medication that logged data for it
+     * within the reporting period even though tracking was later turned off or the
+     * medication was discontinued since. Historical entries in dose_logs and
+     * standalone_pain_mood_logs outlive the medication's current feedback_type/active
+     * state, so inclusion must be checked against the report's own date range rather than
+     * the medication's live configuration.
+     *
+     * @param array<int,array<string,mixed>>       $activeMeds
+     * @param array<int,array<string,mixed>>       $inactiveMeds
+     * @param callable(array):bool                 $tracksMetric  Checks the medication's current feedback_type.
+     * @param callable(int,string,string):array    $trendForRange Fetches logged data for a medication in a date range.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function medsForTrackingSection(
+        array $activeMeds,
+        array $inactiveMeds,
+        string $startDate,
+        string $endDate,
+        callable $tracksMetric,
+        callable $trendForRange
+    ): array {
+        $byId = [];
+        foreach (array_merge($activeMeds, $inactiveMeds) as $m) {
+            $byId[(int) $m['id']] = $m;
+        }
+
+        return array_values(array_filter(
+            $byId,
+            static function (array $m) use ($tracksMetric, $trendForRange, $startDate, $endDate): bool {
+                if ($tracksMetric($m)) {
+                    return true;
+                }
+                return $trendForRange((int) $m['id'], $startDate, $endDate) !== [];
+            }
+        ));
+    }
+
     // -------------------------------------------------------------------------
     // Section 5: Pain Level Tracking
     // -------------------------------------------------------------------------
 
     private function sectionPainCharts(
         array $medications,
+        array $inactiveMedications,
         string $startDate,
         string $endDate,
         array $perMedChartDays
     ): string {
-        $trackedMeds = array_filter(
+        $trackedMeds = self::medsForTrackingSection(
             $medications,
-            fn(array $m): bool => $this->repository->medicationTracksPain($m)
+            $inactiveMedications,
+            $startDate,
+            $endDate,
+            fn(array $m): bool => $this->repository->medicationTracksPain($m),
+            fn(int $id, string $s, string $e): array => $this->repository->painLevelTrendForRange($id, $s, $e)
         );
         $independentData = $this->repository->painLevelTrendForRange(0, $startDate, $endDate);
 
@@ -702,13 +746,18 @@ HTML;
 
     private function sectionMoodCharts(
         array $medications,
+        array $inactiveMedications,
         string $startDate,
         string $endDate,
         array $perMedMoodChartDays
     ): string {
-        $trackedMeds = array_filter(
+        $trackedMeds = self::medsForTrackingSection(
             $medications,
-            fn(array $m): bool => $this->repository->medicationTracksMood($m)
+            $inactiveMedications,
+            $startDate,
+            $endDate,
+            fn(array $m): bool => $this->repository->medicationTracksMood($m),
+            fn(int $id, string $s, string $e): array => $this->repository->moodLevelTrendForRange($id, $s, $e)
         );
         $independentData = $this->repository->moodLevelTrendForRange(0, $startDate, $endDate);
 
