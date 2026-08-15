@@ -606,13 +606,16 @@ HTML;
     }
 
     /**
-     * Medications to include in a pain/mood chart section: those currently configured to
-     * track the metric, plus any active-or-discontinued medication that logged data for it
-     * within the reporting period even though tracking was later turned off or the
-     * medication was discontinued since. Historical entries in dose_logs and
-     * standalone_pain_mood_logs outlive the medication's current feedback_type/active
-     * state, so inclusion must be checked against the report's own date range rather than
-     * the medication's live configuration.
+     * Medications to include in a pain/mood chart section.
+     *
+     * Active medications: included when currently configured to track the metric, or when
+     * they logged data for it within the reporting period (tracking was turned off since,
+     * but the in-range history is still relevant).
+     *
+     * Discontinued medications: included only when they logged data for the metric within
+     * the reporting period. Their current feedback_type is not trusted for inclusion —
+     * it commonly still says 'pain'/'mood' long after the medication was discontinued,
+     * which would otherwise resurface a permanent empty chart on every future report.
      *
      * @param array<int,array<string,mixed>>       $activeMeds
      * @param array<int,array<string,mixed>>       $inactiveMeds
@@ -629,19 +632,25 @@ HTML;
         callable $trendForRange
     ): array {
         $byId = [];
-        foreach (array_merge($activeMeds, $inactiveMeds) as $m) {
-            $byId[(int) $m['id']] = $m;
+
+        foreach ($activeMeds as $m) {
+            $id = (int) $m['id'];
+            if ($tracksMetric($m) || $trendForRange($id, $startDate, $endDate) !== []) {
+                $byId[$id] = $m;
+            }
         }
 
-        return array_values(array_filter(
-            $byId,
-            static function (array $m) use ($tracksMetric, $trendForRange, $startDate, $endDate): bool {
-                if ($tracksMetric($m)) {
-                    return true;
-                }
-                return $trendForRange((int) $m['id'], $startDate, $endDate) !== [];
+        foreach ($inactiveMeds as $m) {
+            $id = (int) $m['id'];
+            if (isset($byId[$id])) {
+                continue;
             }
-        ));
+            if ($trendForRange($id, $startDate, $endDate) !== []) {
+                $byId[$id] = $m;
+            }
+        }
+
+        return array_values($byId);
     }
 
     // -------------------------------------------------------------------------
@@ -673,47 +682,61 @@ HTML;
         $html .= '<div class="section-caption">Recorded after doses and as standalone logs for medications with pain tracking enabled. Chart shows daily pain level (1–10) over the reporting period. Hollow circles indicate standalone log entries.</div>';
 
         foreach ($trackedMeds as $med) {
-            $medId     = (int) $med['id'];
-            $medName   = $this->h((string) $med['name']);
-            $daysOn    = $this->daysOnMedication($med);
-            $chartDays = isset($perMedChartDays[$medId])
-                ? (int) $perMedChartDays[$medId]
-                : $this->defaultChartDays($daysOn);
+            $medId           = (int) $med['id'];
+            $medName         = $this->h((string) $med['name']);
+            $currentlyTracks = $this->repository->medicationTracksPain($med);
 
             $html .= '<div class="chart-section">';
             $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
 
-            if ($daysOn < 7 || $chartDays === 0) {
-                $startedLabel = !empty($med['start_date'])
-                    ? date('F j', (int) strtotime((string) $med['start_date']))
-                    : 'recently';
-                $html .= "<div class=\"no-chart-note\">Pain tracking started {$startedLabel} — check back after a few more days of logged doses.</div>";
-            } else {
-                // Determine the actual chart start date based on selected window
+            if ($currentlyTracks) {
+                $daysOn    = $this->daysOnMedication($med);
+                $chartDays = isset($perMedChartDays[$medId])
+                    ? (int) $perMedChartDays[$medId]
+                    : $this->defaultChartDays($daysOn);
+
+                if ($daysOn < 7 || $chartDays === 0) {
+                    $startedLabel = !empty($med['start_date'])
+                        ? date('F j', (int) strtotime((string) $med['start_date']))
+                        : 'recently';
+                    $html .= "<div class=\"no-chart-note\">Pain tracking started {$startedLabel} — check back after a few more days of logged doses.</div>";
+                    $html .= '</div>'; // .chart-section
+                    continue;
+                }
+
                 $chartStart = date('Y-m-d', strtotime("-{$chartDays} days", strtotime($endDate)));
                 if ($chartStart < $startDate) {
                     $chartStart = $startDate;
                 }
-
-                $rawData    = $this->repository->painLevelTrendForRange($medId, $chartStart, $endDate);
                 $rangeLabel = $this->h("{$chartDays}-day window: " . date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
+            } else {
+                // Included solely because of historical data logged within the reporting
+                // period — tracking was turned off, or the medication was discontinued,
+                // since. There's no per-medication chart-window selector for these (the
+                // export form only offers one for currently tracked active medications),
+                // so chart the full report range rather than the auto-narrowed default,
+                // which could miss the window the data actually falls in.
+                $chartStart = $startDate;
+                $rangeLabel = $this->h(date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
+            }
 
-                if ($rawData === []) {
-                    $html .= "<div class=\"no-chart-note\">No pain data logged in this {$rangeLabel}.</div>";
-                } else {
-                    $svg        = $this->chartRenderer->renderSvg($rawData, $chartStart, $endDate);
-                    $avgPain    = $this->avgPain($rawData);
-                    $daysLogged = count(array_unique(array_column($rawData, 'date')));
+            $rawData = $this->repository->painLevelTrendForRange($medId, $chartStart, $endDate);
 
-                    $html .= '<div class="chart-summary">';
-                    $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
-                    $html .= "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
-                    $html .= '</div>';
-                    $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
-                        . '" width="500" height="200" style="display:block;">';
+            if ($rawData === []) {
+                $html .= "<div class=\"no-chart-note\">No pain data logged in this {$rangeLabel}.</div>";
+            } else {
+                $svg        = $this->chartRenderer->renderSvg($rawData, $chartStart, $endDate);
+                $avgPain    = $this->avgPain($rawData);
+                $daysLogged = count(array_unique(array_column($rawData, 'date')));
 
-                    $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
-                }
+                $html .= '<div class="chart-summary">';
+                $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+                $html .= "Avg pain: <strong>{$avgPain}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
+                $html .= '</div>';
+                $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                    . '" width="500" height="200" style="display:block;">';
+
+                $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
             }
 
             $html .= '</div>'; // .chart-section
@@ -769,47 +792,61 @@ HTML;
         $html .= '<div class="section-caption">Recorded after doses and as standalone logs for medications with mood tracking enabled. Chart shows daily mood level (1–10) over the reporting period. Hollow circles indicate standalone log entries.</div>';
 
         foreach ($trackedMeds as $med) {
-            $medId     = (int) $med['id'];
-            $medName   = $this->h((string) $med['name']);
-            $daysOn    = $this->daysOnMedication($med);
-            $chartDays = isset($perMedMoodChartDays[$medId])
-                ? (int) $perMedMoodChartDays[$medId]
-                : $this->defaultChartDays($daysOn);
+            $medId           = (int) $med['id'];
+            $medName         = $this->h((string) $med['name']);
+            $currentlyTracks = $this->repository->medicationTracksMood($med);
 
             $html .= '<div class="chart-section">';
             $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
 
-            if ($daysOn < 7 || $chartDays === 0) {
-                $startedLabel = !empty($med['start_date'])
-                    ? date('F j', (int) strtotime((string) $med['start_date']))
-                    : 'recently';
-                $html .= "<div class=\"no-chart-note\">Mood tracking started {$startedLabel} — check back after a few more days of logged doses.</div>";
-            } else {
-                // Determine the actual chart start date based on selected window
+            if ($currentlyTracks) {
+                $daysOn    = $this->daysOnMedication($med);
+                $chartDays = isset($perMedMoodChartDays[$medId])
+                    ? (int) $perMedMoodChartDays[$medId]
+                    : $this->defaultChartDays($daysOn);
+
+                if ($daysOn < 7 || $chartDays === 0) {
+                    $startedLabel = !empty($med['start_date'])
+                        ? date('F j', (int) strtotime((string) $med['start_date']))
+                        : 'recently';
+                    $html .= "<div class=\"no-chart-note\">Mood tracking started {$startedLabel} — check back after a few more days of logged doses.</div>";
+                    $html .= '</div>'; // .chart-section
+                    continue;
+                }
+
                 $chartStart = date('Y-m-d', strtotime("-{$chartDays} days", strtotime($endDate)));
                 if ($chartStart < $startDate) {
                     $chartStart = $startDate;
                 }
-
-                $rawData    = $this->repository->moodLevelTrendForRange($medId, $chartStart, $endDate);
                 $rangeLabel = $this->h("{$chartDays}-day window: " . date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
+            } else {
+                // Included solely because of historical data logged within the reporting
+                // period — tracking was turned off, or the medication was discontinued,
+                // since. There's no per-medication chart-window selector for these (the
+                // export form only offers one for currently tracked active medications),
+                // so chart the full report range rather than the auto-narrowed default,
+                // which could miss the window the data actually falls in.
+                $chartStart = $startDate;
+                $rangeLabel = $this->h(date('M j', strtotime($chartStart)) . ' – ' . date('M j, Y', strtotime($endDate)));
+            }
 
-                if ($rawData === []) {
-                    $html .= "<div class=\"no-chart-note\">No mood data logged in this {$rangeLabel}.</div>";
-                } else {
-                    $svg        = $this->moodChartRenderer->renderSvg($rawData, $chartStart, $endDate);
-                    $avgMood    = $this->avgMood($rawData);
-                    $daysLogged = count(array_unique(array_column($rawData, 'date')));
+            $rawData = $this->repository->moodLevelTrendForRange($medId, $chartStart, $endDate);
 
-                    $html .= '<div class="chart-summary">';
-                    $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
-                    $html .= "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
-                    $html .= '</div>';
-                    $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
-                        . '" width="500" height="200" style="display:block;">';
+            if ($rawData === []) {
+                $html .= "<div class=\"no-chart-note\">No mood data logged in this {$rangeLabel}.</div>";
+            } else {
+                $svg        = $this->moodChartRenderer->renderSvg($rawData, $chartStart, $endDate);
+                $avgMood    = $this->avgMood($rawData);
+                $daysLogged = count(array_unique(array_column($rawData, 'date')));
 
-                    $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
-                }
+                $html .= '<div class="chart-summary">';
+                $html .= $rangeLabel . ' &nbsp;|&nbsp; ';
+                $html .= "Avg mood: <strong>{$avgMood}/10</strong> &nbsp;|&nbsp; Days logged: <strong>{$daysLogged}</strong>";
+                $html .= '</div>';
+                $html .= '<img src="data:image/svg+xml;base64,' . base64_encode($svg)
+                    . '" width="500" height="200" style="display:block;">';
+
+                $html .= $this->renderPatientNotes($rawData, (string) $med['name']);
             }
 
             $html .= '</div>'; // .chart-section
