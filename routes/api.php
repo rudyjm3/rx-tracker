@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_trend') {
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_log') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);
-    if ($medicationId <= 0) {
+    if ($medicationId < 0) {
         echo json_encode(['ok' => false, 'error' => 'Invalid medication.'], JSON_THROW_ON_ERROR);
         exit;
     }
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_log') {
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_log') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);
-    if ($medicationId <= 0) {
+    if ($medicationId < 0) {
         echo json_encode(['ok' => false, 'error' => 'Invalid medication.'], JSON_THROW_ON_ERROR);
         exit;
     }

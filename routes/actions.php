@@ -848,6 +848,7 @@ try {
                     $chartDays[(int) $medId] = (int) $days;
                 }
             }
+            $includePain = isset($_POST['include_pain']);
             $includeMood = isset($_POST['include_mood']);
             $moodChartDays = [];
             if ($includeMood) {
@@ -877,7 +878,7 @@ try {
                 static fn(array $a): bool => (int) $a['is_active'] === 1
             ));
             $report = new DoctorVisitReport($repository, $seRepo, $chart, $moodChart, $patientName, $patientLastName, $allergies, $patientFirstName);
-            $pdf    = $report->generateReport($reportStart, $reportEnd, $chartDays, $includeMood, $moodChartDays);
+            $pdf    = $report->generateReport($reportStart, $reportEnd, $chartDays, $includePain, $includeMood, $moodChartDays);
 
             $dlToken = preg_replace('/[^a-zA-Z0-9]/', '', post_string('download_token'));
             if ($dlToken !== '') {
@@ -902,12 +903,14 @@ try {
         if (!in_array($logType, ['pain', 'mood', 'both'], true)) {
             throw new RuntimeException('Invalid log type.');
         }
-        if ($medicationId <= 0) {
-            throw new RuntimeException('Invalid medication.');
-        }
-        $med = $repository->findMedication($medicationId);
-        if ($med === null) {
-            throw new RuntimeException('Medication not found.');
+        if ($medicationId > 0) {
+            $med = $repository->findMedication($medicationId);
+            if ($med === null) {
+                throw new RuntimeException('Medication not found.');
+            }
+        } else {
+            // No medication selected — an independent log, not tied to any medication.
+            $medicationId = 0;
         }
         $painLevel = null;
         $moodLevel = null;

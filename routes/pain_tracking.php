@@ -25,11 +25,8 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     </div>
 
     <?php if ($trackedMedications === []): ?>
-    <div class="pain-tracking-empty">
-      <p>No medications are currently set up for pain tracking. Enable &ldquo;Track dose feedback&rdquo; on a medication to start recording pain levels.</p>
-      <a href="index.php?page=medications" class="button secondary">Manage medications</a>
-    </div>
-    <?php else: ?>
+    <p class="pain-tracking-independent-note">No medications are currently tracking pain. You can still log pain independently below, or <a href="index.php?page=medications">enable pain tracking</a> on a medication.</p>
+    <?php endif; ?>
 
     <div class="pain-log-panel" data-pain-log-panel>
       <p class="pain-log-intro-text">Use this to record a pain level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
@@ -52,6 +49,18 @@ require __DIR__ . '/../includes/pages-shell-top.php';
           <input type="hidden" name="log_type" value="pain">
           <input type="hidden" name="medication_id" data-pain-log-medication-id value="">
           <input type="hidden" name="pain_level" data-pain-log-level value="">
+          <?php if ($trackedMedications !== []): ?>
+          <div data-pain-log-medication-select-wrap hidden>
+            <label class="stacked-label">Link to a medication <span class="field-optional">(optional)</span>
+              <select data-pain-log-medication-select>
+                <option value="0" selected>No medication — log independently</option>
+                <?php foreach ($trackedMedications as $m): ?>
+                <option value="<?= (int) $m['id'] ?>"><?= e((string) $m['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+          </div>
+          <?php endif; ?>
           <p class="feedback-pain-label">Pain level <span class="feedback-pain-hint">(1 = minimal &mdash; 10 = severe)</span></p>
           <div class="pain-level-selector" role="group" aria-label="Select pain level">
             <?php for ($i = 1; $i <= 10; $i++): ?>
@@ -85,6 +94,14 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     <div class="pain-tracking-med-panel">
       <div class="panel-heading"><h2>Tracked medications</h2></div>
       <div class="pain-tracking-med-list" role="group" aria-label="Select medication to view">
+        <button
+          type="button"
+          class="pain-tracking-med-btn pain-tracking-med-btn--independent"
+          data-select-medication
+          data-medication-id="0"
+          data-medication-name="Independent"
+          data-medication-dose=""
+        >Independent<span class="pain-tracking-med-dose">No medication</span></button>
         <?php foreach ($trackedMedications as $trackedMed): ?>
         <button
           type="button"
@@ -125,8 +142,6 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <p class="history-empty" data-pain-history-empty hidden>No pain levels recorded for this medication yet.</p>
       <button type="button" class="history-view-more" data-pain-history-view-more>View more</button>
     </section>
-
-    <?php endif; ?>
   </section>
 
   <?php require __DIR__ . '/../includes/refill-reminder-banner.php'; ?>

@@ -4154,20 +4154,6 @@ button.danger:hover {
   margin: 0;
 }
 
-.pain-tracking-empty {
-  background: var(--rx-card);
-  border: 1px solid var(--rx-border);
-  border-radius: var(--rx-radius-md);
-  box-shadow: var(--rx-shadow);
-  padding: 1.5rem;
-  text-align: center;
-  color: var(--rx-text-muted);
-}
-
-.pain-tracking-empty p {
-  margin: 0 0 1rem;
-}
-
 .pain-tracking-med-panel {
   background: var(--rx-card);
   border: 1px solid var(--rx-border);
@@ -4206,6 +4192,25 @@ button.danger:hover {
   background: var(--rx-deep-blue);
   border-color: var(--rx-deep-blue);
   color: #fff;
+}
+
+.pain-tracking-med-btn--independent {
+  border-style: dashed;
+}
+
+.pain-tracking-med-btn--independent.is-active {
+  border-style: solid;
+}
+
+.pain-tracking-independent-note {
+  background: var(--rx-card);
+  border: 1px solid var(--rx-border);
+  border-radius: var(--rx-radius-md);
+  box-shadow: var(--rx-shadow);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--rx-text-muted);
+  font-size: 0.9rem;
 }
 
 .pain-tracking-med-dose {

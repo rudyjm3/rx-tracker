@@ -25,11 +25,8 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     </div>
 
     <?php if ($moodTrackedMedications === []): ?>
-    <div class="pain-tracking-empty mood-tracking-empty">
-      <p>No medications are currently set up for mood tracking. Set Feedback tracking to Mood or Both on a medication to start.</p>
-      <a href="index.php?page=medications" class="button secondary">Manage medications</a>
-    </div>
-    <?php else: ?>
+    <p class="pain-tracking-independent-note">No medications are currently tracking mood. You can still log mood independently below, or <a href="index.php?page=medications">enable mood tracking</a> on a medication.</p>
+    <?php endif; ?>
 
     <div class="mood-log-panel" data-mood-log-panel>
       <p class="pain-log-intro-text">Use this to record a mood level any time you want to log how you&rsquo;re feeling, separate from a scheduled dose.</p>
@@ -52,6 +49,18 @@ require __DIR__ . '/../includes/pages-shell-top.php';
           <input type="hidden" name="log_type" value="mood">
           <input type="hidden" name="medication_id" data-mood-log-medication-id value="">
           <input type="hidden" name="mood_level" data-mood-log-level value="">
+          <?php if ($moodTrackedMedications !== []): ?>
+          <div data-mood-log-medication-select-wrap hidden>
+            <label class="stacked-label">Link to a medication <span class="field-optional">(optional)</span>
+              <select data-mood-log-medication-select>
+                <option value="0" selected>No medication — log independently</option>
+                <?php foreach ($moodTrackedMedications as $m): ?>
+                <option value="<?= (int) $m['id'] ?>"><?= e((string) $m['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+          </div>
+          <?php endif; ?>
           <p class="feedback-pain-label">Mood level <span class="feedback-pain-hint">(1 = very low &mdash; 10 = excellent)</span></p>
           <div class="pain-level-selector" role="group" aria-label="Select mood level">
             <?php for ($i = 1; $i <= 10; $i++): ?>
@@ -157,6 +166,14 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     <div class="pain-tracking-med-panel mood-tracking-med-panel">
       <div class="panel-heading"><h2>Tracked medications</h2></div>
       <div class="pain-tracking-med-list mood-tracking-med-list" role="group" aria-label="Select medication to view">
+        <button
+          type="button"
+          class="pain-tracking-med-btn mood-tracking-med-btn pain-tracking-med-btn--independent"
+          data-select-mood-medication
+          data-medication-id="0"
+          data-medication-name="Independent"
+          data-medication-dose=""
+        >Independent<span class="pain-tracking-med-dose mood-tracking-med-dose">No medication</span></button>
         <?php foreach ($moodTrackedMedications as $trackedMed): ?>
         <button
           type="button"
@@ -197,8 +214,6 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <p class="history-empty" data-mood-history-empty hidden>No mood levels recorded for this medication yet.</p>
       <button type="button" class="history-view-more" data-mood-history-view-more>View more</button>
     </section>
-
-    <?php endif; ?>
   </section>
 
   <?php require __DIR__ . '/../includes/refill-reminder-banner.php'; ?>

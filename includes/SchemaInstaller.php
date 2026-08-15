@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 7;
+    private const CURRENT_SCHEMA_VERSION = 9;
 
     private static array $schemaSweepDone = [];
 
@@ -162,6 +162,8 @@ final class SchemaInstaller
         $this->ensureAllergyTables();
         $this->ensureProfileExtrasColumns();
         $this->ensureAllergyDetailColumns();
+        $this->ensureStandaloneMedicationNullable();
+        $this->ensureStandaloneProfileIdColumn();
     }
 
     private function ensureGroupTables(): void
@@ -1537,6 +1539,109 @@ final class SchemaInstaller
                 }
                 if (!$hasColumn) {
                     $this->db->exec("ALTER TABLE standalone_pain_mood_logs ADD COLUMN tags TEXT NOT NULL DEFAULT ''");
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    // Allows standalone pain/mood logs to exist without a medication ("independent" logging).
+    private function ensureStandaloneMedicationNullable(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM standalone_pain_mood_logs LIKE 'medication_id'");
+                $column = $check !== false ? $check->fetch(PDO::FETCH_ASSOC) : false;
+                if (is_array($column) && strtoupper((string) ($column['Null'] ?? '')) === 'NO') {
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs MODIFY COLUMN medication_id INT UNSIGNED NULL');
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(standalone_pain_mood_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $medColumn = null;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'medication_id') {
+                        $medColumn = $column;
+                        break;
+                    }
+                }
+                if ($medColumn === null || (int) ($medColumn['notnull'] ?? 0) === 0) {
+                    return; // already nullable (or table doesn't exist yet)
+                }
+                // SQLite can't drop a NOT NULL constraint in place, so rebuild the table.
+                $this->db->beginTransaction();
+                $this->db->exec(
+                    "CREATE TABLE standalone_pain_mood_logs_new (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id       INTEGER NOT NULL,
+                        medication_id INTEGER NULL,
+                        log_type      TEXT NOT NULL DEFAULT 'pain',
+                        pain_level    INTEGER NULL,
+                        mood_level    INTEGER NULL,
+                        note          TEXT NOT NULL DEFAULT '',
+                        tags          TEXT NOT NULL DEFAULT '',
+                        logged_at     TEXT DEFAULT CURRENT_TIMESTAMP,
+                        updated_at    TEXT NULL
+                    )"
+                );
+                $this->db->exec(
+                    "INSERT INTO standalone_pain_mood_logs_new
+                         (id, user_id, medication_id, log_type, pain_level, mood_level, note, tags, logged_at, updated_at)
+                     SELECT id, user_id, medication_id, log_type, pain_level, mood_level, note, tags, logged_at, updated_at
+                     FROM standalone_pain_mood_logs"
+                );
+                $this->db->exec('DROP TABLE standalone_pain_mood_logs');
+                $this->db->exec('ALTER TABLE standalone_pain_mood_logs_new RENAME TO standalone_pain_mood_logs');
+                $this->db->commit();
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            try { $this->db->rollBack(); } catch (Throwable) {}
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    // Scopes standalone pain/mood logs to a family profile. Medication-tied entries are already
+    // correctly scoped via the medication's own profile_id, but independent (no-medication)
+    // entries have nothing else to scope them by, so without this column an independent log
+    // would leak across every profile on the account.
+    private function ensureStandaloneProfileIdColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM standalone_pain_mood_logs LIKE 'profile_id'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD COLUMN profile_id INT UNSIGNED NULL AFTER medication_id');
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD INDEX idx_standalone_profile (profile_id)');
+                    $this->db->exec(
+                        'ALTER TABLE standalone_pain_mood_logs ADD CONSTRAINT fk_standalone_profile
+                            FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL'
+                    );
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(standalone_pain_mood_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'profile_id') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD COLUMN profile_id INTEGER NULL');
                 }
             }
         } catch (Throwable) {

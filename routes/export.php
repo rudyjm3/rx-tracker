@@ -99,6 +99,14 @@ require __DIR__ . '/../includes/pages-shell-top.php';
       <input type="hidden" name="report_end" data-report-end-mirror value="<?= e($reportEnd) ?>">
 
       <div class="notification-toggle-row" style="margin-bottom:1.25rem;">
+        <label class="toggle-control" for="include-pain-toggle">
+          <input type="checkbox" name="include_pain" id="include-pain-toggle">
+          <span class="toggle-slider" aria-hidden="true"></span>
+          <span class="toggle-label">Include Pain tracking</span>
+        </label>
+      </div>
+
+      <div class="notification-toggle-row" style="margin-bottom:1.25rem;">
         <label class="toggle-control" for="include-mood-toggle">
           <input type="checkbox" name="include_mood" id="include-mood-toggle">
           <span class="toggle-slider" aria-hidden="true"></span>
@@ -106,6 +114,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         </label>
       </div>
 
+      <div data-pain-fieldset>
       <?php if ($trackedMedications !== []): ?>
       <fieldset style="border:1px solid var(--rx-border);border-radius:var(--rx-radius-sm);padding:1rem 1.25rem;margin-bottom:1.25rem;">
         <legend style="padding:0 0.5rem;font-weight:600;color:var(--rx-navy);">Pain-tracked medications</legend>
@@ -133,6 +142,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         No medications are currently tracking pain levels.
       </p>
       <?php endif; ?>
+      </div>
 
       <div data-mood-fieldset>
         <?php if ($moodTrackedMedicationsExport !== []): ?>
