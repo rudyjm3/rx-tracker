@@ -2284,9 +2284,15 @@ if (painPageBody) {
     }
     closePainLogModal();
     resetPainLogForm();
-    loadPainPageGraph();
-    painPageHistoryLoaded = false;
-    loadPainHistory();
+    if (chosenMedId !== painPageMedId) {
+      // Saved to a different medication than the one currently shown — switch to it
+      // so the new entry is visible instead of appearing to vanish.
+      document.querySelector(`[data-select-medication][data-medication-id="${chosenMedId}"]`)?.click();
+    } else {
+      loadPainPageGraph();
+      painPageHistoryLoaded = false;
+      loadPainHistory();
+    }
   });
 
   const painScoreMod = (level) => (level <= 3 ? 'low' : level <= 6 ? 'mid' : level <= 8 ? 'high' : 'severe');
@@ -3017,9 +3023,15 @@ if (moodPageBody) {
     }
     closeMoodLogModal();
     resetMoodLogForm();
-    loadMoodPageGraph();
-    moodPageHistoryLoaded = false;
-    loadMoodHistory();
+    if (chosenMedId !== moodPageMedId) {
+      // Saved to a different medication than the one currently shown — switch to it
+      // so the new entry is visible instead of appearing to vanish.
+      document.querySelector(`[data-select-mood-medication][data-medication-id="${chosenMedId}"]`)?.click();
+    } else {
+      loadMoodPageGraph();
+      moodPageHistoryLoaded = false;
+      loadMoodHistory();
+    }
   });
 
   const moodScoreMod = (level) => (level <= 3 ? 'poor' : level <= 6 ? 'fair' : level <= 8 ? 'good' : 'great');

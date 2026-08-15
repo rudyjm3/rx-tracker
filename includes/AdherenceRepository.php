@@ -310,6 +310,14 @@ final class AdherenceRepository
         if ($medicationId !== 0) {
             $params['medication_id'] = $medicationId;
         }
+        // Independent entries have no medication to scope them to a family profile through, so
+        // scope them directly by the log's own profile_id. Medication-tied entries stay scoped
+        // via medication_id alone (each medication already belongs to exactly one profile).
+        $profileSql = '';
+        if ($medicationId === 0) {
+            $profileSql = ' ' . $this->profileSql('s');
+            $params = array_merge($params, $this->profileParam());
+        }
         if ($endDate !== null) {
             $dateSql = 'DATE(s.logged_at) BETWEEN :start_date AND :end_date';
             $params['end_date'] = $endDate;
@@ -323,7 +331,7 @@ final class AdherenceRepository
              WHERE {$medSql}
                AND s.user_id = :user_id
                AND s.{$col} IS NOT NULL
-               AND {$dateSql}"
+               AND {$dateSql}{$profileSql}"
         );
         $stmt->execute($params);
         return $stmt->fetchAll();
@@ -340,12 +348,13 @@ final class AdherenceRepository
     ): int {
         $stmt = $this->db->prepare(
             'INSERT INTO standalone_pain_mood_logs
-                 (user_id, medication_id, log_type, pain_level, mood_level, note, tags, logged_at)
-             VALUES (:user_id, :medication_id, :log_type, :pain_level, :mood_level, :note, :tags, :logged_at)'
+                 (user_id, medication_id, profile_id, log_type, pain_level, mood_level, note, tags, logged_at)
+             VALUES (:user_id, :medication_id, :profile_id, :log_type, :pain_level, :mood_level, :note, :tags, :logged_at)'
         );
         $stmt->execute([
             'user_id'       => $this->userId,
             'medication_id' => $medicationId !== null && $medicationId > 0 ? $medicationId : null,
+            'profile_id'    => $this->profileId,
             'log_type'      => $logType,
             'pain_level'    => $painLevel,
             'mood_level'    => $moodLevel,

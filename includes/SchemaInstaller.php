@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 8;
+    private const CURRENT_SCHEMA_VERSION = 9;
 
     private static array $schemaSweepDone = [];
 
@@ -163,6 +163,7 @@ final class SchemaInstaller
         $this->ensureProfileExtrasColumns();
         $this->ensureAllergyDetailColumns();
         $this->ensureStandaloneMedicationNullable();
+        $this->ensureStandaloneProfileIdColumn();
     }
 
     private function ensureGroupTables(): void
@@ -1603,6 +1604,48 @@ final class SchemaInstaller
         } catch (Throwable) {
             $this->schemaSweepFailed = true;
             try { $this->db->rollBack(); } catch (Throwable) {}
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    // Scopes standalone pain/mood logs to a family profile. Medication-tied entries are already
+    // correctly scoped via the medication's own profile_id, but independent (no-medication)
+    // entries have nothing else to scope them by, so without this column an independent log
+    // would leak across every profile on the account.
+    private function ensureStandaloneProfileIdColumn(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $check = $this->db->query("SHOW COLUMNS FROM standalone_pain_mood_logs LIKE 'profile_id'");
+                if ($check !== false && $check->fetchColumn() === false) {
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD COLUMN profile_id INT UNSIGNED NULL AFTER medication_id');
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD INDEX idx_standalone_profile (profile_id)');
+                    $this->db->exec(
+                        'ALTER TABLE standalone_pain_mood_logs ADD CONSTRAINT fk_standalone_profile
+                            FOREIGN KEY (profile_id) REFERENCES family_profiles(id) ON DELETE SET NULL'
+                    );
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $check = $this->db->query('PRAGMA table_info(standalone_pain_mood_logs)');
+                if ($check === false) {
+                    return;
+                }
+                $hasColumn = false;
+                foreach ($check->fetchAll() as $column) {
+                    if ((string) ($column['name'] ?? '') === 'profile_id') {
+                        $hasColumn = true;
+                        break;
+                    }
+                }
+                if (!$hasColumn) {
+                    $this->db->exec('ALTER TABLE standalone_pain_mood_logs ADD COLUMN profile_id INTEGER NULL');
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
             // Keep app booting even if migration fails.
         }
     }
