@@ -2251,6 +2251,25 @@ button.danger:hover {
   max-width: 100%;
 }
 
+/* Active medication rows: resume info (mirrors .inactive-discontinued-line/-comment) */
+.med-resumed-line {
+  color: var(--rx-success);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.2rem 0 0;
+}
+
+.med-resumed-comment {
+  color: var(--rx-text-muted);
+  font-size: 0.82rem;
+  margin: 0.15rem 0 0;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
 .dose-change-history-list {
   display: grid;
   gap: 0.35rem;

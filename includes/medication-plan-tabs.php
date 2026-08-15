@@ -102,6 +102,7 @@
               <?php if (formattedDose($medication) !== ''): ?>
               <p class="med-dose"><?= e(formattedDose($medication)) ?><?= !empty($medication['dose_form']) ? ' ' . e((string) $medication['dose_form']) : '' ?></p>
               <?php endif; ?>
+              <?= render_resumed_note($medication) ?>
             </div>
             <div class="med-top-right">
               <?php if ($repository->medicationTracksPain($medication)): ?>

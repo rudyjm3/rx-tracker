@@ -130,11 +130,11 @@ final class DoctorVisitReport
         $html .= $this->sectionAllergies($this->allergies);
         $html .= $this->sectionAdherence($adherence, $medications, $includePain, $includeMood, $discontinuedDates, $startDate, $endDate, $doseChangesByMed);
         $html .= $this->sectionMedications($medications, $includePain, $includeMood);
+        $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->sectionDiscontinuedMedications($inactiveMeds, $includePain, $includeMood);
         $html .= $this->sectionDoseChanges($doseChanges);
         $html .= $this->sectionMissedDoseDetail($missedDoses, $doseChangesByMed);
         $html .= $chartSection($medications, $inactiveMeds, $startDate, $endDate);
-        $html .= $this->sectionSideEffects($sideEffects);
         $html .= $this->footer($generatedDate);
         $html .= '</div>';
         $html .= '</body></html>';
@@ -156,9 +156,16 @@ final class DoctorVisitReport
 <meta charset="UTF-8">
 <title>{$titleEsc} — {$generatedDate}</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; }
+/* Reset on body's descendants only — not body itself. dompdf silently drops the
+   @page margin below whenever body has its own explicit margin/padding (even 0),
+   so zeroing body here would make the page-margin rule below a no-op. */
+body * { margin: 0; padding: 0; }
 body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #172033; background: #fff; }
-@page { size: letter portrait; margin: 0; }
+/* Pages after the 1st get top margin so content doesn't butt against the physical page
+   edge on breaks; the 1st page keeps 0 since the header band already fills that space. */
+@page { size: letter portrait; margin: 0.5in 0 0 0; }
+@page :first { margin-top: 0; }
 
 /* Tables */
 table  { width: 100%; border-collapse: collapse; margin-bottom: 12pt; font-size: 9pt; }
@@ -384,9 +391,9 @@ HTML;
 
             $rows .= sprintf(
                 '<tr><td>%s%s%s%s%s</td><td><strong style="color:%s;">%d%%</strong></td><td>%d of %d</td></tr>',
-                $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($trackingMed, $includePain, $includeMood),
+                $this->h((string) $med['name']),
+                $this->medStackedBadgesHtml($med, $includePain, $includeMood, $trackingMed),
                 $doseHtml,
                 $discontinuedHtml,
                 $mColor,
@@ -444,10 +451,11 @@ HTML;
             }
             $dose = $this->h($this->formattedDose($med));
             $rows .= sprintf(
-                '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
-                $this->h((string) $med['name']),
+                '<tr><td>%s%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($med, $includePain, $includeMood),
+                $this->h((string) $med['name']),
+                $this->medStackedBadgesHtml($med, $includePain, $includeMood),
+                $this->resumedNoteHtml($med),
                 $dose,
                 $startDate,
                 $this->h($schedule),
@@ -497,9 +505,9 @@ HTML;
 
             $rows .= sprintf(
                 '<tr><td>%s%s%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
-                $this->h((string) $med['name']),
                 $this->medTypeBadgeHtml($med),
-                $this->medTrackingBadgeHtml($med, $includePain, $includeMood),
+                $this->h((string) $med['name']),
+                $this->medStackedBadgesHtml($med, $includePain, $includeMood),
                 $dose,
                 $reason,
                 $note,
@@ -571,9 +579,10 @@ HTML;
         foreach ($shown as $row) {
             $date    = $this->h(date('M j, Y', (int) strtotime((string) $row['scheduled_for_date'])));
             $dose    = $this->effectiveDoseOnDate($row, (string) $row['scheduled_for_date'], $doseChangesByMed[(int) $row['medication_id']] ?? []);
-            $medCell = $this->h((string) $row['name'])
+            $medCell = $this->medTypeBadgeHtml($row)
+                . $this->h((string) $row['name'])
                 . ($dose !== '—' ? ' &ndash; ' . $this->h($dose) : '')
-                . $this->medTypeBadgeHtml($row);
+                . $this->medStackedBadgesHtml($row);
             $time    = $this->h(date('g:i A', (int) strtotime((string) $row['scheduled_time'])));
             $status  = (string) $row['status'] === 'skipped'
                 ? '<strong style="color:#F5A524;">Skipped</strong>'
@@ -687,7 +696,8 @@ HTML;
             $currentlyTracks = $this->repository->medicationTracksPain($med);
 
             $html .= '<div class="chart-section">';
-            $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
+            $html .= "<div class=\"chart-medname\">" . $this->medTypeBadgeHtml($med) . $medName . '</div>';
+            $html .= $this->medStackedBadgesHtml($med);
 
             if ($currentlyTracks) {
                 $daysOn    = $this->daysOnMedication($med);
@@ -797,7 +807,8 @@ HTML;
             $currentlyTracks = $this->repository->medicationTracksMood($med);
 
             $html .= '<div class="chart-section">';
-            $html .= "<div class=\"chart-medname\">{$medName}" . $this->medTypeBadgeHtml($med) . '</div>';
+            $html .= "<div class=\"chart-medname\">" . $this->medTypeBadgeHtml($med) . $medName . '</div>';
+            $html .= $this->medStackedBadgesHtml($med);
 
             if ($currentlyTracks) {
                 $daysOn    = $this->daysOnMedication($med);
@@ -948,7 +959,7 @@ HTML;
         }
 
         return <<<HTML
-<div class="section-title page-break">Reported Side Effects</div>
+<div class="section-title">Reported Side Effects</div>
 <div class="section-caption">Patient-logged side effects for the reporting period, most recent first.</div>
 <div class="section-block">
   <table>
@@ -1177,18 +1188,34 @@ HTML;
         return $dt ? $dt->format('g:i A') : $time;
     }
 
+    /**
+     * Rx/OTC type badge, meant to sit inline immediately before the medication name.
+     * Supplement has its own badge (medSupplementBadgeHtml()) that stacks above the
+     * name instead, so it's intentionally not handled here.
+     */
     private function medTypeBadgeHtml(array $med): string
     {
         $type = (string) ($med['medication_type'] ?? 'prescription');
-        $labels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+        if ($type === 'supplement') {
+            return '';
+        }
+        $labels = ['prescription' => 'Rx', 'otc' => 'OTC'];
         $styles = [
             'prescription' => 'background:#EAF4FF;color:#102B57;',
             'otc'          => 'background:#E6FAF7;color:#0e7a68;',
-            'supplement'   => 'background:#FEF3C7;color:#8a5c00;',
         ];
         $label = $labels[$type] ?? 'Rx';
         $style = $styles[$type] ?? $styles['prescription'];
-        return '<span style="' . $style . 'font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;">' . $label . '</span>';
+        return '<span style="' . $style . 'font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-right:4pt;">' . $label . '</span>';
+    }
+
+    /** Supplement type badge — stacked above the medication name rather than inline. */
+    private function medSupplementBadgeHtml(array $med): string
+    {
+        if ((string) ($med['medication_type'] ?? 'prescription') !== 'supplement') {
+            return '';
+        }
+        return '<span style="background:#FEF3C7;color:#8a5c00;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-right:4pt;">Supplement</span>';
     }
 
     /**
@@ -1201,7 +1228,7 @@ HTML;
         $tracksPain = $includePain && $this->repository->medicationTracksPain($med);
         $tracksMood = $includeMood && $this->repository->medicationTracksMood($med);
 
-        $style = 'display:inline-block;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-left:4pt;border:1pt solid;background:#fff;';
+        $style = 'display:inline-block;font-size:7pt;font-weight:bold;padding:1pt 4pt;border-radius:3pt;margin-right:4pt;border:1pt solid;background:#fff;';
         $html  = '';
         if ($tracksPain) {
             $html .= '<span style="' . $style . 'color:#B45309;border-color:#F5A524;">Pain</span>';
@@ -1209,6 +1236,51 @@ HTML;
         if ($tracksMood) {
             $html .= '<span style="' . $style . 'color:#5B21B6;border-color:#8B5CF6;">Mood</span>';
         }
+        return $html;
+    }
+
+    /**
+     * Supplement + pain/mood tracking badges, stacked below the medication name as a
+     * block with space above so they don't touch it. Empty when neither applies.
+     *
+     * @param array<string,mixed>      $med         Record used for the supplement type check.
+     * @param array<string,mixed>|null $trackingMed Record used for the pain/mood tracking check,
+     *                                               when it must reflect a different (live) row than $med.
+     */
+    private function medStackedBadgesHtml(array $med, bool $includePain = false, bool $includeMood = false, ?array $trackingMed = null): string
+    {
+        $badges = $this->medSupplementBadgeHtml($med)
+            . $this->medTrackingBadgeHtml($trackingMed ?? $med, $includePain, $includeMood);
+
+        if ($badges === '') {
+            return '';
+        }
+
+        return '<div style="margin-top:4px;">' . $badges . '</div>';
+    }
+
+    /**
+     * "(Resumed use on MM/DD/YYYY — reason)" annotation, plus note, for an active
+     * medication that was previously discontinued and resumed. Empty when the
+     * medication has no resume history.
+     */
+    private function resumedNoteHtml(array $med): string
+    {
+        $lastResumed = $med['last_resumed'] ?? null;
+        if (!is_array($lastResumed)) {
+            return '';
+        }
+
+        $when = $this->h(date('m/d/Y', (int) strtotime((string) $lastResumed['event_at'])));
+        $reason = (string) ($lastResumed['reason'] ?? '');
+        $line = 'Resumed use on ' . $when . ($reason !== '' ? ' &ndash; ' . $this->h($reason) : '');
+        $html = '<div style="font-size:7.5pt;color:#18BFA6;margin-top:1pt;">(' . $line . ')</div>';
+
+        $comment = (string) ($lastResumed['comment'] ?? '');
+        if ($comment !== '') {
+            $html .= '<div style="font-size:7.5pt;color:#60708A;margin-top:1pt;">' . $this->h($comment) . '</div>';
+        }
+
         return $html;
     }
 
