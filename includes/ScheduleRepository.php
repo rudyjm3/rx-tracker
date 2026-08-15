@@ -95,10 +95,12 @@ final class ScheduleRepository
         $allTimes     = $this->scheduleTimesByMedicationIds($ids);
         $allTimeDoses = $this->scheduleTimeDosesByMedicationIds($ids);
         $allRefills   = $this->inventoryRepo->lastRefillsByMedicationIds($ids);
+        $allEvents    = $this->statusEventsByMedicationIds($ids);
         foreach ($medications as &$medication) {
             $medication['times']       = $allTimes[(int) $medication['id']] ?? [];
             $medication['time_doses']  = $allTimeDoses[(int) $medication['id']] ?? [];
             $medication['last_refill'] = $allRefills[(int) $medication['id']] ?? null;
+            $this->attachStatusEvents($medication, $allEvents);
         }
         unset($medication);
 
@@ -131,9 +133,16 @@ final class ScheduleRepository
         $events = $eventsByMedId[(int) $medication['id']] ?? [];
         $medication['status_events'] = $events;
         $medication['last_discontinued'] = null;
+        $medication['last_resumed'] = null;
+        // $events is sorted newest-first, so the first match of each type found is the
+        // most recent one; stop early once both have been located.
         foreach ($events as $event) {
-            if ((string) $event['event'] === 'discontinued') {
+            if ($medication['last_discontinued'] === null && (string) $event['event'] === 'discontinued') {
                 $medication['last_discontinued'] = $event;
+            } elseif ($medication['last_resumed'] === null && (string) $event['event'] === 'resumed') {
+                $medication['last_resumed'] = $event;
+            }
+            if ($medication['last_discontinued'] !== null && $medication['last_resumed'] !== null) {
                 break;
             }
         }

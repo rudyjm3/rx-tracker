@@ -351,6 +351,43 @@ function formatLate(int $minutes): string
     return $mins > 0 ? $hrs . 'hr ' . $mins . 'mins late' : $hrs . 'hr late';
 }
 
+/**
+ * Small "Resumed on [date] — [reason]" annotation (with optional truncated note) for an
+ * active medication that was previously discontinued and resumed. Empty when the
+ * medication has no resume history.
+ */
+function render_resumed_note(array $medication): string
+{
+    $lastResumed = $medication['last_resumed'] ?? null;
+    if (!is_array($lastResumed)) {
+        return '';
+    }
+
+    $ts = strtotime((string) $lastResumed['event_at']);
+    $line = 'Resumed ' . ($ts !== false ? date('M j, Y', $ts) : (string) $lastResumed['event_at']);
+    if ((string) $lastResumed['reason'] !== '') {
+        $line .= ' — ' . (string) $lastResumed['reason'];
+    }
+
+    $html = '<p class="med-resumed-line">' . e($line) . '</p>';
+
+    $comment = (string) $lastResumed['comment'];
+    if ($comment !== '') {
+        if (mb_strlen($comment) > 150) {
+            $truncated = mb_substr($comment, 0, 150) . '…';
+            $html .= '<p class="med-resumed-comment" data-discontinued-comment>';
+            $html .= '<span class="discontinued-comment-short" data-comment-short>' . e($truncated) . '</span>';
+            $html .= '<span class="discontinued-comment-full" data-comment-full hidden>' . e($comment) . '</span>';
+            $html .= ' <button type="button" class="history-view-more discontinued-comment-toggle" data-toggle-discontinued-comment>View more</button>';
+            $html .= '</p>';
+        } else {
+            $html .= '<p class="med-resumed-comment">' . e($comment) . '</p>';
+        }
+    }
+
+    return $html;
+}
+
 function render_inactive_medication_row(array $medication): string
 {
     $medTypeSlug   = (string) ($medication['medication_type'] ?? 'prescription');
