@@ -73,11 +73,34 @@ final class ScheduleRepository
         if ($doseTimes === []) {
             return;
         }
+
+        // findMedication()/the edit form surface *all* of a medication's schedule
+        // rows, including ones already owned by a group (e.g. a time a group
+        // absorbed — see MedicationGroupRepository::syncGroupScheduleTime()), so a
+        // plain save resubmits those group-owned times right back here as if they
+        // were individual doseTimes. Re-inserting one would duplicate a reminder_time
+        // the group already owns for this medication — at best a redundant alert
+        // slot, at worst a duplicate-key error on installs where the unique index
+        // hasn't yet been widened to include group_id. Skip any submitted time that
+        // a group already owns; that group keeps owning it regardless of what the
+        // medication-level form does with it.
+        $groupOwned = $this->db->prepare(
+            'SELECT reminder_time FROM medication_schedule_times WHERE medication_id = :medication_id AND group_id IS NOT NULL'
+        );
+        $groupOwned->execute(['medication_id' => $medicationId]);
+        $groupOwnedTimes = array_map(
+            static fn (string $time): string => substr($time, 0, 5),
+            array_column($groupOwned->fetchAll(), 'reminder_time')
+        );
+
         $insert = $this->db->prepare(
             'INSERT INTO medication_schedule_times (medication_id, reminder_time, quantity_per_dose)
              VALUES (:medication_id, :reminder_time, :quantity_per_dose)'
         );
         foreach ($doseTimes as $i => $time) {
+            if (in_array(substr($time, 0, 5), $groupOwnedTimes, true)) {
+                continue;
+            }
             $rawQty = $doseQtys[$i] ?? '';
             $qty = ($rawQty !== '' && (float) $rawQty > 0) ? (float) $rawQty : null;
             $insert->execute(['medication_id' => $medicationId, 'reminder_time' => $time, 'quantity_per_dose' => $qty]);

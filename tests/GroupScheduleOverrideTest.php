@@ -219,4 +219,32 @@ assertGSO($groupA8, $rows8[0]['group_id'], 'Group A\'s row should survive the ed
 assertGSO($groupB8, $rows8[1]['group_id'], 'Group B\'s row must survive even though the edit form only referenced group A.');
 assertGSO(null, $rows8[2]['group_id'], 'The new unrelated individual dose should be untagged.');
 
+// ── Scenario 9: editing a fully group-absorbed medication must not duplicate
+// its schedule row ────────────────────────────────────────────────────────
+// (regression for a reported bug: editing a medication's dose amount threw
+// "Duplicate entry ... for key 'uq_schedule_medication_time'" and rolled back
+// the whole save. The edit form pre-fills its dose-time inputs from
+// findMedication()'s scheduleTimesForMedication(), which returns *all* of a
+// medication's rows including ones a group has absorbed — so a plain save
+// resubmits the group's own time back as if it were an individual dose.)
+$repo9 = freshGSORepo();
+$repo9->createMedication('Absorbed Med', '', 'fixed_times', ['05:35:00'], null, null, false, 5, false, '', 'prescription', null, null, null, 'pills', 30.0, 1.0);
+$medId9 = (int) gsoFindByName($repo9->activeMedications(), 'Absorbed Med')['id'];
+$groupId9 = $repo9->createGroup('Morning Medication', '05:35:00');
+$repo9->addMedicationToGroup($groupId9, $medId9);
+
+// Simulates the edit form: it pre-fills from exactly what the edit form uses.
+$editTimes9 = $repo9->scheduleTimesForMedication($medId9);
+assertGSO(['05:35'], $editTimes9, 'The absorbed group time is what the edit form would show (and resubmit) for this medication.');
+
+// User only changes the dose amount and saves — the times field round-trips unchanged.
+$doseTimesForSave9 = array_map(static fn (string $t): string => $t . ':00', $editTimes9);
+$repo9->updateMedication($medId9, 'Absorbed Med', '', 'fixed_times', $doseTimesForSave9, null, null, false, 5, false, '', 'prescription', 20.0, 'mg', null, 'pills', 30.0, 1.0, []);
+
+$rows9 = array_values(array_filter($repo9->todaySchedule($today), static fn (array $r): bool => (int) $r['medication_id'] === $medId9));
+assertGSO(1, count($rows9), 'The medication must still have exactly one schedule row after the edit — not a duplicate.');
+assertGSO('05:35', $rows9[0]['reminder_time'], 'The lone row should still fire at the group\'s time.');
+assertGSO($groupId9, $rows9[0]['group_id'], 'The lone row should still be tagged with the group.');
+assertGSO(20.0, (float) $repo9->findMedication($medId9)['dose_amount'], 'The dose amount edit itself must have been saved.');
+
 echo "GroupScheduleOverrideTest passed.\n";
