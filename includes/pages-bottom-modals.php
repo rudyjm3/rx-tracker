@@ -336,6 +336,7 @@
         <input type="hidden" name="medication_id"  data-missed-dose-med-id     value="">
         <input type="hidden" name="scheduled_date" data-missed-dose-date        value="">
         <input type="hidden" name="scheduled_time" data-missed-dose-sched-time  value="">
+        <input type="hidden" name="group_id"       data-missed-dose-group-id    value="">
         <div class="form-row" style="margin-top:1rem;">
           <label for="missed-dose-actual-time" class="form-label">Time taken</label>
           <input type="time" id="missed-dose-actual-time" name="actual_taken_time"
