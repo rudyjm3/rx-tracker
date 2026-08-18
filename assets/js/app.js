@@ -213,6 +213,7 @@ const missedDoseTitle        = document.querySelector('[data-missed-dose-title]'
 const missedDoseMedId        = document.querySelector('[data-missed-dose-med-id]');
 const missedDoseDate         = document.querySelector('[data-missed-dose-date]');
 const missedDoseSchedTime    = document.querySelector('[data-missed-dose-sched-time]');
+const missedDoseGroupId      = document.querySelector('[data-missed-dose-group-id]');
 const missedDoseActualTime   = document.querySelector('[data-missed-dose-actual-time]');
 const missedDoseForm         = document.querySelector('[data-missed-dose-form]');
 const missedDosePainSection  = document.querySelector('[data-missed-dose-pain-section]');
@@ -489,7 +490,7 @@ postponeModal?.addEventListener('click', (event) => {
 
 // ── Missed dose modal ─────────────────────────────────────────────────────────
 
-const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, trackFeedback = false, feedbackType = 'none', title = null }) => {
+const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, scheduledTime, groupId = '', trackFeedback = false, feedbackType = 'none', title = null }) => {
   if (!missedDoseModal) return;
   missedDosePainMode = trackFeedback;
   missedDoseMedName = medicationName;
@@ -498,6 +499,7 @@ const openMissedDoseModal = ({ medicationId, medicationName, scheduledDate, sche
   if (missedDoseMedId) missedDoseMedId.value = medicationId;
   if (missedDoseDate) missedDoseDate.value = scheduledDate;
   if (missedDoseSchedTime) missedDoseSchedTime.value = scheduledTime;
+  if (missedDoseGroupId) missedDoseGroupId.value = groupId;
   // Pre-fill the time input with the scheduled time, stripping seconds ("HH:MM:SS" → "HH:MM")
   if (missedDoseActualTime) missedDoseActualTime.value = scheduledTime.substring(0, 5);
   // Show/hide pain/mood sections and reset state
@@ -1187,6 +1189,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
     })();
 
     const isPastScheduledTime = scheduledMs !== null && Date.now() > scheduledMs;
+    const groupId = btn.closest('form')?.querySelector('[name="group_id"]')?.value ?? '';
 
     const isTooEarly = (() => {
       if (snoozeExpired) return false; // snooze fired, honour it regardless of schedule
@@ -1208,6 +1211,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         medicationName: btn.dataset.medicationName ?? 'medication',
         scheduledDate,
         scheduledTime,
+        groupId,
         trackFeedback:  btn.dataset.trackDoseFeedback === '1',
         feedbackType:   btn.dataset.feedbackType ?? (btn.dataset.trackDoseFeedback === '1' ? 'pain' : 'none'),
       });
@@ -1221,6 +1225,7 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
         medicationName: btn.dataset.medicationName ?? 'medication',
         scheduledDate,
         scheduledTime,
+        groupId,
         trackFeedback:  btn.dataset.trackDoseFeedback === '1',
         feedbackType:   btn.dataset.feedbackType ?? (btn.dataset.trackDoseFeedback === '1' ? 'pain' : 'none'),
         title: `Log dose — ${btn.dataset.medicationName ?? 'medication'}`,
@@ -1238,7 +1243,6 @@ document.querySelectorAll('[data-take-dose]').forEach((btn) => {
     const medicationDose = btn.dataset.medicationDose ?? '';
     const trackFeedback = btn.dataset.trackDoseFeedback === '1';
     const feedbackType = trackFeedback ? (btn.dataset.feedbackType ?? 'pain') : 'none';
-    const groupId = btn.closest('form')?.querySelector('[name="group_id"]')?.value ?? '';
     btn.disabled = true;
     postDose(medicationId, scheduledDate, scheduledTime, 'taken', '', '', groupId).then((result) => {
       btn.disabled = false;

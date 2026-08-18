@@ -247,4 +247,26 @@ assertGSO('05:35', $rows9[0]['reminder_time'], 'The lone row should still fire a
 assertGSO($groupId9, $rows9[0]['group_id'], 'The lone row should still be tagged with the group.');
 assertGSO(20.0, (float) $repo9->findMedication($medId9)['dose_amount'], 'The dose amount edit itself must have been saved.');
 
+// ── Scenario 10: a group-owned dose must deduct the group's override, not
+// whatever quantity_per_dose is left over on the absorbed schedule row ──────
+// (regression for a reported bug: the "past scheduled time" / missed-dose
+// modal on the dashboard omitted group_id from its submission, so a group
+// dose logged through it silently fell back to recordDoseStatus()'s
+// non-group lookup — the absorbed medication_schedule_times row's own
+// quantity_per_dose — deducting a full tablet instead of the group's 0.5
+// override. The real fix is client-side (always send group_id), but this
+// pins the server-side contract the fix depends on: passing group_id must
+// deduct the group override, and omitting it must not silently produce the
+// same result if the two disagree.)
+$repo10 = freshGSORepo();
+$repo10->createMedication('Risperidone', '', 'fixed_times', ['05:35:00'], null, null, false, 4, false, '', 'prescription', 2.0, 'mg', null, 'pills', 30.0, 1.0, ['1']);
+$medId10 = (int) gsoFindByName($repo10->activeMedications(), 'Risperidone')['id'];
+$groupId10 = $repo10->createGroup('Morning Medication', '05:35:00');
+$repo10->addMedicationToGroup($groupId10, $medId10, 0.5);
+
+$quantityBefore10 = (float) $repo10->findMedication($medId10)['current_quantity'];
+$repo10->recordDoseStatus($medId10, $today, '05:35:00', 'taken', '', null, $groupId10);
+$quantityAfterGroupLog10 = (float) $repo10->findMedication($medId10)['current_quantity'];
+assertGSO(0.5, $quantityBefore10 - $quantityAfterGroupLog10, 'Logging a group dose with group_id must deduct the group\'s 0.5 override, not the absorbed schedule row\'s own quantity_per_dose (1).');
+
 echo "GroupScheduleOverrideTest passed.\n";
