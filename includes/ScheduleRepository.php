@@ -602,6 +602,38 @@ final class ScheduleRepository
             $takenAt = $now;
         }
 
+        // Same override resolution as recordDoseStatus(): resolve which group (if
+        // any) *this specific slot* belongs to via medication_schedule_times.group_id
+        // — not just "does this medication belong to some group" — since a
+        // medication can belong to several groups (each owning a different slot) or
+        // have both grouped and individual dose times. A group membership's own
+        // quantity_per_dose wins (null there means "inherit the medication's
+        // default"); an ungrouped slot falls back to its own override instead.
+        // Without this, "Log dose now" (unlike the schedule "Take" button) would
+        // always deduct the medication's own quantity_per_dose and silently ignore
+        // a group's reduce-qty override — or, resolving the wrong group, apply one
+        // group's override to another group's (or an individual) dose.
+        $slotStmt = $this->db->prepare(
+            'SELECT group_id, quantity_per_dose FROM medication_schedule_times
+             WHERE medication_id = :medication_id AND reminder_time = :reminder_time LIMIT 1'
+        );
+        $slotStmt->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
+        $slotRow = $slotStmt->fetch();
+        $slotGroupId = is_array($slotRow) && $slotRow['group_id'] !== null ? (int) $slotRow['group_id'] : null;
+
+        if ($slotGroupId !== null) {
+            $groupStmt = $this->db->prepare(
+                'SELECT quantity_per_dose FROM medication_group_members
+                 WHERE group_id = :group_id AND medication_id = :medication_id LIMIT 1'
+            );
+            $groupStmt->execute(['group_id' => $slotGroupId, 'medication_id' => $medicationId]);
+            $groupVal = $groupStmt->fetchColumn();
+            $doseQtyOverride = ($groupVal !== false && $groupVal !== null) ? (float) $groupVal : null;
+        } else {
+            $slotVal = is_array($slotRow) ? $slotRow['quantity_per_dose'] : null;
+            $doseQtyOverride = $slotVal !== null ? (float) $slotVal : null;
+        }
+
         $this->db->beginTransaction();
         try {
             // Check for an existing record first — allows us to update missed slots
@@ -634,7 +666,7 @@ final class ScheduleRepository
                 $this->assertIntervalAllowed($medicationId, $takenAt);
             }
 
-            $deducted = $this->inventoryRepo->deductInventory($medicationId);
+            $deducted = $this->inventoryRepo->deductInventory($medicationId, $doseQtyOverride);
 
             if ($row !== false) {
                 $update = $this->db->prepare(
