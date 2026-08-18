@@ -286,4 +286,37 @@ $repo11->logDoseNow($medId11, '', '05:35', true);
 $quantityAfterLogNow11 = (float) $repo11->findMedication($medId11)['current_quantity'];
 assertGSO(0.5, $quantityBefore11 - $quantityAfterLogNow11, 'logDoseNow() must deduct the group\'s 0.5 override, not the absorbed schedule row\'s own quantity_per_dose (1).');
 
+// ── Scenario 12: "Log dose now" must resolve *the selected slot's* group ────
+// (regression for a reviewer-caught bug in the scenario 11 fix: it picked an
+// arbitrary medication_group_members row via a medication-only LIMIT 1 query,
+// so a medication in two groups — or with both grouped and individual dose
+// times — could deduct one group's override for a different group's slot, or
+// apply a group override to a plain individual dose. The fix must resolve
+// group_id from the specific medication_schedule_times row for the slot being
+// logged, then look up that group's membership override.)
+$repo12 = freshGSORepo();
+$repo12->createMedication(
+    'Multigroup Dose Med', '', 'fixed_times', ['05:35:00', '12:00:00', '18:00:00'],
+    null, null, false, 4, false, '', 'prescription', 2.0, 'mg', null, 'pills', 30.0, 1.0,
+    ['', '', '0.75'] // 18:00 keeps its own individual per-slot override; the other two get absorbed into groups below.
+);
+$medId12 = (int) gsoFindByName($repo12->activeMedications(), 'Multigroup Dose Med')['id'];
+$groupA12 = $repo12->createGroup('Morning Group', '05:35:00');
+$groupB12 = $repo12->createGroup('Midday Group', '12:00:00');
+$repo12->addMedicationToGroup($groupA12, $medId12, 0.5);
+$repo12->addMedicationToGroup($groupB12, $medId12, 0.25);
+
+$qty12a = (float) $repo12->findMedication($medId12)['current_quantity'];
+$repo12->logDoseNow($medId12, '', '05:35', true);
+$qty12b = (float) $repo12->findMedication($medId12)['current_quantity'];
+assertGSO(0.5, $qty12a - $qty12b, 'logDoseNow() on the 05:35 slot must deduct group A\'s 0.5 override.');
+
+$repo12->logDoseNow($medId12, '', '12:00', true);
+$qty12c = (float) $repo12->findMedication($medId12)['current_quantity'];
+assertGSO(0.25, $qty12b - $qty12c, 'logDoseNow() on the 12:00 slot must deduct group B\'s 0.25 override, not group A\'s.');
+
+$repo12->logDoseNow($medId12, '', '18:00', true);
+$qty12d = (float) $repo12->findMedication($medId12)['current_quantity'];
+assertGSO(0.75, $qty12c - $qty12d, 'logDoseNow() on the ungrouped 18:00 slot must deduct its own 0.75 individual override, not any group\'s.');
+
 echo "GroupScheduleOverrideTest passed.\n";
