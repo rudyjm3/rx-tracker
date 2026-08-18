@@ -3806,6 +3806,7 @@ const showAlarmOverlay = (item) => {
   alarmOverlay.dataset.alarmMedicationDose = item.dose ?? '';
   alarmOverlay.dataset.alarmScheduledDate = item.scheduled_date;
   alarmOverlay.dataset.alarmScheduledTime = item.scheduled_time;
+  alarmOverlay.dataset.alarmGroupId = item.group_id ?? '';
   alarmOverlay.dataset.alarmTrackDoseFeedback = item.track_dose_feedback ? '1' : '0';
   alarmOverlay.dataset.alarmFeedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
   alarmOverlay.classList.add('is-active');
@@ -3876,6 +3877,7 @@ const alarmAction = async (action, extra = {}, { autoFinish = true } = {}) => {
   const medicationName = alarmMedNameEl?.textContent ?? '';
   const scheduledDate = alarmOverlay?.dataset.alarmScheduledDate ?? '';
   const scheduledTime = alarmOverlay?.dataset.alarmScheduledTime ?? '';
+  const groupId = alarmOverlay?.dataset.alarmGroupId ?? '';
 
   const params = new URLSearchParams({
     csrf_token: getCsrfToken(),
@@ -3886,6 +3888,7 @@ const alarmAction = async (action, extra = {}, { autoFinish = true } = {}) => {
     scheduled_time: scheduledTime,
     ...extra,
   });
+  if (groupId) params.set('group_id', String(groupId));
 
   let data = { ok: false };
   try {

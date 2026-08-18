@@ -269,4 +269,21 @@ $repo10->recordDoseStatus($medId10, $today, '05:35:00', 'taken', '', null, $grou
 $quantityAfterGroupLog10 = (float) $repo10->findMedication($medId10)['current_quantity'];
 assertGSO(0.5, $quantityBefore10 - $quantityAfterGroupLog10, 'Logging a group dose with group_id must deduct the group\'s 0.5 override, not the absorbed schedule row\'s own quantity_per_dose (1).');
 
+// ── Scenario 11: "Log dose now" must also deduct a group's override ─────────
+// (regression for a reported bug: unlike recordDoseStatus()/the schedule "Take"
+// button, logDoseNow() — used by the medication plan list's "Log dose" button
+// and any alarm/reminder flow that logs without an explicit slot — called
+// deductInventory() with no override at all, always deducting the medication's
+// own quantity_per_dose and silently ignoring a group's reduce-qty override.)
+$repo11 = freshGSORepo();
+$repo11->createMedication('Quetiapine', '', 'fixed_times', ['05:35:00'], null, null, false, 4, false, '', 'prescription', 2.0, 'mg', null, 'pills', 30.0, 1.0, ['1']);
+$medId11 = (int) gsoFindByName($repo11->activeMedications(), 'Quetiapine')['id'];
+$groupId11 = $repo11->createGroup('Morning Medication', '05:35:00');
+$repo11->addMedicationToGroup($groupId11, $medId11, 0.5);
+
+$quantityBefore11 = (float) $repo11->findMedication($medId11)['current_quantity'];
+$repo11->logDoseNow($medId11, '', '05:35', true);
+$quantityAfterLogNow11 = (float) $repo11->findMedication($medId11)['current_quantity'];
+assertGSO(0.5, $quantityBefore11 - $quantityAfterLogNow11, 'logDoseNow() must deduct the group\'s 0.5 override, not the absorbed schedule row\'s own quantity_per_dose (1).');
+
 echo "GroupScheduleOverrideTest passed.\n";

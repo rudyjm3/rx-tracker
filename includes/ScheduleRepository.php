@@ -602,6 +602,29 @@ final class ScheduleRepository
             $takenAt = $now;
         }
 
+        // Same override resolution as recordDoseStatus(): a group membership's own
+        // quantity_per_dose wins (null there means "inherit the medication's
+        // default"), otherwise fall back to this specific schedule slot's override.
+        // Without this, "Log dose now" (unlike the schedule "Take" button) would
+        // always deduct the medication's own quantity_per_dose and silently ignore
+        // a group's reduce-qty override.
+        $groupStmt = $this->db->prepare(
+            'SELECT quantity_per_dose FROM medication_group_members WHERE medication_id = :medication_id LIMIT 1'
+        );
+        $groupStmt->execute(['medication_id' => $medicationId]);
+        $groupVal = $groupStmt->fetchColumn();
+        if ($groupVal !== false) {
+            $doseQtyOverride = $groupVal !== null ? (float) $groupVal : null;
+        } else {
+            $slotStmt = $this->db->prepare(
+                'SELECT quantity_per_dose FROM medication_schedule_times
+                 WHERE medication_id = :medication_id AND reminder_time = :reminder_time LIMIT 1'
+            );
+            $slotStmt->execute(['medication_id' => $medicationId, 'reminder_time' => $time]);
+            $slotVal = $slotStmt->fetchColumn();
+            $doseQtyOverride = ($slotVal !== false && $slotVal !== null) ? (float) $slotVal : null;
+        }
+
         $this->db->beginTransaction();
         try {
             // Check for an existing record first — allows us to update missed slots
@@ -634,7 +657,7 @@ final class ScheduleRepository
                 $this->assertIntervalAllowed($medicationId, $takenAt);
             }
 
-            $deducted = $this->inventoryRepo->deductInventory($medicationId);
+            $deducted = $this->inventoryRepo->deductInventory($medicationId, $doseQtyOverride);
 
             if ($row !== false) {
                 $update = $this->db->prepare(
