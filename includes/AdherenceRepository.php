@@ -468,6 +468,53 @@ final class AdherenceRepository
         return in_array((string) ($medication['feedback_type'] ?? 'none'), ['mood', 'both'], true);
     }
 
+    /**
+     * Medications to display for a pain/mood metric over a date range.
+     *
+     * Active medications: included when currently configured to track the metric, or when
+     * they logged data for it within the range (tracking was turned off since, but the
+     * in-range history is still relevant).
+     *
+     * Inactive/discontinued medications: included only when they logged data for the metric
+     * within the range. Their current feedback_type is not trusted for inclusion — it
+     * commonly still says 'pain'/'mood' long after the medication was discontinued.
+     *
+     * @param array<int,array<string,mixed>>    $activeMeds
+     * @param array<int,array<string,mixed>>    $inactiveMeds
+     * @param callable(array):bool              $tracksMetric  Checks the medication's current feedback_type.
+     * @param callable(int,string,string):array $trendForRange Fetches logged data for a medication in a date range.
+     * @return array<int,array<string,mixed>>
+     */
+    public function medsTrackingMetricInRange(
+        array $activeMeds,
+        array $inactiveMeds,
+        string $startDate,
+        string $endDate,
+        callable $tracksMetric,
+        callable $trendForRange
+    ): array {
+        $byId = [];
+
+        foreach ($activeMeds as $m) {
+            $id = (int) $m['id'];
+            if ($tracksMetric($m) || $trendForRange($id, $startDate, $endDate) !== []) {
+                $byId[$id] = $m;
+            }
+        }
+
+        foreach ($inactiveMeds as $m) {
+            $id = (int) $m['id'];
+            if (isset($byId[$id])) {
+                continue;
+            }
+            if ($trendForRange($id, $startDate, $endDate) !== []) {
+                $byId[$id] = $m;
+            }
+        }
+
+        return array_values($byId);
+    }
+
     private function profileSql(string $alias = 'm'): string
     {
         $col = $alias !== '' ? "{$alias}.profile_id" : 'profile_id';
