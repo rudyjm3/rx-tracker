@@ -2199,10 +2199,14 @@ if (painPageBody) {
     });
   };
 
+  let painMedPillsRequestId = 0;
+
   const refreshPainMedPills = async (days) => {
+    const requestId = ++painMedPillsRequestId;
     try {
       const resp = await window.fetch(`index.php?action=tracked_medications&metric=pain&days=${days}`);
       const payload = await resp.json();
+      if (requestId !== painMedPillsRequestId) return;
       if (!payload.ok) return;
       renderPainMedPills(payload.medications);
       const stillPresent = payload.medications.some((m) => m.id === painPageMedId);
@@ -2573,7 +2577,9 @@ if (painPageBody) {
     painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
     painPageMedDose = btn.dataset.medicationDose ?? '';
     if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
-    painPageDays = 0;
+    // Keep the currently selected days filter — a medication can appear in the pill
+    // list solely because of data logged within that window, so resetting to Today
+    // here would immediately hide the very data the user just selected the pill for.
     painPageDate = null;
     painPageHistoryLoaded = false;
     painHistoryExpanded = false;
@@ -2581,9 +2587,6 @@ if (painPageBody) {
     setPainHistoryViewMoreLabel();
     closePainLogModal();
     resetPainLogForm();
-    document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
-      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
-    );
     loadPainPageGraph();
     loadPainHistory();
   });
@@ -2675,10 +2678,14 @@ if (moodPageBody) {
     });
   };
 
+  let moodMedPillsRequestId = 0;
+
   const refreshMoodMedPills = async (days) => {
+    const requestId = ++moodMedPillsRequestId;
     try {
       const resp = await window.fetch(`index.php?action=tracked_medications&metric=mood&days=${days}`);
       const payload = await resp.json();
+      if (requestId !== moodMedPillsRequestId) return;
       if (!payload.ok) return;
       renderMoodMedPills(payload.medications);
       const stillPresent = payload.medications.some((m) => m.id === moodPageMedId);
@@ -3355,7 +3362,9 @@ if (moodPageBody) {
     moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
     moodPageMedDose = btn.dataset.medicationDose ?? '';
     if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
-    moodPageDays = 0;
+    // Keep the currently selected days filter — a medication can appear in the pill
+    // list solely because of data logged within that window, so resetting to Today
+    // here would immediately hide the very data the user just selected the pill for.
     moodPageDate = null;
     moodPageHistoryLoaded = false;
     moodHistoryExpanded = false;
@@ -3363,9 +3372,6 @@ if (moodPageBody) {
     setMoodHistoryViewMoreLabel();
     closeMoodLogModal();
     resetMoodLogForm();
-    document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
-      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
-    );
     loadMoodPageGraph();
     loadMoodHistory();
   });
