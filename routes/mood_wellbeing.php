@@ -18,6 +18,19 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         $medications,
         fn(array $m): bool => $repository->medicationTracksMood($m)
     ));
+    $displayedMoodMedications = $repository->medsTrackingMetricInRange(
+        $medications,
+        $inactiveMedications,
+        $today,
+        $today,
+        fn(array $m): bool => $repository->medicationTracksMood($m),
+        fn(int $id, string $s, string $e): array => $repository->moodLevelTrendForRange($id, $s, $e)
+    );
+    // A pill only counts as "currently tracking" (no badge) when the medication is both
+    // active and flagged for mood — an inactive medication's feedback_type is commonly
+    // stale, so it must not be trusted to imply it's still being tracked.
+    $activeMedicationIds = array_flip(array_column($medications, 'id'));
+    $currentlyTracksMood = fn(array $m): bool => isset($activeMedicationIds[(int) $m['id']]) && $repository->medicationTracksMood($m);
   ?>
   <section class="pain-tracking-page mood-tracking-page">
     <div class="pain-tracking-header mood-tracking-header">
@@ -165,7 +178,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
 
     <div class="pain-tracking-med-panel mood-tracking-med-panel">
       <div class="panel-heading"><h2>Tracked medications</h2></div>
-      <div class="pain-tracking-med-list mood-tracking-med-list" role="group" aria-label="Select medication to view">
+      <div class="pain-tracking-med-list mood-tracking-med-list" data-mood-med-list role="group" aria-label="Select medication to view">
         <button
           type="button"
           class="pain-tracking-med-btn mood-tracking-med-btn pain-tracking-med-btn--independent"
@@ -174,7 +187,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
           data-medication-name="Independent"
           data-medication-dose=""
         >Independent<span class="pain-tracking-med-dose mood-tracking-med-dose">No medication</span></button>
-        <?php foreach ($moodTrackedMedications as $trackedMed): ?>
+        <?php foreach ($displayedMoodMedications as $trackedMed): ?>
         <button
           type="button"
           class="pain-tracking-med-btn mood-tracking-med-btn"
@@ -182,7 +195,7 @@ require __DIR__ . '/../includes/pages-shell-top.php';
           data-medication-id="<?= e((string) $trackedMed['id']) ?>"
           data-medication-name="<?= e((string) $trackedMed['name']) ?>"
           data-medication-dose="<?= e(formattedDose($trackedMed)) ?>"
-        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?></button>
+        ><?= e((string) $trackedMed['name']) ?><?php if ((string) $trackedMed['dose'] !== ''): ?><span class="pain-tracking-med-dose mood-tracking-med-dose"><?= e((string) $trackedMed['dose']) ?></span><?php endif; ?><?php if (!$currentlyTracksMood($trackedMed)): ?><span class="pain-tracking-med-badge">Not currently tracking</span><?php endif; ?></button>
         <?php endforeach; ?>
       </div>
     </div>

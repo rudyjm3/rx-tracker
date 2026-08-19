@@ -62,6 +62,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'mood_trend') {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'tracked_medications') {
+    header('Content-Type: application/json; charset=utf-8');
+    $metric = (string) ($_GET['metric'] ?? '');
+    if (!in_array($metric, ['pain', 'mood'], true)) {
+        echo json_encode(['ok' => false, 'error' => 'Invalid metric.'], JSON_THROW_ON_ERROR);
+        exit;
+    }
+    $days = max(0, min(365, (int) ($_GET['days'] ?? 0)));
+    $endDate = date('Y-m-d');
+    $startDate = $days === 0 ? $endDate : (new DateTimeImmutable("now -$days days"))->format('Y-m-d');
+
+    $activeMeds   = $repository->activeMedications();
+    $inactiveMeds = $repository->inactiveMedications();
+    $activeIds    = array_flip(array_column($activeMeds, 'id'));
+
+    $tracksMetric  = $metric === 'pain'
+        ? fn(array $m): bool => $repository->medicationTracksPain($m)
+        : fn(array $m): bool => $repository->medicationTracksMood($m);
+    $trendForRange = $metric === 'pain'
+        ? fn(int $id, string $s, string $e): array => $repository->painLevelTrendForRange($id, $s, $e)
+        : fn(int $id, string $s, string $e): array => $repository->moodLevelTrendForRange($id, $s, $e);
+
+    $meds = $repository->medsTrackingMetricInRange(
+        $activeMeds,
+        $inactiveMeds,
+        $startDate,
+        $endDate,
+        $tracksMetric,
+        $trendForRange
+    );
+
+    // A medication only counts as "currently tracking" (for the badge) when it's both
+    // active and flagged for this metric — an inactive medication's feedback_type is
+    // commonly stale (see medsTrackingMetricInRange's doc comment) and shouldn't imply
+    // it's still being tracked.
+    $out = array_map(static fn(array $m): array => [
+        'id' => (int) $m['id'],
+        'name' => (string) $m['name'],
+        'dose' => formattedDose($m),
+        'currently_tracking' => isset($activeIds[(int) $m['id']]) && $tracksMetric($m),
+    ], $meds);
+
+    echo json_encode(['ok' => true, 'medications' => $out], JSON_THROW_ON_ERROR);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'pain_log') {
     header('Content-Type: application/json; charset=utf-8');
     $medicationId = (int) ($_GET['medication_id'] ?? 0);

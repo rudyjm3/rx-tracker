@@ -2178,6 +2178,42 @@ if (painPageBody) {
     }
   };
 
+  const renderPainMedPills = (meds) => {
+    const container = document.querySelector('[data-pain-med-list]');
+    if (!container) return;
+    container.querySelectorAll('[data-select-medication]:not(.pain-tracking-med-btn--independent)').forEach((el) => el.remove());
+    meds.forEach((med) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pain-tracking-med-btn';
+      btn.setAttribute('data-select-medication', '');
+      btn.dataset.medicationId = String(med.id);
+      btn.dataset.medicationName = med.name;
+      btn.dataset.medicationDose = med.dose;
+      btn.classList.toggle('is-active', med.id === painPageMedId);
+      let html = escSvg(med.name);
+      if (med.dose) html += `<span class="pain-tracking-med-dose">${escSvg(med.dose)}</span>`;
+      if (!med.currently_tracking) html += '<span class="pain-tracking-med-badge">Not currently tracking</span>';
+      btn.innerHTML = html;
+      container.appendChild(btn);
+    });
+  };
+
+  const refreshPainMedPills = async (days) => {
+    try {
+      const resp = await window.fetch(`index.php?action=tracked_medications&metric=pain&days=${days}`);
+      const payload = await resp.json();
+      if (!payload.ok) return;
+      renderPainMedPills(payload.medications);
+      const stillPresent = payload.medications.some((m) => m.id === painPageMedId);
+      if (!stillPresent && painPageMedId !== 0) {
+        document.querySelector('[data-select-medication][data-medication-id="0"]')?.click();
+      }
+    } catch {
+      // Fetch failed — leave the existing pill list as-is.
+    }
+  };
+
   // Log form elements
   const painLogModal      = document.querySelector('[data-pain-log-modal]');
   const painLogForm       = document.querySelector('[data-pain-log-form]');
@@ -2529,35 +2565,36 @@ if (painPageBody) {
     loadPainPageGraph();
   });
 
-  document.querySelectorAll('[data-select-medication]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
-      painPageMedDose = btn.dataset.medicationDose ?? '';
-      if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
-      painPageDays = 0;
-      painPageDate = null;
-      painPageHistoryLoaded = false;
-      painHistoryExpanded = false;
-      painHistoryPanel?.classList.remove('is-expanded');
-      setPainHistoryViewMoreLabel();
-      closePainLogModal();
-      resetPainLogForm();
-      document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
-        t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
-      );
-      loadPainPageGraph();
-      loadPainHistory();
-    });
+  document.querySelector('[data-pain-med-list]')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-select-medication]');
+    if (!btn) return;
+    document.querySelectorAll('[data-select-medication]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    painPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+    painPageMedDose = btn.dataset.medicationDose ?? '';
+    if (painPageMedName) painPageMedName.textContent = btn.dataset.medicationName ?? '';
+    painPageDays = 0;
+    painPageDate = null;
+    painPageHistoryLoaded = false;
+    painHistoryExpanded = false;
+    painHistoryPanel?.classList.remove('is-expanded');
+    setPainHistoryViewMoreLabel();
+    closePainLogModal();
+    resetPainLogForm();
+    document.querySelectorAll('.pain-page-range-tab').forEach((t) =>
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
+    );
+    loadPainPageGraph();
+    loadPainHistory();
   });
 
   document.querySelectorAll('.pain-page-range-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
+    tab.addEventListener('click', async () => {
       document.querySelectorAll('.pain-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       painPageDays = parseInt(tab.dataset.range ?? '0', 10);
       painPageDate = null;
+      await refreshPainMedPills(painPageDays);
       loadPainPageGraph();
     });
   });
@@ -2614,6 +2651,42 @@ if (moodPageBody) {
     } catch {
       moodPageBody.innerHTML = '';
       moodPageEmpty.hidden = false;
+    }
+  };
+
+  const renderMoodMedPills = (meds) => {
+    const container = document.querySelector('[data-mood-med-list]');
+    if (!container) return;
+    container.querySelectorAll('[data-select-mood-medication]:not(.pain-tracking-med-btn--independent)').forEach((el) => el.remove());
+    meds.forEach((med) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pain-tracking-med-btn mood-tracking-med-btn';
+      btn.setAttribute('data-select-mood-medication', '');
+      btn.dataset.medicationId = String(med.id);
+      btn.dataset.medicationName = med.name;
+      btn.dataset.medicationDose = med.dose;
+      btn.classList.toggle('is-active', med.id === moodPageMedId);
+      let html = escSvg(med.name);
+      if (med.dose) html += `<span class="pain-tracking-med-dose mood-tracking-med-dose">${escSvg(med.dose)}</span>`;
+      if (!med.currently_tracking) html += '<span class="pain-tracking-med-badge">Not currently tracking</span>';
+      btn.innerHTML = html;
+      container.appendChild(btn);
+    });
+  };
+
+  const refreshMoodMedPills = async (days) => {
+    try {
+      const resp = await window.fetch(`index.php?action=tracked_medications&metric=mood&days=${days}`);
+      const payload = await resp.json();
+      if (!payload.ok) return;
+      renderMoodMedPills(payload.medications);
+      const stillPresent = payload.medications.some((m) => m.id === moodPageMedId);
+      if (!stillPresent && moodPageMedId !== 0) {
+        document.querySelector('[data-select-mood-medication][data-medication-id="0"]')?.click();
+      }
+    } catch {
+      // Fetch failed — leave the existing pill list as-is.
     }
   };
 
@@ -3274,35 +3347,36 @@ if (moodPageBody) {
     loadMoodPageGraph();
   });
 
-  document.querySelectorAll('[data-select-mood-medication]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
-      moodPageMedDose = btn.dataset.medicationDose ?? '';
-      if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
-      moodPageDays = 0;
-      moodPageDate = null;
-      moodPageHistoryLoaded = false;
-      moodHistoryExpanded = false;
-      moodHistoryPanel?.classList.remove('is-expanded');
-      setMoodHistoryViewMoreLabel();
-      closeMoodLogModal();
-      resetMoodLogForm();
-      document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
-        t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
-      );
-      loadMoodPageGraph();
-      loadMoodHistory();
-    });
+  document.querySelector('[data-mood-med-list]')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-select-mood-medication]');
+    if (!btn) return;
+    document.querySelectorAll('[data-select-mood-medication]').forEach((b) => b.classList.remove('is-active'));
+    btn.classList.add('is-active');
+    moodPageMedId = parseInt(btn.dataset.medicationId ?? '0', 10);
+    moodPageMedDose = btn.dataset.medicationDose ?? '';
+    if (moodPageMedName) moodPageMedName.textContent = btn.dataset.medicationName ?? '';
+    moodPageDays = 0;
+    moodPageDate = null;
+    moodPageHistoryLoaded = false;
+    moodHistoryExpanded = false;
+    moodHistoryPanel?.classList.remove('is-expanded');
+    setMoodHistoryViewMoreLabel();
+    closeMoodLogModal();
+    resetMoodLogForm();
+    document.querySelectorAll('.mood-page-range-tab').forEach((t) =>
+      t.classList.toggle('is-active', parseInt(t.dataset.range ?? '0', 10) === 0)
+    );
+    loadMoodPageGraph();
+    loadMoodHistory();
   });
 
   document.querySelectorAll('.mood-page-range-tab').forEach((tab) => {
-    tab.addEventListener('click', () => {
+    tab.addEventListener('click', async () => {
       document.querySelectorAll('.mood-page-range-tab').forEach((t) => t.classList.remove('is-active'));
       tab.classList.add('is-active');
       moodPageDays = parseInt(tab.dataset.range ?? '0', 10);
       moodPageDate = null;
+      await refreshMoodMedPills(moodPageDays);
       loadMoodPageGraph();
     });
   });

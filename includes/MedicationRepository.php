@@ -585,6 +585,17 @@ final class MedicationRepository
         return $this->adherenceRepo->medicationTracksMood($medication);
     }
 
+    public function medsTrackingMetricInRange(
+        array $activeMeds,
+        array $inactiveMeds,
+        string $startDate,
+        string $endDate,
+        callable $tracksMetric,
+        callable $trendForRange
+    ): array {
+        return $this->adherenceRepo->medsTrackingMetricInRange($activeMeds, $inactiveMeds, $startDate, $endDate, $tracksMetric, $trendForRange);
+    }
+
     public function findMedication(int $id): ?array
     {
         return $this->scheduleRepo->findMedication($id);

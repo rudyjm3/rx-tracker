@@ -4224,6 +4224,20 @@ button.danger:hover {
   opacity: 0.75;
 }
 
+.pain-tracking-med-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  background: rgba(96, 112, 138, 0.14);
+  color: var(--rx-text-muted);
+}
+
+.pain-tracking-med-btn.is-active .pain-tracking-med-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
 .pain-tracking-chart-section {
   background: var(--rx-card);
   border: 1px solid var(--rx-border);
