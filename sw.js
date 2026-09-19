@@ -82,6 +82,10 @@ self.addEventListener('push', (event) => {
 
   const title = payload.title || 'Medication reminder';
   const snoozeMins = payload.snoozeMins || 15;
+  // Group pushes carry no nonce/medication_id (see PushNotificationService)
+  // since one click can't safely resolve N medications at once — skip the
+  // inline Take/Snooze actions for those and just let the tap open the app.
+  const isGroupPush = Boolean(payload.group_id) && !payload.nonce;
   const options = {
     body: payload.body || 'A dose is due now.',
     tag: payload.tag || 'rx-reminder',
@@ -91,7 +95,7 @@ self.addEventListener('push', (event) => {
     vibrate: [400, 200, 400, 200, 400],
     icon: 'assets/icons/icon-192.png',
     badge: 'assets/icons/icon-192.png',
-    actions: [
+    actions: isGroupPush ? [] : [
       { action: 'take', title: 'Take Now' },
       { action: 'snooze', title: `Snooze ${snoozeMins} min` },
     ],

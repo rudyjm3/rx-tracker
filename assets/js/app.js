@@ -3898,11 +3898,15 @@ const showAlarmOverlay = (item) => {
 const showGroupAlarmOverlay = (groupItems) => {
   if (!alarmOverlay || groupItems.length === 0) return;
   alarmGroupItems = groupItems;
+  // A group can legitimately show up here with just one member currently due
+  // (siblings already taken/skipped/snoozed away) — keep the button wording
+  // singular in that case rather than reading "Take All" for one item.
+  const isSoloGroup = groupItems.length === 1;
   if (alarmSingleModeEl) alarmSingleModeEl.hidden = true;
   if (alarmGroupModeEl) alarmGroupModeEl.hidden = false;
   if (alarmEyebrowEl) alarmEyebrowEl.textContent = `${slotTo12h(groupItems[0].scheduled_time)} - Group Dose Due Now`;
-  if (alarmTakeBtn) { alarmTakeBtn.textContent = 'Take All'; alarmTakeBtn.hidden = false; }
-  if (alarmSkipBtn) { alarmSkipBtn.textContent = 'Skip All'; alarmSkipBtn.hidden = false; }
+  if (alarmTakeBtn) { alarmTakeBtn.textContent = isSoloGroup ? 'Take Now' : 'Take All'; alarmTakeBtn.hidden = false; }
+  if (alarmSkipBtn) { alarmSkipBtn.textContent = isSoloGroup ? 'Skip' : 'Skip All'; alarmSkipBtn.hidden = false; }
   if (alarmIndividualBtn) alarmIndividualBtn.hidden = false;
   if (alarmSnoozeRow) alarmSnoozeRow.hidden = false;
   if (alarmGroupNameEl) alarmGroupNameEl.textContent = groupItems[0].group_name ?? 'Medication Group';
@@ -4504,14 +4508,17 @@ const notifyItems = (items) => {
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
-    // Prioritize any due group (2+ members) over a plain individual item, regardless
-    // of which one happens to sort first in the schedule.
-    const dueGroupId = unseen.find((item) => {
-      if (!item.group_id) return false;
-      return unseen.filter((i) => i.group_id === item.group_id).length >= 2;
-    })?.group_id;
-    if (dueGroupId) {
-      const groupItems = unseen.filter((i) => i.group_id === dueGroupId);
+    // Any item that structurally belongs to a group takes the group alarm
+    // path, even if it's currently the only member due/unseen in this poll.
+    // Deciding this by group_id (rather than requiring 2+ members to be
+    // co-present in this exact unseen set) removes the race where a
+    // sibling's own seen-state, individual snooze, or already-resolved dose
+    // drops the visible count below 2 and the remaining member wrongly
+    // fires as a lone individual alarm. showGroupAlarmOverlay() renders
+    // correctly for any member count, including a single one.
+    const firstGroupItem = unseen.find((item) => item.group_id);
+    if (firstGroupItem) {
+      const groupItems = unseen.filter((i) => i.group_id === firstGroupItem.group_id);
       showGroupAlarmOverlay(groupItems);
     } else {
       showAlarmOverlay(unseen[0]);
