@@ -3685,6 +3685,7 @@ function buildCalendarDayHtml(meds) {
       displayTime: s.displayTime,
       painLevel: s.painLevel,
       moodLevel: s.moodLevel,
+      isActive: s.isActive,
     })));
     const timeDisplay = new Map(allSlots.map((s) => [s.scheduledTime, s.displayTime]));
     const times = [...timeDisplay.keys()].sort();
@@ -3759,10 +3760,24 @@ function wireCalendarGroupBulkEdit(container) {
     const timeInput = form.querySelector('input[name="bulk_taken_time"]');
     const newTime = newStatus === 'taken' ? (timeInput?.value ?? '') : '';
     const newNote = (form.querySelector('textarea[name="bulk_note"]')?.value ?? '').trim();
-    const matching = allSlots.filter((s) => s.scheduledTime === chosenTime);
+    const errEl = form.querySelector('.cal-day-group-bulk-error');
+
+    // mark_dose rejects discontinued medications outright -- filter them out
+    // up front instead of letting the loop below fail partway through and
+    // leave the group's statuses half-applied.
+    const matching = allSlots.filter((s) => s.scheduledTime === chosenTime && s.isActive);
     if (matching.length === 0) return;
 
-    const errEl = form.querySelector('.cal-day-group-bulk-error');
+    // Only the "taken" status carries a timestamp; for a past date in
+    // particular, submitting with this left blank would silently stamp
+    // every matched dose with the current time instead of when it was
+    // actually taken, so require it explicitly rather than defaulting.
+    if (newStatus === 'taken' && !newTime) {
+      if (errEl) { errEl.textContent = 'Enter the time it was taken.'; errEl.hidden = false; }
+      timeInput?.focus();
+      return;
+    }
+
     if (errEl) errEl.hidden = true;
     applyBtn.disabled = true;
 
@@ -3791,10 +3806,27 @@ function wireCalendarGroupBulkEdit(container) {
   });
 
   container?.addEventListener('change', (e) => {
+    const form = e.target.closest('[data-cal-day-group-bulk-form]');
+    if (!form) return;
+    const timeInput = form.querySelector('input[name="bulk_taken_time"]');
+
     const statusSelect = e.target.closest('select[name="bulk_status"]');
-    if (!statusSelect) return;
-    const timeField = statusSelect.closest('[data-cal-day-group-bulk-form]')?.querySelector('[data-cal-day-group-bulk-time-field]');
-    if (timeField) timeField.hidden = statusSelect.value !== 'taken';
+    if (statusSelect) {
+      const timeField = form.querySelector('[data-cal-day-group-bulk-time-field]');
+      if (timeField) timeField.hidden = statusSelect.value !== 'taken';
+      // Default to the scheduled time rather than leaving it blank (which
+      // would otherwise stamp "now" on every matched dose) -- the user can
+      // still adjust it before applying.
+      if (statusSelect.value === 'taken' && timeInput && !timeInput.value) {
+        timeInput.value = form.querySelector('select[name="bulk_time"]')?.value ?? '';
+      }
+      return;
+    }
+
+    const timeSelect = e.target.closest('select[name="bulk_time"]');
+    if (timeSelect && timeInput && !timeInput.value) {
+      timeInput.value = timeSelect.value;
+    }
   });
 }
 

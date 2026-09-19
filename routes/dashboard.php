@@ -90,13 +90,28 @@ require __DIR__ . '/../includes/pages-shell-top.php';
               $groupTime = (string) $scheduleBucket[0]['reminder_time'];
               $groupName = (string) ($scheduleBucket[0]['group_name'] ?? 'Medication Group');
               $groupMemberCount = count($scheduleBucket);
+              // Bulk Take/Skip/Snooze must only ever act on members that are
+              // still pending -- resubmitting an already-taken/skipped dose
+              // through mark_dose silently flips its status (and, for Take,
+              // re-deducts inventory / rewrites its timestamp).
+              $unresolvedGroupMembers = array_values(array_filter(
+                $scheduleBucket,
+                static fn (array $m): bool => !in_array((string) ($m['status'] ?? ''), ['taken', 'skipped'], true),
+              ));
+              $unresolvedGroupCount = count($unresolvedGroupMembers);
               $groupMembersPayload = array_map(static fn (array $m): array => [
                 'medication_id' => (int) $m['medication_id'],
                 'name' => (string) $m['name'],
+                'dose' => formattedDose($m),
                 'scheduled_date' => $today,
                 'scheduled_time' => (string) $m['reminder_time'] . ':00',
                 'group_id' => $m['group_id'],
-              ], $scheduleBucket);
+                // Needed so a bulk Take Now still routes a feedback-tracked
+                // medication through the pain/mood modal instead of silently
+                // skipping it (processNextFeedbackQueueItem reads these).
+                'track_dose_feedback' => (bool) ($m['track_dose_feedback'] ?? false),
+                'feedback_type' => (string) ($m['feedback_type'] ?? (($m['track_dose_feedback'] ?? false) ? 'pain' : 'none')),
+              ], $unresolvedGroupMembers);
             ?>
             <div class="schedule-group-card" data-schedule-group-card data-group-members='<?= e(json_encode($groupMembersPayload, JSON_THROW_ON_ERROR)) ?>'>
               <div class="schedule-group-card-header">
@@ -109,9 +124,9 @@ require __DIR__ . '/../includes/pages-shell-top.php';
                   <span class="schedule-group-count-badge"><?= (int) $groupMemberCount ?> med<?= $groupMemberCount !== 1 ? 's' : '' ?></span>
                 </div>
                 <div class="schedule-group-card-actions">
-                  <button type="button" class="btn-take" data-group-take><?= $groupMemberCount > 1 ? 'Take All' : 'Take' ?></button>
-                  <button type="button" class="secondary" data-group-skip><?= $groupMemberCount > 1 ? 'Skip All' : 'Skip' ?></button>
-                  <button type="button" class="secondary" data-group-snooze>Snooze</button>
+                  <button type="button" class="btn-take" data-group-take<?= $unresolvedGroupCount === 0 ? ' disabled' : '' ?>><?= $unresolvedGroupCount > 1 ? 'Take All' : 'Take' ?></button>
+                  <button type="button" class="secondary" data-group-skip<?= $unresolvedGroupCount === 0 ? ' disabled' : '' ?>><?= $unresolvedGroupCount > 1 ? 'Skip All' : 'Skip' ?></button>
+                  <button type="button" class="secondary" data-group-snooze<?= $unresolvedGroupCount === 0 ? ' disabled' : '' ?>>Snooze</button>
                 </div>
               </div>
               <details class="schedule-group-card-details">

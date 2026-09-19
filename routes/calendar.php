@@ -57,21 +57,34 @@ require __DIR__ . '/../includes/pages-shell-top.php';
                 'medications' => [],
             ];
         }
+        $cdTimeKey = substr((string) $log['scheduled_time'], 0, 5);
+        $cdGroup = $calGroupMap[$cdMedId][$cdTimeKey] ?? null;
+        $cdResolvedGroupId = $cdGroup !== null ? (int) $cdGroup['group_id'] : null;
         if (!isset($calendarDayData[$cdDate]['medications'][$cdMedId])) {
-            $cdTimeKey = substr((string) $log['scheduled_time'], 0, 5);
-            $cdGroup = $calGroupMap[$cdMedId][$cdTimeKey] ?? null;
             $calendarDayData[$cdDate]['medications'][$cdMedId] = [
                 'name'          => (string) $log['name'],
                 'doseFormatted' => formattedDose($log),
                 'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
                 'slots' => [],
-                'groupId' => $cdGroup !== null ? (int) $cdGroup['group_id'] : null,
+                'groupId' => $cdResolvedGroupId,
                 'groupName' => $cdGroup !== null ? (string) $cdGroup['group_name'] : null,
+                // Internal only, stripped below: a medication can have both a
+                // group-owned slot and an individual slot (or slots in two
+                // different groups) on the same day. Only nest it under a
+                // group bucket when every one of its slots that day resolves
+                // to that same single group -- otherwise fall back to a flat,
+                // ungrouped entry rather than misattributing an unrelated
+                // slot to that group's bulk editor (or hiding a genuine
+                // group slot behind an earlier individual one).
+                'groupConsistent' => true,
             ];
         }
         $cdStatus  = (string) $log['status'];
         $cdLateMin = $cdStatus === 'taken' ? minutesLate($log, $graceMinutes) : null;
         $cdMed = &$calendarDayData[$cdDate]['medications'][$cdMedId];
+        if ($cdMed['groupId'] !== $cdResolvedGroupId) {
+            $cdMed['groupConsistent'] = false;
+        }
         $cdMed['total']++;
         if ($cdStatus === 'taken') { $cdMed['taken']++; if ($cdLateMin !== null) $cdMed['late']++; }
         elseif ($cdStatus === 'skipped') $cdMed['skipped']++;
@@ -94,6 +107,14 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         unset($cdMed);
     }
     foreach ($calendarDayData as &$cdDay) {
+        foreach ($cdDay['medications'] as &$cdMedFinal) {
+            if (!$cdMedFinal['groupConsistent']) {
+                $cdMedFinal['groupId'] = null;
+                $cdMedFinal['groupName'] = null;
+            }
+            unset($cdMedFinal['groupConsistent']);
+        }
+        unset($cdMedFinal);
         $cdDay['medications'] = array_values($cdDay['medications']);
     }
     unset($cdDay);
