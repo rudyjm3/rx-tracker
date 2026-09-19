@@ -3574,6 +3574,7 @@ const closeCalendarDayModal = () => {
 };
 
 wireDoseLogEntryActions(calendarDayModalBody, '.cal-day-slot-inner');
+wireCalendarGroupBulkEdit(calendarDayModalBody);
 
 document.querySelectorAll('[data-close-calendar-day-modal]')
   .forEach((btn) => btn.addEventListener('click', closeCalendarDayModal));
@@ -3596,7 +3597,8 @@ document.querySelectorAll('[data-calendar-day]').forEach((cell) => {
 
 function buildCalendarDayHtml(meds) {
   if (!meds.length) return '<p class="empty-state-text">No dose data for this day.</p>';
-  return '<ul class="cal-day-med-list">' + meds.map((med) => {
+
+  const renderMedItem = (med) => {
     const doseStr = med.doseFormatted
       ? ` <span class="dose-inline">${escHtml(med.doseFormatted)}</span>`
       : '';
@@ -3644,7 +3646,188 @@ function buildCalendarDayHtml(meds) {
         <ul class="cal-day-slots">${slots}</ul>
       </details>
     </li>`;
+  };
+
+  // Bucket by groupId so group siblings render nested under one shared header
+  // with a bulk-edit affordance — each member's own <details> block (built by
+  // renderMedItem, above) with its individual Edit/Delete actions is kept
+  // exactly as-is, whether or not it belongs to a group.
+  const buckets = [];
+  const bucketByGroupId = new Map();
+  meds.forEach((med) => {
+    if (med.groupId) {
+      let bucket = bucketByGroupId.get(med.groupId);
+      if (!bucket) {
+        bucket = { groupId: med.groupId, groupName: med.groupName || 'Medication Group', members: [] };
+        bucketByGroupId.set(med.groupId, bucket);
+        buckets.push(bucket);
+      }
+      bucket.members.push(med);
+    } else {
+      buckets.push({ groupId: null, members: [med] });
+    }
+  });
+
+  return '<ul class="cal-day-med-list">' + buckets.map((bucket) => {
+    const itemsHtml = bucket.members.map(renderMedItem).join('');
+    if (!bucket.groupId) return itemsHtml;
+
+    // Every slot across every member, flattened, so the bulk-edit control can
+    // filter down to the (date, time) the user picks and loop the existing
+    // single-slot edit path (postDose → action=mark_dose) over each match —
+    // the same convention the alarm overlay's "take all" already uses instead
+    // of a new batch endpoint. Each slot keeps its own pre-existing
+    // pain/mood level so a bulk status/time/note change doesn't clobber them.
+    const allSlots = bucket.members.flatMap((m) => m.slots.map((s) => ({
+      medicationId: s.medicationId,
+      scheduledDate: s.scheduledDate,
+      scheduledTime: s.scheduledTime,
+      displayTime: s.displayTime,
+      painLevel: s.painLevel,
+      moodLevel: s.moodLevel,
+      isActive: s.isActive,
+    })));
+    const timeDisplay = new Map(allSlots.map((s) => [s.scheduledTime, s.displayTime]));
+    const times = [...timeDisplay.keys()].sort();
+    const timeOptions = times.map((t) => `<option value="${escHtml(t)}">${escHtml(timeDisplay.get(t) ?? t)}</option>`).join('');
+    const statusOptions = historyStatusOptions.map((s) =>
+      `<option value="${s}"${s === 'taken' ? ' selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+    ).join('');
+
+    return `<li class="cal-day-group-item" data-cal-day-group data-group-slots="${escHtml(JSON.stringify(allSlots))}">
+      <div class="cal-day-group-header">
+        <span class="group-badge"><i class="fa-solid fa-layer-group" aria-hidden="true"></i>${escHtml(bucket.groupName)}</span>
+        <button type="button" class="secondary cal-day-group-bulk-toggle" data-cal-day-group-bulk-toggle>Bulk edit</button>
+      </div>
+      <div class="cal-day-group-bulk-form" data-cal-day-group-bulk-form hidden>
+        <label class="stacked-label">Apply to time
+          <select name="bulk_time">${timeOptions}</select>
+        </label>
+        <label class="stacked-label">Status
+          <select name="bulk_status">${statusOptions}</select>
+        </label>
+        <label class="stacked-label cal-day-group-bulk-time-field" data-cal-day-group-bulk-time-field>Time taken
+          <input type="time" name="bulk_taken_time">
+        </label>
+        <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+          <textarea name="bulk_note" rows="2" maxlength="255"></textarea>
+        </label>
+        <p class="cal-day-group-bulk-error" hidden></p>
+        <div class="feedback-actions">
+          <button type="button" class="button primary small" data-cal-day-group-bulk-apply>Apply to group</button>
+          <button type="button" class="button secondary small" data-cal-day-group-bulk-cancel>Cancel</button>
+        </div>
+      </div>
+      <ul class="cal-day-group-members">${itemsHtml}</ul>
+    </li>`;
   }).join('') + '</ul>';
+}
+
+// Wires the group bulk-edit affordance buildCalendarDayHtml renders: toggling
+// the form, and applying a single status/time/note change to every group
+// member's dose log at the chosen (date, time) in one action — a client-side
+// loop over the same single-dose edit path per-member edits already use
+// (postDose → action=mark_dose), matching how the alarm overlay's bulk
+// actions work. Individual per-slot edit (wireDoseLogEntryActions, above)
+// remains fully available and unaffected.
+function wireCalendarGroupBulkEdit(container) {
+  container?.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('[data-cal-day-group-bulk-toggle]');
+    if (toggleBtn) {
+      const form = toggleBtn.closest('[data-cal-day-group]')?.querySelector('[data-cal-day-group-bulk-form]');
+      if (form) form.hidden = !form.hidden;
+      return;
+    }
+
+    const cancelBtn = e.target.closest('[data-cal-day-group-bulk-cancel]');
+    if (cancelBtn) {
+      const form = cancelBtn.closest('[data-cal-day-group-bulk-form]');
+      if (form) form.hidden = true;
+      return;
+    }
+
+    const applyBtn = e.target.closest('[data-cal-day-group-bulk-apply]');
+    if (!applyBtn) return;
+    const form = applyBtn.closest('[data-cal-day-group-bulk-form]');
+    const groupLi = applyBtn.closest('[data-cal-day-group]');
+    if (!form || !groupLi) return;
+
+    let allSlots = [];
+    try { allSlots = JSON.parse(groupLi.dataset.groupSlots || '[]'); } catch { allSlots = []; }
+
+    const chosenTime = form.querySelector('select[name="bulk_time"]')?.value ?? '';
+    const newStatus = form.querySelector('select[name="bulk_status"]')?.value ?? 'taken';
+    const timeInput = form.querySelector('input[name="bulk_taken_time"]');
+    const newTime = newStatus === 'taken' ? (timeInput?.value ?? '') : '';
+    const newNote = (form.querySelector('textarea[name="bulk_note"]')?.value ?? '').trim();
+    const errEl = form.querySelector('.cal-day-group-bulk-error');
+
+    // mark_dose rejects discontinued medications outright -- filter them out
+    // up front instead of letting the loop below fail partway through and
+    // leave the group's statuses half-applied.
+    const matching = allSlots.filter((s) => s.scheduledTime === chosenTime && s.isActive);
+    if (matching.length === 0) return;
+
+    // Only the "taken" status carries a timestamp; for a past date in
+    // particular, submitting with this left blank would silently stamp
+    // every matched dose with the current time instead of when it was
+    // actually taken, so require it explicitly rather than defaulting.
+    if (newStatus === 'taken' && !newTime) {
+      if (errEl) { errEl.textContent = 'Enter the time it was taken.'; errEl.hidden = false; }
+      timeInput?.focus();
+      return;
+    }
+
+    if (errEl) errEl.hidden = true;
+    applyBtn.disabled = true;
+
+    const failures = [];
+    for (const slot of matching) {
+      const result = await postDose(
+        slot.medicationId,
+        slot.scheduledDate,
+        slot.scheduledTime,
+        newStatus,
+        newNote,
+        slot.painLevel ?? '',
+        '',
+        slot.moodLevel ?? '',
+        newTime
+      );
+      if (!result.ok) failures.push(result.error || 'Failed to save.');
+    }
+
+    if (failures.length > 0) {
+      applyBtn.disabled = false;
+      if (errEl) { errEl.textContent = failures.join(' '); errEl.hidden = false; }
+      return;
+    }
+    window.location.reload();
+  });
+
+  container?.addEventListener('change', (e) => {
+    const form = e.target.closest('[data-cal-day-group-bulk-form]');
+    if (!form) return;
+    const timeInput = form.querySelector('input[name="bulk_taken_time"]');
+
+    const statusSelect = e.target.closest('select[name="bulk_status"]');
+    if (statusSelect) {
+      const timeField = form.querySelector('[data-cal-day-group-bulk-time-field]');
+      if (timeField) timeField.hidden = statusSelect.value !== 'taken';
+      // Default to the scheduled time rather than leaving it blank (which
+      // would otherwise stamp "now" on every matched dose) -- the user can
+      // still adjust it before applying.
+      if (statusSelect.value === 'taken' && timeInput && !timeInput.value) {
+        timeInput.value = form.querySelector('select[name="bulk_time"]')?.value ?? '';
+      }
+      return;
+    }
+
+    const timeSelect = e.target.closest('select[name="bulk_time"]');
+    if (timeSelect && timeInput && !timeInput.value) {
+      timeInput.value = timeSelect.value;
+    }
+  });
 }
 
 // ── Alarm engine ──────────────────────────────────────────────────────────────
@@ -3898,11 +4081,15 @@ const showAlarmOverlay = (item) => {
 const showGroupAlarmOverlay = (groupItems) => {
   if (!alarmOverlay || groupItems.length === 0) return;
   alarmGroupItems = groupItems;
+  // A group can legitimately show up here with just one member currently due
+  // (siblings already taken/skipped/snoozed away) — keep the button wording
+  // singular in that case rather than reading "Take All" for one item.
+  const isSoloGroup = groupItems.length === 1;
   if (alarmSingleModeEl) alarmSingleModeEl.hidden = true;
   if (alarmGroupModeEl) alarmGroupModeEl.hidden = false;
   if (alarmEyebrowEl) alarmEyebrowEl.textContent = `${slotTo12h(groupItems[0].scheduled_time)} - Group Dose Due Now`;
-  if (alarmTakeBtn) { alarmTakeBtn.textContent = 'Take All'; alarmTakeBtn.hidden = false; }
-  if (alarmSkipBtn) { alarmSkipBtn.textContent = 'Skip All'; alarmSkipBtn.hidden = false; }
+  if (alarmTakeBtn) { alarmTakeBtn.textContent = isSoloGroup ? 'Take Now' : 'Take All'; alarmTakeBtn.hidden = false; }
+  if (alarmSkipBtn) { alarmSkipBtn.textContent = isSoloGroup ? 'Skip' : 'Skip All'; alarmSkipBtn.hidden = false; }
   if (alarmIndividualBtn) alarmIndividualBtn.hidden = false;
   if (alarmSnoozeRow) alarmSnoozeRow.hidden = false;
   if (alarmGroupNameEl) alarmGroupNameEl.textContent = groupItems[0].group_name ?? 'Medication Group';
@@ -4223,46 +4410,70 @@ const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
   processNextFeedbackQueueItem();
 };
 
+// ── Group bulk actions (shared by the alarm overlay and dashboard group cards) ─
+//
+// Callers must snapshot their items array (e.g. `[...alarmGroupItems]`) before
+// calling these if hiding their UI resets the source array — reading it after
+// hiding would silently iterate zero items (see tests/GroupTakeAllTest.php).
+
+// Every item's dose is committed immediately, feedback-tracked or not, then
+// every item is walked through the queue so each one gets a chance at its own
+// zero-pill interstitial (and feedback modal, for the items that track it) —
+// see processNextFeedbackQueueItem.
+const runGroupTakeAll = async (items) => {
+  const failures = [];
+  const committedItems = [];
+  for (const item of items) {
+    const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
+    if (!result.ok) {
+      failures.push({ name: item.name, error: result.error });
+      continue;
+    }
+    committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn, alreadyOutBeforeDose: result.alreadyOutBeforeDose });
+  }
+
+  if (committedItems.length === 0) {
+    alertDoseFailures(failures);
+    window.location.reload();
+    return;
+  }
+
+  feedbackQueueFailures = failures;
+  feedbackQueue = committedItems.map((item, idx) => ({
+    ...item,
+    positionInBatch: idx + 1,
+    totalInBatch: committedItems.length,
+  }));
+  processNextFeedbackQueueItem();
+};
+
+const runGroupSkipAll = async (items) => {
+  const failures = [];
+  for (const item of items) {
+    const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
+    if (!result.ok) failures.push({ name: item.name, error: result.error });
+  }
+  alertDoseFailures(failures);
+  window.location.reload();
+};
+
+const runGroupSnoozeAll = async (items, minutes) => {
+  for (const item of items) {
+    await postPostpone(item.medication_id, item.scheduled_date, item.scheduled_time, minutes);
+  }
+  window.location.reload();
+};
+
 // ── Alarm button handlers ─────────────────────────────────────────────────────
 
 alarmTakeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
-    // Group mode: every item's dose is committed immediately, feedback-tracked
-    // or not, then every item is walked through the queue so each one gets a
-    // chance at its own zero-pill interstitial (and feedback modal, for the
-    // items that track it) — see processNextFeedbackQueueItem.
     // Snapshot the items before hiding the overlay — hideAlarmOverlay() resets
-    // alarmGroupItems to [], so looping over the live variable afterward would
-    // silently iterate zero items (matching the sibling skip/snooze handlers,
-    // which already take this same snapshot).
+    // alarmGroupItems to [].
     const items = [...alarmGroupItems];
     stopAlarmAudio();
     hideAlarmOverlay();
-
-    const failures = [];
-    const committedItems = [];
-    for (const item of items) {
-      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
-      if (!result.ok) {
-        failures.push({ name: item.name, error: result.error });
-        continue;
-      }
-      committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn, alreadyOutBeforeDose: result.alreadyOutBeforeDose });
-    }
-
-    if (committedItems.length === 0) {
-      alertDoseFailures(failures);
-      window.location.reload();
-      return;
-    }
-
-    feedbackQueueFailures = failures;
-    feedbackQueue = committedItems.map((item, idx) => ({
-      ...item,
-      positionInBatch: idx + 1,
-      totalInBatch: committedItems.length,
-    }));
-    processNextFeedbackQueueItem();
+    await runGroupTakeAll(items);
   } else {
     // Single mode — commit immediately, then walk the zero-pill interstitial
     // (if needed) and pain/mood feedback (if tracked) before finishing.
@@ -4294,13 +4505,7 @@ alarmSkipBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
     const items = [...alarmGroupItems];
     hideAlarmOverlay();
-    const failures = [];
-    for (const item of items) {
-      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
-      if (!result.ok) failures.push({ name: item.name, error: result.error });
-    }
-    alertDoseFailures(failures);
-    window.location.reload();
+    await runGroupSkipAll(items);
   } else {
     alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
   }
@@ -4311,10 +4516,7 @@ alarmSnoozeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
     const items = [...alarmGroupItems];
     hideAlarmOverlay();
-    for (const item of items) {
-      await postPostpone(item.medication_id, item.scheduled_date, item.scheduled_time, minutes);
-    }
-    window.location.reload();
+    await runGroupSnoozeAll(items, minutes);
   } else {
     alarmAction('postpone_dose', { postpone_minutes: minutes });
   }
@@ -4420,6 +4622,49 @@ alarmIndividualBtn?.addEventListener('click', () => {
   alarmGroupListEl.after(doneBtn);
 });
 
+// ── Dashboard: grouped schedule cards ───────────────────────────────────────
+
+// Today's Schedule collapses 2+ (or a lone, siblings-resolved) group members
+// due at the same slot into one card (see routes/dashboard.php). Its bulk
+// Take/Skip/Snooze buttons reuse the same runGroupTakeAll/runGroupSkipAll/
+// runGroupSnoozeAll helpers the alarm overlay's bulk actions use, looping
+// over the card's own member list instead of alarmGroupItems.
+document.querySelectorAll('[data-schedule-group-card]').forEach((card) => {
+  let groupMembers = [];
+  try {
+    groupMembers = JSON.parse(card.dataset.groupMembers || '[]');
+  } catch {
+    groupMembers = [];
+  }
+  if (!Array.isArray(groupMembers) || groupMembers.length === 0) return;
+
+  card.querySelector('[data-group-take]')?.addEventListener('click', async () => {
+    await runGroupTakeAll([...groupMembers]);
+  });
+
+  card.querySelector('[data-group-skip]')?.addEventListener('click', async () => {
+    await runGroupSkipAll([...groupMembers]);
+  });
+
+  card.querySelector('[data-group-snooze]')?.addEventListener('click', async () => {
+    const minutes = alarmSnoozeMinutesEl?.value ?? '5';
+    await runGroupSnoozeAll([...groupMembers], minutes);
+  });
+
+  // "Manage Individually" reveals each member's own Take/Skip/Snooze controls
+  // (the same per-member forms/buttons dashboard.php renders for an ungrouped
+  // row) and hides the card-level bulk buttons — matching the alarm overlay's
+  // "Manage Each" pattern. This is the only way to act on a single group
+  // member alone; the card no longer exposes a bare top-level Snooze button.
+  card.querySelector('[data-group-manage-individually]')?.addEventListener('click', () => {
+    card.querySelectorAll('[data-group-individual-actions]').forEach((el) => { el.hidden = false; });
+    const header = card.querySelector('.schedule-group-card-header');
+    if (header) header.hidden = true;
+    const manageBtn = card.querySelector('[data-group-manage-individually]');
+    if (manageBtn) manageBtn.hidden = true;
+  });
+});
+
 // ── Reminders & polling ───────────────────────────────────────────────────────
 
 const enableRemindersButton = document.querySelector('[data-enable-reminders]');
@@ -4504,14 +4749,17 @@ const notifyItems = (items) => {
   }
 
   if (!alarmOverlay?.classList.contains('is-active')) {
-    // Prioritize any due group (2+ members) over a plain individual item, regardless
-    // of which one happens to sort first in the schedule.
-    const dueGroupId = unseen.find((item) => {
-      if (!item.group_id) return false;
-      return unseen.filter((i) => i.group_id === item.group_id).length >= 2;
-    })?.group_id;
-    if (dueGroupId) {
-      const groupItems = unseen.filter((i) => i.group_id === dueGroupId);
+    // Any item that structurally belongs to a group takes the group alarm
+    // path, even if it's currently the only member due/unseen in this poll.
+    // Deciding this by group_id (rather than requiring 2+ members to be
+    // co-present in this exact unseen set) removes the race where a
+    // sibling's own seen-state, individual snooze, or already-resolved dose
+    // drops the visible count below 2 and the remaining member wrongly
+    // fires as a lone individual alarm. showGroupAlarmOverlay() renders
+    // correctly for any member count, including a single one.
+    const firstGroupItem = unseen.find((item) => item.group_id);
+    if (firstGroupItem) {
+      const groupItems = unseen.filter((i) => i.group_id === firstGroupItem.group_id);
       showGroupAlarmOverlay(groupItems);
     } else {
       showAlarmOverlay(unseen[0]);

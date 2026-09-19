@@ -115,7 +115,28 @@ final class PushNotificationService
         $webPush->setReuseVAPIDHeaders(true);
         $sentReminders = [];
 
+        // Bucket due items by group_id so 2+ members of the same group due in this
+        // run share a single push notification instead of stacking N independent
+        // ones. A group with only 1 member currently due (siblings already
+        // taken/skipped/snoozed away) falls back to an individual push, same as
+        // an ungrouped item — don't force group framing on a lone item.
+        $groupBuckets = [];
+        $individualItems = [];
         foreach ($due as $item) {
+            if ($item['group_id'] !== null) {
+                $groupBuckets[$item['group_id']][] = $item;
+            } else {
+                $individualItems[] = $item;
+            }
+        }
+        foreach ($groupBuckets as $groupId => $members) {
+            if (count($members) < 2) {
+                array_push($individualItems, ...$members);
+                unset($groupBuckets[$groupId]);
+            }
+        }
+
+        foreach ($individualItems as $item) {
             $nonce = bin2hex(random_bytes(16));
             $payload = json_encode([
                 'title' => (string) $item['name'] . (isset($item['dose_amount']) ? ' (' . trim((string) $item['dose_amount'] . ' ' . (string) ($item['dose_unit'] ?? '')) . ')' : ''),
@@ -140,6 +161,41 @@ final class PushNotificationService
                 $webPush->queueNotification($subscription, $payload);
             }
             $sentReminders[] = array_merge($item, ['_nonce' => $nonce]);
+        }
+
+        foreach ($groupBuckets as $groupId => $members) {
+            $groupName = (string) ($members[0]['group_name'] ?? 'Medication Group');
+            $names = array_map(static fn (array $m): string => (string) $m['name'], $members);
+            $countLabel = count($members) . ' medications due';
+            $body = $profileName !== null
+                ? "{$countLabel} for {$profileName}: " . implode(', ', $names)
+                : "{$countLabel}: " . implode(', ', $names);
+            // No nonce/medication_id and no inline action buttons here — a group
+            // push can't safely resolve N medications from one Take/Skip click
+            // without confirmation. Clicking it just opens/focuses the app; the
+            // in-app alarm overlay picks up the due group correctly from there
+            // since it reads live due-item state, not this payload.
+            $payload = json_encode([
+                'title' => $groupName,
+                'body' => $body,
+                'tag' => 'group|' . (int) $groupId . '|' . (string) $members[0]['scheduled_date'] . '|' . (string) $members[0]['scheduled_time'],
+                'url' => 'index.php',
+                'group_id' => (int) $groupId,
+            ], JSON_THROW_ON_ERROR);
+
+            foreach ($subscriptions as $subscriptionRow) {
+                $subscription = \Minishlink\WebPush\Subscription::create([
+                    'endpoint' => (string) $subscriptionRow['endpoint'],
+                    'publicKey' => (string) $subscriptionRow['p256dh_key'],
+                    'authToken' => (string) $subscriptionRow['auth_key'],
+                ]);
+                $webPush->queueNotification($subscription, $payload);
+            }
+            // Still log delivery per-medication-id so dueReminderItemsNotYetPushed's
+            // dedup keeps working against each member individually.
+            foreach ($members as $member) {
+                $sentReminders[] = array_merge($member, ['_nonce' => '']);
+            }
         }
 
         $hasSuccessfulDelivery = false;
