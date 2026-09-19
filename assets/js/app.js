@@ -3574,6 +3574,7 @@ const closeCalendarDayModal = () => {
 };
 
 wireDoseLogEntryActions(calendarDayModalBody, '.cal-day-slot-inner');
+wireCalendarGroupBulkEdit(calendarDayModalBody);
 
 document.querySelectorAll('[data-close-calendar-day-modal]')
   .forEach((btn) => btn.addEventListener('click', closeCalendarDayModal));
@@ -3596,7 +3597,8 @@ document.querySelectorAll('[data-calendar-day]').forEach((cell) => {
 
 function buildCalendarDayHtml(meds) {
   if (!meds.length) return '<p class="empty-state-text">No dose data for this day.</p>';
-  return '<ul class="cal-day-med-list">' + meds.map((med) => {
+
+  const renderMedItem = (med) => {
     const doseStr = med.doseFormatted
       ? ` <span class="dose-inline">${escHtml(med.doseFormatted)}</span>`
       : '';
@@ -3644,7 +3646,156 @@ function buildCalendarDayHtml(meds) {
         <ul class="cal-day-slots">${slots}</ul>
       </details>
     </li>`;
+  };
+
+  // Bucket by groupId so group siblings render nested under one shared header
+  // with a bulk-edit affordance — each member's own <details> block (built by
+  // renderMedItem, above) with its individual Edit/Delete actions is kept
+  // exactly as-is, whether or not it belongs to a group.
+  const buckets = [];
+  const bucketByGroupId = new Map();
+  meds.forEach((med) => {
+    if (med.groupId) {
+      let bucket = bucketByGroupId.get(med.groupId);
+      if (!bucket) {
+        bucket = { groupId: med.groupId, groupName: med.groupName || 'Medication Group', members: [] };
+        bucketByGroupId.set(med.groupId, bucket);
+        buckets.push(bucket);
+      }
+      bucket.members.push(med);
+    } else {
+      buckets.push({ groupId: null, members: [med] });
+    }
+  });
+
+  return '<ul class="cal-day-med-list">' + buckets.map((bucket) => {
+    const itemsHtml = bucket.members.map(renderMedItem).join('');
+    if (!bucket.groupId) return itemsHtml;
+
+    // Every slot across every member, flattened, so the bulk-edit control can
+    // filter down to the (date, time) the user picks and loop the existing
+    // single-slot edit path (postDose → action=mark_dose) over each match —
+    // the same convention the alarm overlay's "take all" already uses instead
+    // of a new batch endpoint. Each slot keeps its own pre-existing
+    // pain/mood level so a bulk status/time/note change doesn't clobber them.
+    const allSlots = bucket.members.flatMap((m) => m.slots.map((s) => ({
+      medicationId: s.medicationId,
+      scheduledDate: s.scheduledDate,
+      scheduledTime: s.scheduledTime,
+      displayTime: s.displayTime,
+      painLevel: s.painLevel,
+      moodLevel: s.moodLevel,
+    })));
+    const timeDisplay = new Map(allSlots.map((s) => [s.scheduledTime, s.displayTime]));
+    const times = [...timeDisplay.keys()].sort();
+    const timeOptions = times.map((t) => `<option value="${escHtml(t)}">${escHtml(timeDisplay.get(t) ?? t)}</option>`).join('');
+    const statusOptions = historyStatusOptions.map((s) =>
+      `<option value="${s}"${s === 'taken' ? ' selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+    ).join('');
+
+    return `<li class="cal-day-group-item" data-cal-day-group data-group-slots="${escHtml(JSON.stringify(allSlots))}">
+      <div class="cal-day-group-header">
+        <span class="group-badge"><i class="fa-solid fa-layer-group" aria-hidden="true"></i>${escHtml(bucket.groupName)}</span>
+        <button type="button" class="secondary cal-day-group-bulk-toggle" data-cal-day-group-bulk-toggle>Bulk edit</button>
+      </div>
+      <div class="cal-day-group-bulk-form" data-cal-day-group-bulk-form hidden>
+        <label class="stacked-label">Apply to time
+          <select name="bulk_time">${timeOptions}</select>
+        </label>
+        <label class="stacked-label">Status
+          <select name="bulk_status">${statusOptions}</select>
+        </label>
+        <label class="stacked-label cal-day-group-bulk-time-field" data-cal-day-group-bulk-time-field>Time taken
+          <input type="time" name="bulk_taken_time">
+        </label>
+        <label class="stacked-label">Comments <span class="field-optional">(optional)</span>
+          <textarea name="bulk_note" rows="2" maxlength="255"></textarea>
+        </label>
+        <p class="cal-day-group-bulk-error" hidden></p>
+        <div class="feedback-actions">
+          <button type="button" class="button primary small" data-cal-day-group-bulk-apply>Apply to group</button>
+          <button type="button" class="button secondary small" data-cal-day-group-bulk-cancel>Cancel</button>
+        </div>
+      </div>
+      <ul class="cal-day-group-members">${itemsHtml}</ul>
+    </li>`;
   }).join('') + '</ul>';
+}
+
+// Wires the group bulk-edit affordance buildCalendarDayHtml renders: toggling
+// the form, and applying a single status/time/note change to every group
+// member's dose log at the chosen (date, time) in one action — a client-side
+// loop over the same single-dose edit path per-member edits already use
+// (postDose → action=mark_dose), matching how the alarm overlay's bulk
+// actions work. Individual per-slot edit (wireDoseLogEntryActions, above)
+// remains fully available and unaffected.
+function wireCalendarGroupBulkEdit(container) {
+  container?.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('[data-cal-day-group-bulk-toggle]');
+    if (toggleBtn) {
+      const form = toggleBtn.closest('[data-cal-day-group]')?.querySelector('[data-cal-day-group-bulk-form]');
+      if (form) form.hidden = !form.hidden;
+      return;
+    }
+
+    const cancelBtn = e.target.closest('[data-cal-day-group-bulk-cancel]');
+    if (cancelBtn) {
+      const form = cancelBtn.closest('[data-cal-day-group-bulk-form]');
+      if (form) form.hidden = true;
+      return;
+    }
+
+    const applyBtn = e.target.closest('[data-cal-day-group-bulk-apply]');
+    if (!applyBtn) return;
+    const form = applyBtn.closest('[data-cal-day-group-bulk-form]');
+    const groupLi = applyBtn.closest('[data-cal-day-group]');
+    if (!form || !groupLi) return;
+
+    let allSlots = [];
+    try { allSlots = JSON.parse(groupLi.dataset.groupSlots || '[]'); } catch { allSlots = []; }
+
+    const chosenTime = form.querySelector('select[name="bulk_time"]')?.value ?? '';
+    const newStatus = form.querySelector('select[name="bulk_status"]')?.value ?? 'taken';
+    const timeInput = form.querySelector('input[name="bulk_taken_time"]');
+    const newTime = newStatus === 'taken' ? (timeInput?.value ?? '') : '';
+    const newNote = (form.querySelector('textarea[name="bulk_note"]')?.value ?? '').trim();
+    const matching = allSlots.filter((s) => s.scheduledTime === chosenTime);
+    if (matching.length === 0) return;
+
+    const errEl = form.querySelector('.cal-day-group-bulk-error');
+    if (errEl) errEl.hidden = true;
+    applyBtn.disabled = true;
+
+    const failures = [];
+    for (const slot of matching) {
+      const result = await postDose(
+        slot.medicationId,
+        slot.scheduledDate,
+        slot.scheduledTime,
+        newStatus,
+        newNote,
+        slot.painLevel ?? '',
+        '',
+        slot.moodLevel ?? '',
+        newTime
+      );
+      if (!result.ok) failures.push(result.error || 'Failed to save.');
+    }
+
+    if (failures.length > 0) {
+      applyBtn.disabled = false;
+      if (errEl) { errEl.textContent = failures.join(' '); errEl.hidden = false; }
+      return;
+    }
+    window.location.reload();
+  });
+
+  container?.addEventListener('change', (e) => {
+    const statusSelect = e.target.closest('select[name="bulk_status"]');
+    if (!statusSelect) return;
+    const timeField = statusSelect.closest('[data-cal-day-group-bulk-form]')?.querySelector('[data-cal-day-group-bulk-time-field]');
+    if (timeField) timeField.hidden = statusSelect.value !== 'taken';
+  });
 }
 
 // ── Alarm engine ──────────────────────────────────────────────────────────────

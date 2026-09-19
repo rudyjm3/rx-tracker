@@ -2622,6 +2622,50 @@ button.danger:hover {
   transform: rotate(180deg);
 }
 
+/* Group siblings nested under a shared header, with a bulk-edit affordance */
+
+.cal-day-group-item {
+  border: 1px solid rgba(7, 84, 168, 0.22);
+  border-radius: var(--rx-radius-sm);
+  padding: 0.7rem 0.85rem;
+}
+
+.cal-day-group-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.cal-day-group-bulk-toggle {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.cal-day-group-bulk-form {
+  background: var(--rx-bg);
+  border-radius: var(--rx-radius-sm);
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  padding: 0.7rem 0.75rem;
+}
+
+.cal-day-group-members {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cal-day-group-members .cal-day-med-item {
+  padding: 0.6rem 0.75rem 0;
+}
+
 .cal-day-slots {
   border-top: 1px solid var(--rx-border);
   list-style: none;

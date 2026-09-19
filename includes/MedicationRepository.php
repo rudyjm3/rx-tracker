@@ -921,6 +921,11 @@ final class MedicationRepository
         return $this->groupRepo->ungroupedActiveMedications($excludeGroupId);
     }
 
+    public function medicationGroupMap(): array
+    {
+        return $this->groupRepo->medicationGroupMap();
+    }
+
     public function syncStockNotifications(array $medications): void
     {
         $this->stockNotificationRepo->syncStockNotifications($medications);

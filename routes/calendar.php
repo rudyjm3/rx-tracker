@@ -41,6 +41,10 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         $repository->backfillMissedDosesForDates($pastDatesToBackfill, new DateTimeImmutable('now'), $graceMinutes);
         $calendarMarkers = $repository->calendarMarkersForMonth($monthStart, $monthEnd);
     }
+    // Resolves each medication's group membership per scheduled time, the same
+    // way ScheduleRepository::buildScheduleRows() does for the dashboard, so
+    // the day-detail payload can nest group siblings under a shared header.
+    $calGroupMap = $repository->medicationGroupMap();
     $calendarDayData = [];
     foreach ($repository->calendarLogsForMonth($monthStart, $monthEnd) as $log) {
         $cdDate  = (string) $log['scheduled_for_date'];
@@ -54,11 +58,15 @@ require __DIR__ . '/../includes/pages-shell-top.php';
             ];
         }
         if (!isset($calendarDayData[$cdDate]['medications'][$cdMedId])) {
+            $cdTimeKey = substr((string) $log['scheduled_time'], 0, 5);
+            $cdGroup = $calGroupMap[$cdMedId][$cdTimeKey] ?? null;
             $calendarDayData[$cdDate]['medications'][$cdMedId] = [
                 'name'          => (string) $log['name'],
                 'doseFormatted' => formattedDose($log),
                 'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
                 'slots' => [],
+                'groupId' => $cdGroup !== null ? (int) $cdGroup['group_id'] : null,
+                'groupName' => $cdGroup !== null ? (string) $cdGroup['group_name'] : null,
             ];
         }
         $cdStatus  = (string) $log['status'];
