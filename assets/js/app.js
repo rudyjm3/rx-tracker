@@ -4227,46 +4227,70 @@ const submitCurrentQueueItem = async (note, painLevel, moodLevel = '') => {
   processNextFeedbackQueueItem();
 };
 
+// ── Group bulk actions (shared by the alarm overlay and dashboard group cards) ─
+//
+// Callers must snapshot their items array (e.g. `[...alarmGroupItems]`) before
+// calling these if hiding their UI resets the source array — reading it after
+// hiding would silently iterate zero items (see tests/GroupTakeAllTest.php).
+
+// Every item's dose is committed immediately, feedback-tracked or not, then
+// every item is walked through the queue so each one gets a chance at its own
+// zero-pill interstitial (and feedback modal, for the items that track it) —
+// see processNextFeedbackQueueItem.
+const runGroupTakeAll = async (items) => {
+  const failures = [];
+  const committedItems = [];
+  for (const item of items) {
+    const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
+    if (!result.ok) {
+      failures.push({ name: item.name, error: result.error });
+      continue;
+    }
+    committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn, alreadyOutBeforeDose: result.alreadyOutBeforeDose });
+  }
+
+  if (committedItems.length === 0) {
+    alertDoseFailures(failures);
+    window.location.reload();
+    return;
+  }
+
+  feedbackQueueFailures = failures;
+  feedbackQueue = committedItems.map((item, idx) => ({
+    ...item,
+    positionInBatch: idx + 1,
+    totalInBatch: committedItems.length,
+  }));
+  processNextFeedbackQueueItem();
+};
+
+const runGroupSkipAll = async (items) => {
+  const failures = [];
+  for (const item of items) {
+    const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
+    if (!result.ok) failures.push({ name: item.name, error: result.error });
+  }
+  alertDoseFailures(failures);
+  window.location.reload();
+};
+
+const runGroupSnoozeAll = async (items, minutes) => {
+  for (const item of items) {
+    await postPostpone(item.medication_id, item.scheduled_date, item.scheduled_time, minutes);
+  }
+  window.location.reload();
+};
+
 // ── Alarm button handlers ─────────────────────────────────────────────────────
 
 alarmTakeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
-    // Group mode: every item's dose is committed immediately, feedback-tracked
-    // or not, then every item is walked through the queue so each one gets a
-    // chance at its own zero-pill interstitial (and feedback modal, for the
-    // items that track it) — see processNextFeedbackQueueItem.
     // Snapshot the items before hiding the overlay — hideAlarmOverlay() resets
-    // alarmGroupItems to [], so looping over the live variable afterward would
-    // silently iterate zero items (matching the sibling skip/snooze handlers,
-    // which already take this same snapshot).
+    // alarmGroupItems to [].
     const items = [...alarmGroupItems];
     stopAlarmAudio();
     hideAlarmOverlay();
-
-    const failures = [];
-    const committedItems = [];
-    for (const item of items) {
-      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'taken', '', '', item.group_id ?? '');
-      if (!result.ok) {
-        failures.push({ name: item.name, error: result.error });
-        continue;
-      }
-      committedItems.push({ ...item, logId: result.logId, pillCount: result.pillCount, ranOutOn: result.ranOutOn, alreadyOutBeforeDose: result.alreadyOutBeforeDose });
-    }
-
-    if (committedItems.length === 0) {
-      alertDoseFailures(failures);
-      window.location.reload();
-      return;
-    }
-
-    feedbackQueueFailures = failures;
-    feedbackQueue = committedItems.map((item, idx) => ({
-      ...item,
-      positionInBatch: idx + 1,
-      totalInBatch: committedItems.length,
-    }));
-    processNextFeedbackQueueItem();
+    await runGroupTakeAll(items);
   } else {
     // Single mode — commit immediately, then walk the zero-pill interstitial
     // (if needed) and pain/mood feedback (if tracked) before finishing.
@@ -4298,13 +4322,7 @@ alarmSkipBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
     const items = [...alarmGroupItems];
     hideAlarmOverlay();
-    const failures = [];
-    for (const item of items) {
-      const result = await postDose(item.medication_id, item.scheduled_date, item.scheduled_time, 'skipped', 'Skipped dose');
-      if (!result.ok) failures.push({ name: item.name, error: result.error });
-    }
-    alertDoseFailures(failures);
-    window.location.reload();
+    await runGroupSkipAll(items);
   } else {
     alarmAction('mark_dose', { status: 'skipped', note: 'Skipped dose' });
   }
@@ -4315,10 +4333,7 @@ alarmSnoozeBtn?.addEventListener('click', async () => {
   if (alarmGroupItems.length > 0) {
     const items = [...alarmGroupItems];
     hideAlarmOverlay();
-    for (const item of items) {
-      await postPostpone(item.medication_id, item.scheduled_date, item.scheduled_time, minutes);
-    }
-    window.location.reload();
+    await runGroupSnoozeAll(items, minutes);
   } else {
     alarmAction('postpone_dose', { postpone_minutes: minutes });
   }
@@ -4422,6 +4437,49 @@ alarmIndividualBtn?.addEventListener('click', () => {
     window.location.reload();
   });
   alarmGroupListEl.after(doneBtn);
+});
+
+// ── Dashboard: grouped schedule cards ───────────────────────────────────────
+
+// Today's Schedule collapses 2+ (or a lone, siblings-resolved) group members
+// due at the same slot into one card (see routes/dashboard.php). Its bulk
+// Take/Skip/Snooze buttons reuse the same runGroupTakeAll/runGroupSkipAll/
+// runGroupSnoozeAll helpers the alarm overlay's bulk actions use, looping
+// over the card's own member list instead of alarmGroupItems.
+document.querySelectorAll('[data-schedule-group-card]').forEach((card) => {
+  let groupMembers = [];
+  try {
+    groupMembers = JSON.parse(card.dataset.groupMembers || '[]');
+  } catch {
+    groupMembers = [];
+  }
+  if (!Array.isArray(groupMembers) || groupMembers.length === 0) return;
+
+  card.querySelector('[data-group-take]')?.addEventListener('click', async () => {
+    await runGroupTakeAll([...groupMembers]);
+  });
+
+  card.querySelector('[data-group-skip]')?.addEventListener('click', async () => {
+    await runGroupSkipAll([...groupMembers]);
+  });
+
+  card.querySelector('[data-group-snooze]')?.addEventListener('click', async () => {
+    const minutes = alarmSnoozeMinutesEl?.value ?? '5';
+    await runGroupSnoozeAll([...groupMembers], minutes);
+  });
+
+  // "Manage Individually" reveals each member's own Take/Skip/Snooze controls
+  // (the same per-member forms/buttons dashboard.php renders for an ungrouped
+  // row) and hides the card-level bulk buttons — matching the alarm overlay's
+  // "Manage Each" pattern. This is the only way to act on a single group
+  // member alone; the card no longer exposes a bare top-level Snooze button.
+  card.querySelector('[data-group-manage-individually]')?.addEventListener('click', () => {
+    card.querySelectorAll('[data-group-individual-actions]').forEach((el) => { el.hidden = false; });
+    const header = card.querySelector('.schedule-group-card-header');
+    if (header) header.hidden = true;
+    const manageBtn = card.querySelector('[data-group-manage-individually]');
+    if (manageBtn) manageBtn.hidden = true;
+  });
 });
 
 // ── Reminders & polling ───────────────────────────────────────────────────────

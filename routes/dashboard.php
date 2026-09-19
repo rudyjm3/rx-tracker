@@ -33,45 +33,128 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         <a href="index.php?page=calendar" class="panel-heading-link"><i class="fa-regular fa-calendar" aria-hidden="true"></i> View calendar</a>
       </div>
       <div class="schedule-list">
-        <?php foreach ($todaySchedule as $dose): ?>
-          <div class="schedule-row">
-            <div class="schedule-row-time">
-              <i class="fa-regular fa-clock" aria-hidden="true"></i>
-              <span><?= e(to12h((string) $dose['reminder_time'])) ?></span>
-              <?php if ($dose['as_needed']): ?><span class="schedule-prn">(PRN)</span><?php endif; ?>
-            </div>
-            <div class="schedule-row-info">
-              <?php $schMedTypeSlug = (string) ($dose['medication_type'] ?? 'prescription'); $schMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
-              <span class="med-name-row"><strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span></span>
-              <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
-              <?php if ($dose['group_name'] !== null): ?>
-                <span class="group-badge"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><?= e((string) $dose['group_name']) ?></span>
-              <?php endif; ?>
-              <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
-                <?php $lateMin = minutesLate($dose, $graceMinutes); ?>
-                <span class="<?= $lateMin !== null ? 'warn-pill' : 'done-pill' ?>">Taken<?= $lateMin !== null ? ' (' . formatLate($lateMin) . ')' : '' ?></span>
-              <?php elseif ((string) ($dose['status'] ?? '') === 'skipped'): ?>
-                <span class="warn-pill">Skipped</span>
-              <?php endif; ?>
-            </div>
-            <div class="row-actions">
-              <?php
-                $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true);
-                $rawPostponedUntil = is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '' ? (string) $dose['postponed_until'] : null;
-                $snoozeActive = $rawPostponedUntil !== null && new DateTimeImmutable($rawPostponedUntil) > new DateTimeImmutable('now');
-              ?>
-              <?php if ($snoozeActive): ?>
-                <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable($rawPostponedUntil))->format('H:i'))) ?></span>
-              <?php endif; ?>
-              <div class="schedule-actions-buttons">
-                <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><?php if ($dose['group_id'] !== null): ?><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><?php endif; ?><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-medication-dose="<?= e(formattedDose($dose)) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= (($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none')) !== 'none') ? '1' : '0' ?>" data-feedback-type="<?= e((string) ($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none'))) ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
-                <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
-                <?php if (!$isCompleted): ?>
-                  <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= $snoozeActive ? ' disabled' : '' ?>>Snooze</button>
+        <?php
+          // Bucket today's rows by (group_id, scheduled_time) so every actual
+          // group member due at the same slot renders as one card. Ungrouped
+          // rows (group_id === null) each get their own single-row bucket, so
+          // insertion order below still matches $todaySchedule's overall
+          // time-sort order.
+          $scheduleBuckets = [];
+          foreach ($todaySchedule as $scheduleIdx => $scheduleDose) {
+            $bucketKey = $scheduleDose['group_id'] !== null
+              ? 'g' . $scheduleDose['group_id'] . '|' . $scheduleDose['reminder_time']
+              : 'i' . $scheduleIdx;
+            $scheduleBuckets[$bucketKey][] = $scheduleDose;
+          }
+        ?>
+        <?php foreach ($scheduleBuckets as $scheduleBucket): ?>
+          <?php if ($scheduleBucket[0]['group_id'] === null): ?>
+            <?php $dose = $scheduleBucket[0]; ?>
+            <div class="schedule-row">
+              <div class="schedule-row-time">
+                <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                <span><?= e(to12h((string) $dose['reminder_time'])) ?></span>
+                <?php if ($dose['as_needed']): ?><span class="schedule-prn">(PRN)</span><?php endif; ?>
+              </div>
+              <div class="schedule-row-info">
+                <?php $schMedTypeSlug = (string) ($dose['medication_type'] ?? 'prescription'); $schMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement']; ?>
+                <span class="med-name-row"><strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span></span>
+                <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
+                <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
+                  <?php $lateMin = minutesLate($dose, $graceMinutes); ?>
+                  <span class="<?= $lateMin !== null ? 'warn-pill' : 'done-pill' ?>">Taken<?= $lateMin !== null ? ' (' . formatLate($lateMin) . ')' : '' ?></span>
+                <?php elseif ((string) ($dose['status'] ?? '') === 'skipped'): ?>
+                  <span class="warn-pill">Skipped</span>
                 <?php endif; ?>
               </div>
+              <div class="row-actions">
+                <?php
+                  $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true);
+                  $rawPostponedUntil = is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '' ? (string) $dose['postponed_until'] : null;
+                  $snoozeActive = $rawPostponedUntil !== null && new DateTimeImmutable($rawPostponedUntil) > new DateTimeImmutable('now');
+                ?>
+                <?php if ($snoozeActive): ?>
+                  <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable($rawPostponedUntil))->format('H:i'))) ?></span>
+                <?php endif; ?>
+                <div class="schedule-actions-buttons">
+                  <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-medication-dose="<?= e(formattedDose($dose)) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= (($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none')) !== 'none') ? '1' : '0' ?>" data-feedback-type="<?= e((string) ($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none'))) ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                  <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
+                  <?php if (!$isCompleted): ?>
+                    <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= $snoozeActive ? ' disabled' : '' ?>>Snooze</button>
+                  <?php endif; ?>
+                </div>
+              </div>
             </div>
-          </div>
+          <?php else: ?>
+            <?php
+              $groupTime = (string) $scheduleBucket[0]['reminder_time'];
+              $groupName = (string) ($scheduleBucket[0]['group_name'] ?? 'Medication Group');
+              $groupMemberCount = count($scheduleBucket);
+              $groupMembersPayload = array_map(static fn (array $m): array => [
+                'medication_id' => (int) $m['medication_id'],
+                'name' => (string) $m['name'],
+                'scheduled_date' => $today,
+                'scheduled_time' => (string) $m['reminder_time'] . ':00',
+                'group_id' => $m['group_id'],
+              ], $scheduleBucket);
+            ?>
+            <div class="schedule-group-card" data-schedule-group-card data-group-members='<?= e(json_encode($groupMembersPayload, JSON_THROW_ON_ERROR)) ?>'>
+              <div class="schedule-group-card-header">
+                <div class="schedule-row-time">
+                  <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                  <span><?= e(to12h($groupTime)) ?></span>
+                </div>
+                <div class="schedule-group-card-info">
+                  <span class="group-badge"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><?= e($groupName) ?></span>
+                  <span class="schedule-group-count-badge"><?= (int) $groupMemberCount ?> med<?= $groupMemberCount !== 1 ? 's' : '' ?></span>
+                </div>
+                <div class="schedule-group-card-actions">
+                  <button type="button" class="btn-take" data-group-take><?= $groupMemberCount > 1 ? 'Take All' : 'Take' ?></button>
+                  <button type="button" class="secondary" data-group-skip><?= $groupMemberCount > 1 ? 'Skip All' : 'Skip' ?></button>
+                  <button type="button" class="secondary" data-group-snooze>Snooze</button>
+                </div>
+              </div>
+              <details class="schedule-group-card-details">
+                <summary class="schedule-group-card-summary">Show <?= (int) $groupMemberCount ?> medication<?= $groupMemberCount !== 1 ? 's' : '' ?></summary>
+                <ul class="schedule-group-member-list">
+                  <?php foreach ($scheduleBucket as $dose): ?>
+                    <?php
+                      $schMedTypeSlug = (string) ($dose['medication_type'] ?? 'prescription');
+                      $schMedTypeLabels = ['prescription' => 'Rx', 'otc' => 'OTC', 'supplement' => 'Supplement'];
+                      $isCompleted = in_array((string) ($dose['status'] ?? ''), ['taken', 'skipped'], true);
+                      $rawPostponedUntil = is_string($dose['postponed_until'] ?? null) && (string) $dose['postponed_until'] !== '' ? (string) $dose['postponed_until'] : null;
+                      $snoozeActive = $rawPostponedUntil !== null && new DateTimeImmutable($rawPostponedUntil) > new DateTimeImmutable('now');
+                    ?>
+                    <li class="schedule-group-member-row">
+                      <div class="schedule-row-info">
+                        <span class="med-name-row"><strong><?= e((string) $dose['name']) ?></strong><span class="med-type-badge med-type-badge--<?= e($schMedTypeSlug) ?>"><?= e($schMedTypeLabels[$schMedTypeSlug] ?? 'Rx') ?></span></span>
+                        <?php if (formattedDose($dose) !== ''): ?><span class="dose-inline"><?= e(formattedDose($dose)) ?></span><?php endif; ?>
+                        <?php if ((string) ($dose['status'] ?? '') === 'taken'): ?>
+                          <?php $lateMin = minutesLate($dose, $graceMinutes); ?>
+                          <span class="<?= $lateMin !== null ? 'warn-pill' : 'done-pill' ?>">Taken<?= $lateMin !== null ? ' (' . formatLate($lateMin) . ')' : '' ?></span>
+                        <?php elseif ((string) ($dose['status'] ?? '') === 'skipped'): ?>
+                          <span class="warn-pill">Skipped</span>
+                        <?php endif; ?>
+                        <?php if ($snoozeActive): ?>
+                          <span class="done-pill">Snoozed until <?= e(to12h((new DateTimeImmutable($rawPostponedUntil))->format('H:i'))) ?></span>
+                        <?php endif; ?>
+                      </div>
+                      <div class="row-actions schedule-group-individual-actions" hidden data-group-individual-actions>
+                        <div class="schedule-actions-buttons">
+                          <form method="post" action="index.php"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="taken"><input type="hidden" name="group_id" value="<?= e((string) $dose['group_id']) ?>"><button type="submit" class="btn-take" data-take-dose data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-medication-name="<?= e((string) $dose['name']) ?>" data-medication-dose="<?= e(formattedDose($dose)) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00" data-track-dose-feedback="<?= (($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none')) !== 'none') ? '1' : '0' ?>" data-feedback-type="<?= e((string) ($dose['feedback_type'] ?? ($dose['track_dose_feedback'] ? 'pain' : 'none'))) ?>" data-dose-status="<?= e((string) ($dose['status'] ?? '')) ?>" data-grace-minutes="<?= e((string) $graceMinutes) ?>" data-postponed-until="<?= $rawPostponedUntil !== null ? e($rawPostponedUntil) : '' ?>"<?= $isCompleted ? ' disabled' : '' ?>>Take</button></form>
+                          <form method="post" action="index.php" data-confirm="Confirm skipped dose?"><?= csrf_field() ?><input type="hidden" name="action" value="mark_dose"><input type="hidden" name="medication_id" value="<?= e((string) $dose['medication_id']) ?>"><input type="hidden" name="scheduled_date" value="<?= e($today) ?>"><input type="hidden" name="scheduled_time" value="<?= e((string) $dose['reminder_time']) ?>:00"><input type="hidden" name="status" value="skipped"><input type="hidden" name="note" value="Skipped dose"><button type="submit" class="secondary"<?= $isCompleted ? ' disabled' : '' ?>>Skipped</button></form>
+                          <?php if (!$isCompleted): ?>
+                            <button type="button" class="secondary" data-open-postpone-modal data-medication-id="<?= e((string) $dose['medication_id']) ?>" data-scheduled-date="<?= e($today) ?>" data-scheduled-time="<?= e((string) $dose['reminder_time']) ?>:00"<?= $snoozeActive ? ' disabled' : '' ?>>Snooze</button>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+                    </li>
+                  <?php endforeach; ?>
+                </ul>
+                <button type="button" class="secondary schedule-group-manage-btn" data-group-manage-individually>Manage Individually</button>
+              </details>
+            </div>
+          <?php endif; ?>
         <?php endforeach; ?>
       </div>
       <div class="schedule-view-full">
