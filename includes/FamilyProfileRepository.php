@@ -12,7 +12,7 @@ final class FamilyProfileRepository
     {
         try {
             $stmt = $this->db->prepare(
-                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit
+                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit, weight_value, weight_unit, height_updated_at, weight_updated_at
                  FROM family_profiles
                  WHERE owner_user_id = :user_id
                  ORDER BY created_at ASC'
@@ -28,7 +28,7 @@ final class FamilyProfileRepository
     {
         try {
             $stmt = $this->db->prepare(
-                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit
+                'SELECT id, owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, created_at, profile_picture, height_value, height_unit, weight_value, weight_unit, height_updated_at, weight_updated_at
                  FROM family_profiles
                  WHERE id = :id AND owner_user_id = :user_id
                  LIMIT 1'
@@ -52,7 +52,9 @@ final class FamilyProfileRepository
         ?string $birthDate = null,
         ?string $profilePicture = null,
         ?float $heightValue = null,
-        ?string $heightUnit = null
+        ?string $heightUnit = null,
+        ?float $weightValue = null,
+        ?string $weightUnit = null
     ): int {
         $this->validateDisplayName($displayName);
         $this->validateAvatarColor($avatarColor);
@@ -62,23 +64,30 @@ final class FamilyProfileRepository
         $this->validateNamePart($lastName, 'Last name');
         $this->validateBirthDate($birthDate);
         $this->validateHeight($heightValue, $heightUnit);
+        $this->validateWeight($weightValue, $weightUnit);
+
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
 
         $stmt = $this->db->prepare(
-            'INSERT INTO family_profiles (owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, profile_picture, height_value, height_unit)
-             VALUES (:owner_user_id, :display_name, :first_name, :last_name, :avatar_color, :relationship, :birth_year, :birth_date, :profile_picture, :height_value, :height_unit)'
+            'INSERT INTO family_profiles (owner_user_id, display_name, first_name, last_name, avatar_color, relationship, birth_year, birth_date, profile_picture, height_value, height_unit, weight_value, weight_unit, height_updated_at, weight_updated_at)
+             VALUES (:owner_user_id, :display_name, :first_name, :last_name, :avatar_color, :relationship, :birth_year, :birth_date, :profile_picture, :height_value, :height_unit, :weight_value, :weight_unit, :height_updated_at, :weight_updated_at)'
         );
         $stmt->execute([
-            'owner_user_id'   => $userId,
-            'display_name'    => $displayName,
-            'first_name'      => $firstName,
-            'last_name'       => $lastName,
-            'avatar_color'    => $avatarColor,
-            'relationship'    => $relationship,
-            'birth_year'      => $birthYear,
-            'birth_date'      => $birthDate,
-            'profile_picture' => $profilePicture,
-            'height_value'    => $heightValue,
-            'height_unit'     => $heightUnit,
+            'owner_user_id'      => $userId,
+            'display_name'       => $displayName,
+            'first_name'         => $firstName,
+            'last_name'          => $lastName,
+            'avatar_color'       => $avatarColor,
+            'relationship'       => $relationship,
+            'birth_year'         => $birthYear,
+            'birth_date'         => $birthDate,
+            'profile_picture'    => $profilePicture,
+            'height_value'       => $heightValue,
+            'height_unit'        => $heightUnit,
+            'weight_value'       => $weightValue,
+            'weight_unit'        => $weightUnit,
+            'height_updated_at'  => $heightValue !== null ? $now : null,
+            'weight_updated_at'  => $weightValue !== null ? $now : null,
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -96,7 +105,11 @@ final class FamilyProfileRepository
         ?string $birthDate = null,
         ?string $profilePicture = null,
         ?float $heightValue = null,
-        ?string $heightUnit = null
+        ?string $heightUnit = null,
+        ?float $weightValue = null,
+        ?string $weightUnit = null,
+        bool $heightChanged = false,
+        bool $weightChanged = false
     ): void {
         $this->validateDisplayName($displayName);
         $this->validateAvatarColor($avatarColor);
@@ -106,22 +119,25 @@ final class FamilyProfileRepository
         $this->validateNamePart($lastName, 'Last name');
         $this->validateBirthDate($birthDate);
         $this->validateHeight($heightValue, $heightUnit);
+        $this->validateWeight($weightValue, $weightUnit);
 
-        $stmt = $this->db->prepare(
-            'UPDATE family_profiles
-             SET display_name    = :display_name,
-                 first_name      = :first_name,
-                 last_name       = :last_name,
-                 avatar_color    = :avatar_color,
-                 relationship    = :relationship,
-                 birth_year      = :birth_year,
-                 birth_date      = :birth_date,
-                 profile_picture = :profile_picture,
-                 height_value    = :height_value,
-                 height_unit     = :height_unit
-             WHERE id = :id AND owner_user_id = :user_id'
-        );
-        $stmt->execute([
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+
+        $setClauses = [
+            'display_name    = :display_name',
+            'first_name      = :first_name',
+            'last_name       = :last_name',
+            'avatar_color    = :avatar_color',
+            'relationship    = :relationship',
+            'birth_year      = :birth_year',
+            'birth_date      = :birth_date',
+            'profile_picture = :profile_picture',
+            'height_value    = :height_value',
+            'height_unit     = :height_unit',
+            'weight_value    = :weight_value',
+            'weight_unit     = :weight_unit',
+        ];
+        $params = [
             'id'              => $profileId,
             'user_id'         => $userId,
             'display_name'    => $displayName,
@@ -134,7 +150,28 @@ final class FamilyProfileRepository
             'profile_picture' => $profilePicture,
             'height_value'    => $heightValue,
             'height_unit'     => $heightUnit,
-        ]);
+            'weight_value'    => $weightValue,
+            'weight_unit'     => $weightUnit,
+        ];
+
+        if ($heightValue === null) {
+            $setClauses[] = 'height_updated_at = NULL';
+        } elseif ($heightChanged) {
+            $setClauses[] = 'height_updated_at = :height_updated_at';
+            $params['height_updated_at'] = $now;
+        }
+
+        if ($weightValue === null) {
+            $setClauses[] = 'weight_updated_at = NULL';
+        } elseif ($weightChanged) {
+            $setClauses[] = 'weight_updated_at = :weight_updated_at';
+            $params['weight_updated_at'] = $now;
+        }
+
+        $stmt = $this->db->prepare(
+            'UPDATE family_profiles SET ' . implode(', ', $setClauses) . ' WHERE id = :id AND owner_user_id = :user_id'
+        );
+        $stmt->execute($params);
     }
 
     public function deleteProfile(int $profileId, int $userId): void
@@ -214,6 +251,20 @@ final class FamilyProfileRepository
         $bounds = $unit === 'cm' ? [50.0, 274.0] : [20.0, 108.0];
         if ($value < $bounds[0] || $value > $bounds[1]) {
             throw new RuntimeException('Height value is out of range.');
+        }
+    }
+
+    private function validateWeight(?float $value, ?string $unit): void
+    {
+        if ($value === null) {
+            return;
+        }
+        if ($unit !== 'lb' && $unit !== 'kg') {
+            throw new RuntimeException('Weight unit must be pounds or kilograms.');
+        }
+        $bounds = $unit === 'kg' ? [1.0, 300.0] : [1.0, 660.0];
+        if ($value < $bounds[0] || $value > $bounds[1]) {
+            throw new RuntimeException('Weight value is out of range.');
         }
     }
 }

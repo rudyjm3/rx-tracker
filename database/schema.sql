@@ -592,6 +592,20 @@ ALTER TABLE family_profiles
     ADD COLUMN IF NOT EXISTS height_unit     VARCHAR(4) NULL,
     ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(500) NULL;
 
+-- Migration 022: Weight (value + unit) alongside height, plus per-field
+-- last-edited timestamps for height and weight.
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS weight_value DECIMAL(6,2) NULL,
+    ADD COLUMN IF NOT EXISTS weight_unit  VARCHAR(4) NULL,
+    ADD COLUMN IF NOT EXISTS height_updated_at DATETIME NULL,
+    ADD COLUMN IF NOT EXISTS weight_updated_at DATETIME NULL;
+
+ALTER TABLE family_profiles
+    ADD COLUMN IF NOT EXISTS weight_value DECIMAL(6,2) NULL,
+    ADD COLUMN IF NOT EXISTS weight_unit  VARCHAR(4) NULL,
+    ADD COLUMN IF NOT EXISTS height_updated_at DATETIME NULL,
+    ADD COLUMN IF NOT EXISTS weight_updated_at DATETIME NULL;
+
 -- Migration 019: Richer allergy detail fields (type, life-threatening flag,
 -- estimated severity, category, notes, active/resolved status).
 ALTER TABLE profile_allergies

@@ -7,7 +7,7 @@ declare(strict_types=1);
 $userId     = $auth->currentUserId();
 $familyRepo = new FamilyProfileRepository(db());
 
-$stmt = db()->prepare('SELECT id, email, display_name, first_name, last_name, birth_date, google_id, profile_picture, password_hash, created_at, height_value, height_unit FROM users WHERE id = :id LIMIT 1');
+$stmt = db()->prepare('SELECT id, email, display_name, first_name, last_name, birth_date, google_id, profile_picture, password_hash, created_at, height_value, height_unit, weight_value, weight_unit, height_updated_at, weight_updated_at FROM users WHERE id = :id LIMIT 1');
 $stmt->execute(['id' => $userId]);
 $userRow = $stmt->fetch();
 if (!is_array($userRow)) {
@@ -72,6 +72,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $heightUnit = null;
         }
+        $heightChanged = $heightValue !== ($userRow['height_value'] !== null ? (float) $userRow['height_value'] : null)
+            || ($heightValue !== null && $heightUnit !== ($userRow['height_unit'] ?? null));
+
+        $weightValueRaw = trim(post_string('weight_value'));
+        $weightValue    = $weightValueRaw !== '' ? (float) $weightValueRaw : null;
+        $weightUnit     = isset($_POST['weight_unit_kg']) ? 'kg' : 'lb';
+        if ($weightValue !== null) {
+            $bounds = $weightUnit === 'kg' ? [1.0, 300.0] : [1.0, 660.0];
+            if ($weightValue < $bounds[0] || $weightValue > $bounds[1]) {
+                header('Location: index.php?page=profile&error=' . urlencode('Weight value is out of range.'));
+                exit;
+            }
+        } else {
+            $weightUnit = null;
+        }
+        $weightChanged = $weightValue !== ($userRow['weight_value'] !== null ? (float) $userRow['weight_value'] : null)
+            || ($weightValue !== null && $weightUnit !== ($userRow['weight_unit'] ?? null));
 
         $avatarService  = new AvatarUploadService();
         $profilePicture = (string) ($userRow['profile_picture'] ?? '') ?: null;
@@ -89,17 +106,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        db()->prepare('UPDATE users SET display_name = :name, first_name = :first_name, last_name = :last_name, birth_date = :birth_date, height_value = :height_value, height_unit = :height_unit, profile_picture = :profile_picture WHERE id = :id')
-            ->execute([
-                'name'            => $newName,
-                'first_name'      => $firstName,
-                'last_name'       => $lastName,
-                'birth_date'      => $birthDate,
-                'height_value'    => $heightValue,
-                'height_unit'     => $heightUnit,
-                'profile_picture' => $profilePicture,
-                'id'              => $userId,
-            ]);
+        $now = (new DateTimeImmutable())->format('Y-m-d H:i:s');
+        $setClauses = [
+            'display_name = :name',
+            'first_name = :first_name',
+            'last_name = :last_name',
+            'birth_date = :birth_date',
+            'height_value = :height_value',
+            'height_unit = :height_unit',
+            'weight_value = :weight_value',
+            'weight_unit = :weight_unit',
+            'profile_picture = :profile_picture',
+        ];
+        $params = [
+            'name'            => $newName,
+            'first_name'      => $firstName,
+            'last_name'       => $lastName,
+            'birth_date'      => $birthDate,
+            'height_value'    => $heightValue,
+            'height_unit'     => $heightUnit,
+            'weight_value'    => $weightValue,
+            'weight_unit'     => $weightUnit,
+            'profile_picture' => $profilePicture,
+            'id'              => $userId,
+        ];
+        if ($heightValue === null) {
+            $setClauses[] = 'height_updated_at = NULL';
+        } elseif ($heightChanged) {
+            $setClauses[] = 'height_updated_at = :height_updated_at';
+            $params['height_updated_at'] = $now;
+        }
+        if ($weightValue === null) {
+            $setClauses[] = 'weight_updated_at = NULL';
+        } elseif ($weightChanged) {
+            $setClauses[] = 'weight_updated_at = :weight_updated_at';
+            $params['weight_updated_at'] = $now;
+        }
+
+        db()->prepare('UPDATE users SET ' . implode(', ', $setClauses) . ' WHERE id = :id')
+            ->execute($params);
         header('Location: index.php?page=profile&success=' . urlencode('Profile updated.'));
         exit;
     }
@@ -429,6 +474,20 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
             <?php $ownerHeightInches = height_to_inches((float) $userRow['height_value'], (string) $userRow['height_unit']); ?>
             <?= e(rtrim(rtrim(number_format((float) $userRow['height_value'], 1), '0'), '.')) ?> <?= e((string) $userRow['height_unit']) ?>
             (<?= e(format_feet_inches($ownerHeightInches)) ?>)
+            <?php if (!empty($userRow['height_updated_at'])): ?>
+            <span class="profile-info-subvalue">Last updated <?= e(format_updated_date((string) $userRow['height_updated_at'])) ?></span>
+            <?php endif; ?>
+          </span>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($userRow['weight_value'])): ?>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Weight</span>
+          <span class="profile-info-value">
+            <?= e(rtrim(rtrim(number_format((float) $userRow['weight_value'], 1), '0'), '.')) ?> <?= e((string) $userRow['weight_unit']) ?>
+            <?php if (!empty($userRow['weight_updated_at'])): ?>
+            <span class="profile-info-subvalue">Last updated <?= e(format_updated_date((string) $userRow['weight_updated_at'])) ?></span>
+            <?php endif; ?>
           </span>
         </div>
         <?php endif; ?>
@@ -507,6 +566,23 @@ $ownerInactiveMeds  = $ownerMedRepo->inactiveMedications();
                     <span class="toggle-label" data-height-unit-label><?= (string) ($userRow['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
                   </label>
                 </div>
+                <?php if (!empty($userRow['height_updated_at'])): ?>
+                <p class="field-optional" style="margin-top:.35rem">Last updated <?= e(format_updated_date((string) $userRow['height_updated_at'])) ?></p>
+                <?php endif; ?>
+              </div>
+              <div class="form-group">
+                <label for="weight_value">Weight</label>
+                <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+                  <input type="number" id="weight_value" name="weight_value" step="0.1" min="0" style="width:8rem;max-width:8rem" value="<?= e($userRow['weight_value'] !== null ? (string) (float) $userRow['weight_value'] : '') ?>">
+                  <label class="toggle-control" for="weight_unit_toggle">
+                    <input type="checkbox" id="weight_unit_toggle" name="weight_unit_kg"<?= (string) ($userRow['weight_unit'] ?? '') === 'kg' ? ' checked' : '' ?>>
+                    <span class="toggle-slider" aria-hidden="true"></span>
+                    <span class="toggle-label" data-weight-unit-label><?= (string) ($userRow['weight_unit'] ?? '') === 'kg' ? 'kg' : 'lb' ?></span>
+                  </label>
+                </div>
+                <?php if (!empty($userRow['weight_updated_at'])): ?>
+                <p class="field-optional" style="margin-top:.35rem">Last updated <?= e(format_updated_date((string) $userRow['weight_updated_at'])) ?></p>
+                <?php endif; ?>
               </div>
               <button type="submit" class="secondary">Save profile</button>
             </form>
