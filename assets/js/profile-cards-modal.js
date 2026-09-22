@@ -218,4 +218,12 @@
       label.textContent = toggle.checked ? 'cm' : 'in';
     });
   });
+
+  document.querySelectorAll('input[name="weight_unit_kg"]').forEach(function (toggle) {
+    var label = toggle.parentElement.querySelector('[data-weight-unit-label]');
+    if (!label) return;
+    toggle.addEventListener('change', function () {
+      label.textContent = toggle.checked ? 'kg' : 'lb';
+    });
+  });
 })();

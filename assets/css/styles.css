@@ -6409,6 +6409,13 @@ a.nav-user-btn.is-active {
   word-break: break-all;
 }
 
+.profile-info-subvalue {
+  display: block;
+  color: var(--rx-text-muted);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
 .profile-info-header {
   align-items: center;
   display: flex;

@@ -269,6 +269,20 @@ $memberInactiveMeds = $memberMedRepo->inactiveMedications();
             <?php $memberHeightInches = height_to_inches((float) $fp['height_value'], (string) $fp['height_unit']); ?>
             <?= e(rtrim(rtrim(number_format((float) $fp['height_value'], 1), '0'), '.')) ?> <?= e((string) $fp['height_unit']) ?>
             (<?= e(format_feet_inches($memberHeightInches)) ?>)
+            <?php if (!empty($fp['height_updated_at'])): ?>
+            <span class="profile-info-subvalue">Last updated <?= e(format_updated_date((string) $fp['height_updated_at'])) ?></span>
+            <?php endif; ?>
+          </span>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($fp['weight_value'])): ?>
+        <div class="profile-info-row">
+          <span class="profile-info-label">Weight</span>
+          <span class="profile-info-value">
+            <?= e(rtrim(rtrim(number_format((float) $fp['weight_value'], 1), '0'), '.')) ?> <?= e((string) $fp['weight_unit']) ?>
+            <?php if (!empty($fp['weight_updated_at'])): ?>
+            <span class="profile-info-subvalue">Last updated <?= e(format_updated_date((string) $fp['weight_updated_at'])) ?></span>
+            <?php endif; ?>
           </span>
         </div>
         <?php endif; ?>

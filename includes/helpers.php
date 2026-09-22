@@ -213,6 +213,15 @@ function format_feet_inches(float $totalInches): string
     return $feet . "' " . $inches . '"';
 }
 
+function format_updated_date(string $datetime): string
+{
+    try {
+        return (new DateTimeImmutable($datetime))->format('M j, Y');
+    } catch (Throwable) {
+        return '';
+    }
+}
+
 function render_avatar(?string $pictureUrl, string $letter, string $color, string $cssClass): string
 {
     if ($pictureUrl !== null && $pictureUrl !== '') {

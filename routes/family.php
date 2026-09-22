@@ -49,12 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
             $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : ($heightValue !== null ? 'in' : null);
 
+            $weightValueRaw = trim(post_string('weight_value'));
+            $weightValue    = $weightValueRaw !== '' ? (float) $weightValueRaw : null;
+            $weightUnit     = isset($_POST['weight_unit_kg']) ? 'kg' : ($weightValue !== null ? 'lb' : null);
+
             $profilePicture = null;
             if (($_FILES['profile_picture']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
                 $profilePicture = (new AvatarUploadService())->saveUpload($_FILES['profile_picture']);
             }
 
-            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit);
+            $familyRepo->createProfile($userId, $displayName, $avatarColor, $relationship, null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit, $weightValue, $weightUnit);
             header('Location: index.php?page=family&success=' . urlencode($displayName . ' was added.'));
         } catch (RuntimeException $e) {
             header('Location: index.php?page=family&error=' . urlencode($e->getMessage()));
@@ -83,6 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $heightValueRaw = trim(post_string('height_value'));
             $heightValue    = $heightValueRaw !== '' ? (float) $heightValueRaw : null;
             $heightUnit     = isset($_POST['height_unit_cm']) ? 'cm' : ($heightValue !== null ? 'in' : null);
+            $heightChanged  = $heightValue !== ($existing['height_value'] !== null ? (float) $existing['height_value'] : null)
+                || ($heightValue !== null && $heightUnit !== ($existing['height_unit'] ?? null));
+
+            $weightValueRaw = trim(post_string('weight_value'));
+            $weightValue    = $weightValueRaw !== '' ? (float) $weightValueRaw : null;
+            $weightUnit     = isset($_POST['weight_unit_kg']) ? 'kg' : ($weightValue !== null ? 'lb' : null);
+            $weightChanged  = $weightValue !== ($existing['weight_value'] !== null ? (float) $existing['weight_value'] : null)
+                || ($weightValue !== null && $weightUnit !== ($existing['weight_unit'] ?? null));
 
             $avatarService  = new AvatarUploadService();
             $profilePicture = $existing['profile_picture'] ?? null;
@@ -95,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $profilePicture = $newPicture;
             }
 
-            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear !== null ? (int) $birthYear : null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit);
+            $familyRepo->updateProfile($profileId, $userId, $displayName, $avatarColor, $relationship, $birthYear !== null ? (int) $birthYear : null, $firstName, $lastName, $birthDate, $profilePicture, $heightValue, $heightUnit, $weightValue, $weightUnit, $heightChanged, $weightChanged);
             header('Location: index.php?page=family&success=' . urlencode($displayName . '\'s profile was updated.'));
         } catch (RuntimeException $e) {
             header('Location: index.php?page=family&error=' . urlencode($e->getMessage()));
@@ -328,6 +340,17 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
           </div>
         </div>
         <div class="form-group">
+          <label for="family_weight_value">Weight</label>
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <input type="number" id="family_weight_value" name="weight_value" step="0.1" min="0" style="max-width:8rem">
+            <label class="toggle-control" for="family_weight_unit_toggle">
+              <input type="checkbox" id="family_weight_unit_toggle" name="weight_unit_kg">
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-weight-unit-label>lb</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
           <label for="family_profile_picture">Profile Picture</label>
           <input type="file" id="family_profile_picture" name="profile_picture" accept="image/png,image/jpeg,image/webp">
         </div>
@@ -412,6 +435,24 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
               <span class="toggle-label" data-height-unit-label><?= (string) ($fp['height_unit'] ?? '') === 'cm' ? 'cm' : 'in' ?></span>
             </label>
           </div>
+          <?php if (!empty($fp['height_updated_at'])): ?>
+          <p class="field-optional" style="margin-top:.35rem">Last updated <?= e(format_updated_date((string) $fp['height_updated_at'])) ?></p>
+          <?php endif; ?>
+        </div>
+        <div class="form-group">
+          <label for="edit_weight_value_<?= (int)$fp['id'] ?>">Weight</label>
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+            <input type="number" id="edit_weight_value_<?= (int)$fp['id'] ?>" name="weight_value" step="0.1" min="0" style="width:8rem;max-width:8rem"
+                   value="<?= e($fp['weight_value'] !== null ? (string) (float) $fp['weight_value'] : '') ?>">
+            <label class="toggle-control" for="edit_weight_unit_toggle_<?= (int)$fp['id'] ?>">
+              <input type="checkbox" id="edit_weight_unit_toggle_<?= (int)$fp['id'] ?>" name="weight_unit_kg"<?= (string) ($fp['weight_unit'] ?? '') === 'kg' ? ' checked' : '' ?>>
+              <span class="toggle-slider" aria-hidden="true"></span>
+              <span class="toggle-label" data-weight-unit-label><?= (string) ($fp['weight_unit'] ?? '') === 'kg' ? 'kg' : 'lb' ?></span>
+            </label>
+          </div>
+          <?php if (!empty($fp['weight_updated_at'])): ?>
+          <p class="field-optional" style="margin-top:.35rem">Last updated <?= e(format_updated_date((string) $fp['weight_updated_at'])) ?></p>
+          <?php endif; ?>
         </div>
         <div class="form-group">
           <label class="form-label">Profile Picture</label>
@@ -531,6 +572,14 @@ $palette        = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef44
     if (!label) return;
     toggle.addEventListener('change', function () {
       label.textContent = toggle.checked ? 'cm' : 'in';
+    });
+  });
+
+  document.querySelectorAll('input[name="weight_unit_kg"]').forEach(function (toggle) {
+    var label = toggle.parentElement.querySelector('[data-weight-unit-label]');
+    if (!label) return;
+    toggle.addEventListener('change', function () {
+      label.textContent = toggle.checked ? 'kg' : 'lb';
     });
   });
 })();

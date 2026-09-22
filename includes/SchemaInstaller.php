@@ -5,7 +5,7 @@ declare(strict_types=1);
 final class SchemaInstaller
 {
 
-    private const CURRENT_SCHEMA_VERSION = 9;
+    private const CURRENT_SCHEMA_VERSION = 10;
 
     private static array $schemaSweepDone = [];
 
@@ -164,6 +164,7 @@ final class SchemaInstaller
         $this->ensureAllergyDetailColumns();
         $this->ensureStandaloneMedicationNullable();
         $this->ensureStandaloneProfileIdColumn();
+        $this->ensureWeightAndEditDatesColumns();
     }
 
     private function ensureGroupTables(): void
@@ -2341,6 +2342,53 @@ final class SchemaInstaller
                 foreach ($columns as $column => $definition) {
                     if (!in_array($column, $existing, true)) {
                         $this->db->exec("ALTER TABLE profile_allergies ADD COLUMN {$column} {$definition}");
+                    }
+                }
+            }
+        } catch (Throwable) {
+            $this->schemaSweepFailed = true;
+            // Keep app booting even if migration fails.
+        }
+    }
+
+    private function ensureWeightAndEditDatesColumns(): void
+    {
+        $driver = (string) $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        try {
+            if ($driver === 'mysql') {
+                $columns = [
+                    'weight_value'      => 'DECIMAL(6,2) NULL',
+                    'weight_unit'       => 'VARCHAR(4) NULL',
+                    'height_updated_at' => 'DATETIME NULL',
+                    'weight_updated_at' => 'DATETIME NULL',
+                ];
+                foreach (['users', 'family_profiles'] as $table) {
+                    foreach ($columns as $column => $definition) {
+                        $check = $this->db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
+                        if ($check !== false && $check->fetchColumn() === false) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
+                    }
+                }
+                return;
+            }
+            if ($driver === 'sqlite') {
+                $columns = [
+                    'weight_value'      => 'REAL NULL',
+                    'weight_unit'       => 'TEXT NULL',
+                    'height_updated_at' => 'TEXT NULL',
+                    'weight_updated_at' => 'TEXT NULL',
+                ];
+                foreach (['users', 'family_profiles'] as $table) {
+                    $check = $this->db->query("PRAGMA table_info({$table})");
+                    if ($check === false) {
+                        continue;
+                    }
+                    $existing = array_map(static fn(array $c): string => (string) ($c['name'] ?? ''), $check->fetchAll());
+                    foreach ($columns as $column => $definition) {
+                        if (!in_array($column, $existing, true)) {
+                            $this->db->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                        }
                     }
                 }
             }
