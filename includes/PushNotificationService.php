@@ -93,7 +93,13 @@ final class PushNotificationService
             throw new RuntimeException('Web Push library missing. Run: composer require minishlink/web-push');
         }
 
-        $due = $this->repository->dueReminderItemsNotYetPushed($now);
+        // Bound how overdue an item may be and still trigger a push — without
+        // this, an as_needed group member left unlogged would never
+        // auto-finalize to missed (see finalizeMissedDoses) and would stay
+        // "due" indefinitely; the push_delivery_log dedup only stops it from
+        // being re-sent, it wouldn't stop it being sent hours late in the
+        // first place on an install whose cron wasn't running earlier.
+        $due = $this->repository->dueReminderItemsNotYetPushed($now, $this->repository->getMissedGraceMinutes());
         if ($due === []) {
             return 0;
         }

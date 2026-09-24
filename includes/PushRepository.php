@@ -148,9 +148,9 @@ final class PushRepository
         }
     }
 
-    public function dueReminderItemsNotYetPushed(DateTimeImmutable $now): array
+    public function dueReminderItemsNotYetPushed(DateTimeImmutable $now, ?int $graceMinutes = null): array
     {
-        $items = $this->scheduleRepo->dueReminderItems($now);
+        $items = $this->scheduleRepo->dueReminderItems($now, $graceMinutes);
         if ($items === []) {
             return [];
         }
