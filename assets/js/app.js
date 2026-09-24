@@ -4100,12 +4100,27 @@ const showGroupAlarmOverlay = (groupItems) => {
     // groupItems is due-only (needed so Take All/Skip All/manage-each never
     // re-touch an already-resolved groupmate), but the list itself should
     // still show the group's real membership — a sibling that resolved
-    // earlier today, while still sharing this due slot, was otherwise
-    // silently missing here. group_members (server-attached per item, see
-    // dueReminderItems) is that full membership; fall back to groupItems
-    // if it's ever absent.
-    const displayMembers = groupItems[0].group_members ?? groupItems;
+    // earlier today, while still sharing a due slot, was otherwise silently
+    // missing here. group_members (server-attached per item, see
+    // dueReminderItems) is that full membership *sharing that one item's own
+    // due time* — and groupItems itself can span more than one due time
+    // (e.g. one member snoozed individually to a later time that has since
+    // also passed), so any single item's group_members can omit another
+    // groupItems entry that's currently due at a different time. Union every
+    // groupItems entry's group_members (deduped by medication_id) rather
+    // than reading just groupItems[0]'s, and make sure every due item itself
+    // is present even if its own group_members were ever absent.
+    const displayMemberMap = new Map();
+    groupItems.forEach((item) => {
+      (item.group_members ?? [item]).forEach((member) => {
+        displayMemberMap.set(String(member.medication_id), member);
+      });
+    });
     const dueById = new Map(groupItems.map((item) => [String(item.medication_id), item]));
+    dueById.forEach((item, medicationId) => {
+      if (!displayMemberMap.has(medicationId)) displayMemberMap.set(medicationId, item);
+    });
+    const displayMembers = Array.from(displayMemberMap.values());
     displayMembers.forEach((member) => {
       const dueItem = dueById.get(String(member.medication_id));
       const li = document.createElement('li');
