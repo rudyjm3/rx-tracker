@@ -781,9 +781,9 @@ final class MedicationRepository
         $this->scheduleRepo->backfillMissedDosesForDates($dates, $now, $graceMinutes);
     }
 
-    public function dueReminderItems(DateTimeImmutable $now): array
+    public function dueReminderItems(DateTimeImmutable $now, ?int $graceMinutes = null): array
     {
-        return $this->scheduleRepo->dueReminderItems($now);
+        return $this->scheduleRepo->dueReminderItems($now, $graceMinutes);
     }
 
     public function upsertPushSubscription(string $endpoint, ?string $publicKey, ?string $authToken, ?string $userAgent): void
@@ -826,9 +826,9 @@ final class MedicationRepository
         return $this->pushRepo->findAndConsumePushNonce($nonce);
     }
 
-    public function dueReminderItemsNotYetPushed(DateTimeImmutable $now): array
+    public function dueReminderItemsNotYetPushed(DateTimeImmutable $now, ?int $graceMinutes = null): array
     {
-        return $this->pushRepo->dueReminderItemsNotYetPushed($now);
+        return $this->pushRepo->dueReminderItemsNotYetPushed($now, $graceMinutes);
     }
 
     public function logRefill(int $medicationId, string $refillDate, float $amount, string $note): void

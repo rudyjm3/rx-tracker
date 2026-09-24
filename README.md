@@ -104,15 +104,15 @@ php -l includes/helpers.php
 php -l includes/MedicationRepository.php
 ```
 
-`tests/` holds 16 standalone PHP scripts, each runnable directly against an in-memory SQLite database:
+`tests/` holds 17 standalone PHP scripts, each runnable directly against an in-memory SQLite database:
 
 ```bash
 php tests/MedicationRepositoryTest.php
 php tests/OwnershipTest.php
 # ...and so on for AdherenceTest, CalendarBackfillTest, DaysUntilRunoutTest, DeleteDoseLogTest,
-# EditTakenIntervalDoseTest, GoogleAuthServiceJwksCacheTest, GroupScheduleOverrideTest,
-# GroupTakeAllTest, InventorySimulationTest, NextDoseTest, RanOutOnDateTest, RevertDoseTest,
-# TrackingStartTest
+# DueReminderGroupMembersTest, EditTakenIntervalDoseTest, GoogleAuthServiceJwksCacheTest,
+# GroupScheduleOverrideTest, GroupTakeAllTest, InventorySimulationTest, NextDoseTest,
+# RanOutOnDateTest, RevertDoseTest, TrackingStartTest
 ```
 
 There is no CI configuration in this repository, so these must be run manually before/after a change.
@@ -140,7 +140,7 @@ There is no CI configuration in this repository, so these must be run manually b
   database in sync at runtime; the SQL files are kept as best-effort mirrors of what it does.
 - `scripts/` — cron/CLI maintenance scripts (`send_due_push.php`, `finalize_missed.php`,
   `generate_vapid_keys.php`, `migrate_to_first_user.php`, etc.).
-- `tests/` — 16 hand-rolled PHP test scripts (see Testing above).
+- `tests/` — 17 hand-rolled PHP test scripts (see Testing above).
 - `docs/` — `CODEBASE_AUDIT.md` (latest full audit), `CODE_REVIEW.md` (prior security/architecture
   review), `user-guide.md` (end-user documentation, mirrored by the in-app `?page=help`), plus
   `account-roadmap.md` and `rxtracker-style-guide.md`.

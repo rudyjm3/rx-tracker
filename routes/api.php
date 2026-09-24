@@ -6,7 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $requestAction === 'poll_due') {
     header('Content-Type: application/json; charset=utf-8');
     $graceMinutes = $repository->getMissedGraceMinutes();
     $now = new DateTimeImmutable('now');
-    $dueItems = $repository->dueReminderItems($now);
+    $dueItems = $repository->dueReminderItems($now, $graceMinutes);
     $repository->finalizeMissedDoses($now, $graceMinutes);
     echo json_encode([
         'ok' => true,

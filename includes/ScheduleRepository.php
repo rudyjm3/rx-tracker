@@ -1110,21 +1110,72 @@ final class ScheduleRepository
         }
     }
 
-    public function dueReminderItems(DateTimeImmutable $now): array
+    /**
+     * @param int|null $graceMinutes Upper bound on how overdue an item may be
+     *     and still count as "due now" — matches the missed-dose grace window
+     *     (see finalizeMissedDoses). Required (non-PRN) items past this point
+     *     are about to be auto-finalized as missed by the finalizeMissedDoses
+     *     call that always follows this one, so the bound mostly just avoids a
+     *     one-poll race there. For as_needed items it's essential:
+     *     finalizeMissedDoses explicitly never finalizes a PRN dose, so
+     *     without this bound a PRN group member left unlogged would stay
+     *     "due now" — re-triggering the in-app alarm (sound/vibration) and
+     *     in-app alert every poll — for the rest of the day. Nullable and
+     *     defaulted for callers that don't have a grace value handy; they
+     *     keep the prior unbounded behavior.
+     */
+    public function dueReminderItems(DateTimeImmutable $now, ?int $graceMinutes = null): array
     {
+        $schedule = $this->todaySchedule($now->format('Y-m-d'));
+
+        // Effective due time for any schedule row: its postpone if snoozed,
+        // else its reminder time — the same key two rows must share to count
+        // as "the same due-now slot" below (mirrors buildDoseEvents/slotDueTime
+        // on the web app).
+        $effectiveDueAt = static function (array $row) use ($now): string {
+            $due = (string) ($row['postponed_until'] ?? '');
+            return $due !== '' ? $due : ($now->format('Y-m-d') . ' ' . (string) $row['reminder_time'] . ':00');
+        };
+
         $rows = [];
-        foreach ($this->todaySchedule($now->format('Y-m-d')) as $row) {
+        foreach ($schedule as $row) {
             if (in_array((string) ($row['status'] ?? ''), ['taken', 'skipped', 'missed'], true)) {
                 continue;
             }
-            $dueAt = (string) ($row['postponed_until'] ?? '');
-            if ($dueAt === '') {
-                $dueAt = $now->format('Y-m-d') . ' ' . (string) $row['reminder_time'] . ':00';
-            }
+            $dueAt = $effectiveDueAt($row);
             $dueTime = new DateTimeImmutable($dueAt);
             if ($dueTime > $now) {
                 continue;
             }
+            if ($graceMinutes !== null && $now > $dueTime->modify('+' . $graceMinutes . ' minutes')) {
+                continue;
+            }
+
+            // Full group membership sharing this due slot, regardless of
+            // status — the alarm overlay and notification surfaces are
+            // otherwise fed only this pending/due-now subset (needed so
+            // their Take All/Skip All/manage-each actions never re-touch an
+            // already-resolved groupmate), which left a sibling that
+            // resolved earlier today silently missing from the group's
+            // displayed membership. Display-only: it doesn't affect which
+            // items are actionable.
+            $groupMembers = null;
+            if ($row['group_id'] !== null) {
+                $groupMembers = array_values(array_map(
+                    static fn (array $m): array => [
+                        'medication_id' => (int) $m['medication_id'],
+                        'name' => (string) $m['name'],
+                        'dose' => formattedDose($m),
+                        'status' => (string) ($m['status'] ?? 'pending'),
+                    ],
+                    array_filter(
+                        $schedule,
+                        static fn (array $m): bool => $m['group_id'] === $row['group_id']
+                            && $effectiveDueAt($m) === $dueAt,
+                    ),
+                ));
+            }
+
             $rows[] = [
                 'medication_id' => (int) $row['medication_id'],
                 'name' => (string) $row['name'],
@@ -1140,6 +1191,7 @@ final class ScheduleRepository
                 'feedback_type' => (string) ($row['feedback_type'] ?? 'none'),
                 'group_id' => $row['group_id'] !== null ? (int) $row['group_id'] : null,
                 'group_name' => $row['group_name'] !== null ? (string) $row['group_name'] : null,
+                'group_members' => $groupMembers,
             ];
         }
 

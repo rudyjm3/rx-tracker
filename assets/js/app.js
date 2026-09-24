@@ -3849,6 +3849,8 @@ const alarmSnoozeRow = alarmSnoozeBtn?.closest('.alarm-snooze-row') ?? null;
 
 let alarmGroupItems = [];
 
+const ALARM_RESOLVED_STATUS_LABEL = { taken: 'Taken', skipped: 'Skipped', missed: 'Missed' };
+
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
 let alarmVibrateTimer = null;
@@ -4095,18 +4097,55 @@ const showGroupAlarmOverlay = (groupItems) => {
   if (alarmGroupNameEl) alarmGroupNameEl.textContent = groupItems[0].group_name ?? 'Medication Group';
   if (alarmGroupListEl) {
     alarmGroupListEl.innerHTML = '';
+    // groupItems is due-only (needed so Take All/Skip All/manage-each never
+    // re-touch an already-resolved groupmate), but the list itself should
+    // still show the group's real membership — a sibling that resolved
+    // earlier today, while still sharing a due slot, was otherwise silently
+    // missing here. group_members (server-attached per item, see
+    // dueReminderItems) is that full membership *sharing that one item's own
+    // due time* — and groupItems itself can span more than one due time
+    // (e.g. one member snoozed individually to a later time that has since
+    // also passed), so any single item's group_members can omit another
+    // groupItems entry that's currently due at a different time. Union every
+    // groupItems entry's group_members (deduped by medication_id) rather
+    // than reading just groupItems[0]'s, and make sure every due item itself
+    // is present even if its own group_members were ever absent.
+    const displayMemberMap = new Map();
     groupItems.forEach((item) => {
+      (item.group_members ?? [item]).forEach((member) => {
+        displayMemberMap.set(String(member.medication_id), member);
+      });
+    });
+    const dueById = new Map(groupItems.map((item) => [String(item.medication_id), item]));
+    dueById.forEach((item, medicationId) => {
+      if (!displayMemberMap.has(medicationId)) displayMemberMap.set(medicationId, item);
+    });
+    const displayMembers = Array.from(displayMemberMap.values());
+    displayMembers.forEach((member) => {
+      const dueItem = dueById.get(String(member.medication_id));
       const li = document.createElement('li');
       li.className = 'alarm-group-list-item';
-      li.dataset.medicationId = String(item.medication_id);
-      li.dataset.medicationName = String(item.name ?? '');
-      li.dataset.medicationDose = String(item.dose ?? '');
-      li.dataset.scheduledDate = String(item.scheduled_date);
-      li.dataset.scheduledTime = String(item.scheduled_time);
-      li.dataset.groupId = String(item.group_id ?? '');
-      li.dataset.trackDoseFeedback = item.track_dose_feedback ? '1' : '0';
-      li.dataset.feedbackType = item.feedback_type ?? (item.track_dose_feedback ? 'pain' : 'none');
-      li.textContent = `${item.name} — ${item.dose}`;
+      if (dueItem) {
+        li.dataset.medicationId = String(dueItem.medication_id);
+        li.dataset.medicationName = String(dueItem.name ?? '');
+        li.dataset.medicationDose = String(dueItem.dose ?? '');
+        li.dataset.scheduledDate = String(dueItem.scheduled_date);
+        li.dataset.scheduledTime = String(dueItem.scheduled_time);
+        li.dataset.groupId = String(dueItem.group_id ?? '');
+        li.dataset.trackDoseFeedback = dueItem.track_dose_feedback ? '1' : '0';
+        li.dataset.feedbackType = dueItem.feedback_type ?? (dueItem.track_dose_feedback ? 'pain' : 'none');
+        li.textContent = `${dueItem.name} — ${dueItem.dose}`;
+      } else {
+        // Not in the due/actionable set — either already resolved, or (rare)
+        // suppressed by this poll's seen-state. No actions get wired up for
+        // it below (alarmIndividualBtn only reads dataset off due items), so
+        // just label its current status.
+        li.textContent = `${member.name} — ${member.dose}`;
+        const status = document.createElement('span');
+        status.className = 'alarm-item-status';
+        status.textContent = ALARM_RESOLVED_STATUS_LABEL[member.status] ?? 'Pending';
+        li.appendChild(status);
+      }
       alarmGroupListEl.appendChild(li);
     });
   }
@@ -4541,6 +4580,10 @@ alarmIndividualBtn?.addEventListener('click', () => {
 
   alarmGroupListEl.querySelectorAll('.alarm-group-list-item').forEach((li) => {
     const medicationId = li.dataset.medicationId ?? '';
+    // Rows for an already-resolved (or seen-suppressed) groupmate carry no
+    // dataset — showGroupAlarmOverlay() renders those as a plain status
+    // label instead of an actionable item. Nothing to wire up here.
+    if (medicationId === '') return;
     const medicationName = li.dataset.medicationName ?? '';
     const medicationDose = li.dataset.medicationDose ?? '';
     const scheduledDate = li.dataset.scheduledDate ?? '';
