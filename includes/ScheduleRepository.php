@@ -1159,6 +1159,13 @@ final class ScheduleRepository
             // resolved earlier today silently missing from the group's
             // displayed membership. Display-only: it doesn't affect which
             // items are actionable.
+            //
+            // Matched by reminder_time (the schedule slot itself), not by
+            // effectiveDueAt: a sibling that's been individually postponed,
+            // or already auto-marked missed (which clears its postpone),
+            // no longer shares this row's effective due time even though it
+            // belongs to the same dose event — matching on the fixed slot
+            // is what actually ties group members together.
             $groupMembers = null;
             if ($row['group_id'] !== null) {
                 $groupMembers = array_values(array_map(
@@ -1171,7 +1178,7 @@ final class ScheduleRepository
                     array_filter(
                         $schedule,
                         static fn (array $m): bool => $m['group_id'] === $row['group_id']
-                            && $effectiveDueAt($m) === $dueAt,
+                            && $m['reminder_time'] === $row['reminder_time'],
                     ),
                 ));
             }
