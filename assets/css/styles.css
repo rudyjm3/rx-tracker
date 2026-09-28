@@ -2653,6 +2653,10 @@ button.danger:hover {
   padding: 0.7rem 0.75rem;
 }
 
+.cal-day-group-bulk-form[hidden] {
+  display: none;
+}
+
 .cal-day-group-members {
   display: flex;
   flex-direction: column;

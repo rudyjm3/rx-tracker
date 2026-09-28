@@ -3742,7 +3742,14 @@ function wireCalendarGroupBulkEdit(container) {
     const cancelBtn = e.target.closest('[data-cal-day-group-bulk-cancel]');
     if (cancelBtn) {
       const form = cancelBtn.closest('[data-cal-day-group-bulk-form]');
-      if (form) form.hidden = true;
+      if (form) {
+        form.reset();
+        const errEl = form.querySelector('.cal-day-group-bulk-error');
+        if (errEl) errEl.hidden = true;
+        const timeField = form.querySelector('[data-cal-day-group-bulk-time-field]');
+        if (timeField) timeField.hidden = false;
+        form.hidden = true;
+      }
       return;
     }
 
