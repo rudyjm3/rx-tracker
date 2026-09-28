@@ -106,6 +106,54 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         ];
         unset($cdMed);
     }
+    // A group member with adherence tracking off (e.g. a PRN supplement) never
+    // gets a dose_logs row unless the user manually takes/skips it, so a day
+    // where its required siblings were auto-marked missed showed only those
+    // siblings -- the supplement, though genuinely part of the same group
+    // dose, was entirely absent instead of appearing alongside them. For each
+    // day that already has at least one real (logged) entry for a group+time,
+    // add that slot's other group members as zero-dose placeholders so the
+    // day-detail view reflects the group's full membership, matching the
+    // dashboard hero card and alarm overlay's group_members handling.
+    foreach ($calendarDayData as $cdDate => &$cdDay) {
+        $cdGroupTimesLogged = [];
+        foreach ($cdDay['medications'] as $cdMedEntry) {
+            if ($cdMedEntry['groupId'] === null) {
+                continue;
+            }
+            foreach ($cdMedEntry['slots'] as $cdSlot) {
+                $cdGroupTimesLogged[$cdMedEntry['groupId']][substr((string) $cdSlot['scheduledTime'], 0, 5)] = true;
+            }
+        }
+        if ($cdGroupTimesLogged === []) {
+            continue;
+        }
+        foreach ($repository->todaySchedule($cdDate) as $cdSchedRow) {
+            $cdSchedMedId = (int) $cdSchedRow['medication_id'];
+            if (isset($cdDay['medications'][$cdSchedMedId])) {
+                continue;
+            }
+            $cdSchedTimeKey = (string) $cdSchedRow['reminder_time'];
+            $cdSchedGroup = $calGroupMap[$cdSchedMedId][$cdSchedTimeKey] ?? null;
+            if ($cdSchedGroup === null) {
+                continue;
+            }
+            $cdSchedGroupId = (int) $cdSchedGroup['group_id'];
+            if (empty($cdGroupTimesLogged[$cdSchedGroupId][$cdSchedTimeKey])) {
+                continue;
+            }
+            $cdDay['medications'][$cdSchedMedId] = [
+                'name'          => (string) $cdSchedRow['name'],
+                'doseFormatted' => formattedDose($cdSchedRow),
+                'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
+                'slots' => [],
+                'groupId' => $cdSchedGroupId,
+                'groupName' => (string) $cdSchedGroup['group_name'],
+                'groupConsistent' => true,
+            ];
+        }
+    }
+    unset($cdDay);
     foreach ($calendarDayData as &$cdDay) {
         foreach ($cdDay['medications'] as &$cdMedFinal) {
             if (!$cdMedFinal['groupConsistent']) {
