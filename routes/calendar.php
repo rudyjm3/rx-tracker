@@ -112,9 +112,12 @@ require __DIR__ . '/../includes/pages-shell-top.php';
     // siblings -- the supplement, though genuinely part of the same group
     // dose, was entirely absent instead of appearing alongside them. For each
     // day that already has at least one real (logged) entry for a group+time,
-    // add that slot's other group members as zero-dose placeholders so the
-    // day-detail view reflects the group's full membership, matching the
-    // dashboard hero card and alarm overlay's group_members handling.
+    // add that slot's other group members with a synthetic "not logged yet"
+    // slot so the day-detail view reflects the group's full membership,
+    // matching the dashboard hero card and alarm overlay's group_members
+    // handling -- and so it's still a real slot (not an empty placeholder),
+    // the group's "Apply to group" bulk edit can act on it via the existing
+    // mark_dose path like any other slot.
     foreach ($calendarDayData as $cdDate => &$cdDay) {
         $cdGroupTimesLogged = [];
         foreach ($cdDay['medications'] as $cdMedEntry) {
@@ -130,9 +133,6 @@ require __DIR__ . '/../includes/pages-shell-top.php';
         }
         foreach ($repository->todaySchedule($cdDate) as $cdSchedRow) {
             $cdSchedMedId = (int) $cdSchedRow['medication_id'];
-            if (isset($cdDay['medications'][$cdSchedMedId])) {
-                continue;
-            }
             $cdSchedTimeKey = (string) $cdSchedRow['reminder_time'];
             $cdSchedGroup = $calGroupMap[$cdSchedMedId][$cdSchedTimeKey] ?? null;
             if ($cdSchedGroup === null) {
@@ -142,15 +142,57 @@ require __DIR__ . '/../includes/pages-shell-top.php';
             if (empty($cdGroupTimesLogged[$cdSchedGroupId][$cdSchedTimeKey])) {
                 continue;
             }
-            $cdDay['medications'][$cdSchedMedId] = [
-                'name'          => (string) $cdSchedRow['name'],
-                'doseFormatted' => formattedDose($cdSchedRow),
-                'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
-                'slots' => [],
-                'groupId' => $cdSchedGroupId,
-                'groupName' => (string) $cdSchedGroup['group_name'],
-                'groupConsistent' => true,
+            // A medication can have a same-day entry already (e.g. a real log for
+            // an unrelated individual slot, or a different group/time) without
+            // having one for *this specific* group+time slot -- check the slot
+            // itself, not just whether the medication has any entry at all, or
+            // this group's own missing slot would be mistaken for already covered.
+            $cdAlreadyHasThisSlot = false;
+            if (isset($cdDay['medications'][$cdSchedMedId])) {
+                foreach ($cdDay['medications'][$cdSchedMedId]['slots'] as $cdExistingSlot) {
+                    if (substr((string) $cdExistingSlot['scheduledTime'], 0, 5) === $cdSchedTimeKey) {
+                        $cdAlreadyHasThisSlot = true;
+                        break;
+                    }
+                }
+            }
+            if ($cdAlreadyHasThisSlot) {
+                continue;
+            }
+            $cdPlaceholderSlot = [
+                'logId'         => null,
+                'medicationId'  => $cdSchedMedId,
+                'scheduledDate' => $cdDate,
+                'scheduledTime' => $cdSchedTimeKey . ':00',
+                'takenAt'       => '',
+                'note'          => '',
+                'painLevel'     => null,
+                'moodLevel'     => null,
+                'isActive'      => true,
+                'displayTime'   => to12h($cdSchedTimeKey),
+                'status'        => 'pending',
+                'isLate'        => false,
+                'lateLabel'     => null,
             ];
+            if (isset($cdDay['medications'][$cdSchedMedId])) {
+                $cdDay['medications'][$cdSchedMedId]['slots'][] = $cdPlaceholderSlot;
+                // Same group-consistency rule the main log loop applies above:
+                // only nest a medication under a group bucket when every one of
+                // its slots that day resolves to that same single group.
+                if ($cdDay['medications'][$cdSchedMedId]['groupId'] !== $cdSchedGroupId) {
+                    $cdDay['medications'][$cdSchedMedId]['groupConsistent'] = false;
+                }
+            } else {
+                $cdDay['medications'][$cdSchedMedId] = [
+                    'name'          => (string) $cdSchedRow['name'],
+                    'doseFormatted' => formattedDose($cdSchedRow),
+                    'total' => 0, 'taken' => 0, 'late' => 0, 'skipped' => 0, 'missed' => 0,
+                    'slots' => [$cdPlaceholderSlot],
+                    'groupId' => $cdSchedGroupId,
+                    'groupName' => (string) $cdSchedGroup['group_name'],
+                    'groupConsistent' => true,
+                ];
+            }
         }
     }
     unset($cdDay);
