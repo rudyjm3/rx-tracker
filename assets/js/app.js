@@ -4716,6 +4716,25 @@ const vibrationToggle = document.querySelector('[data-vibration-toggle]');
 const inAppAlert = document.querySelector('[data-in-app-alert]');
 const reminderStatus = document.querySelector('[data-reminder-status]');
 
+// Union every due item's group_members (deduped by medication_id), falling
+// back to the due item itself when group_members is absent. Mirrors the fix
+// in showGroupAlarmOverlay: a group's real membership can span more than one
+// due item, and any single item's own group_members can miss a sibling due
+// at a different time, so the notification/banner text must union across
+// every due item in the group rather than reading just one of them.
+const unionGroupMembers = (dueItemsForGroup) => {
+  const map = new Map();
+  dueItemsForGroup.forEach((item) => {
+    (item.group_members ?? [item]).forEach((member) => {
+      map.set(String(member.medication_id), member);
+    });
+  });
+  dueItemsForGroup.forEach((item) => {
+    if (!map.has(String(item.medication_id))) map.set(String(item.medication_id), item);
+  });
+  return Array.from(map.values());
+};
+
 const showFallbackAlert = (items) => {
   if (!inAppAlert) return;
   if (items.length === 0) {
@@ -4726,7 +4745,8 @@ const showFallbackAlert = (items) => {
   const top = items[0];
   if (top.group_id) {
     const groupItems = items.filter((i) => i.group_id === top.group_id);
-    inAppAlert.textContent = `Dose reminder: ${top.group_name} (${groupItems.length} medication${groupItems.length !== 1 ? 's' : ''}) is due now.`;
+    const displayMembers = unionGroupMembers(groupItems);
+    inAppAlert.textContent = `Dose reminder: ${top.group_name} (${displayMembers.length} medication${displayMembers.length !== 1 ? 's' : ''}) is due now.`;
   } else {
     inAppAlert.textContent = `Dose reminder: ${top.name} ${top.dose} is due now.`;
   }
@@ -4770,7 +4790,8 @@ const notifyItems = (items) => {
         if (notifiedGroupIds.has(item.group_id)) return;
         notifiedGroupIds.add(item.group_id);
         const groupItems = unseen.filter((i) => i.group_id === item.group_id);
-        const body = groupItems.map((i) => `${i.name} ${i.dose}`).join(', ');
+        const displayMembers = unionGroupMembers(groupItems);
+        const body = displayMembers.map((i) => `${i.name} ${i.dose}`).join(', ');
         if (swRegistration) {
           swRegistration.showNotification(item.group_name ?? 'Medication Group', { body });
         } else {
