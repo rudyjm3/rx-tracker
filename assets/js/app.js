@@ -3849,7 +3849,7 @@ const alarmSnoozeRow = alarmSnoozeBtn?.closest('.alarm-snooze-row') ?? null;
 
 let alarmGroupItems = [];
 
-const ALARM_RESOLVED_STATUS_LABEL = { taken: 'Taken', skipped: 'Skipped', missed: 'Missed' };
+const ALARM_RESOLVED_STATUS_LABEL = { taken: 'Taken', skipped: 'Skipped', missed: 'Missed', snoozed: 'Snoozed' };
 
 let alarmAudioCtx = null;
 let alarmBeepTimer = null;
@@ -4735,6 +4735,15 @@ const unionGroupMembers = (dueItemsForGroup) => {
   return Array.from(map.values());
 };
 
+// Of a group's full membership, only the ones actually due right now — not a
+// sibling still snoozed into the future, nor one already taken/skipped/missed.
+// The overlay's read-only list shows every member (via unionGroupMembers
+// directly), but "due now" counts/text (banner, browser notification) must
+// exclude anything that isn't itself due, or a still-snoozed sibling would be
+// announced/counted as due before its own snooze has actually expired.
+const dueNowGroupMembers = (dueItemsForGroup) =>
+  unionGroupMembers(dueItemsForGroup).filter((member) => (member.status ?? 'pending') === 'pending');
+
 const showFallbackAlert = (items) => {
   if (!inAppAlert) return;
   if (items.length === 0) {
@@ -4745,8 +4754,8 @@ const showFallbackAlert = (items) => {
   const top = items[0];
   if (top.group_id) {
     const groupItems = items.filter((i) => i.group_id === top.group_id);
-    const displayMembers = unionGroupMembers(groupItems);
-    inAppAlert.textContent = `Dose reminder: ${top.group_name} (${displayMembers.length} medication${displayMembers.length !== 1 ? 's' : ''}) is due now.`;
+    const dueMembers = dueNowGroupMembers(groupItems);
+    inAppAlert.textContent = `Dose reminder: ${top.group_name} (${dueMembers.length} medication${dueMembers.length !== 1 ? 's' : ''}) is due now.`;
   } else {
     inAppAlert.textContent = `Dose reminder: ${top.name} ${top.dose} is due now.`;
   }
@@ -4790,8 +4799,8 @@ const notifyItems = (items) => {
         if (notifiedGroupIds.has(item.group_id)) return;
         notifiedGroupIds.add(item.group_id);
         const groupItems = unseen.filter((i) => i.group_id === item.group_id);
-        const displayMembers = unionGroupMembers(groupItems);
-        const body = displayMembers.map((i) => `${i.name} ${i.dose}`).join(', ');
+        const dueMembers = dueNowGroupMembers(groupItems);
+        const body = dueMembers.map((i) => `${i.name} ${i.dose}`).join(', ');
         if (swRegistration) {
           swRegistration.showNotification(item.group_name ?? 'Medication Group', { body });
         } else {

@@ -73,8 +73,17 @@ foreach ($nextDoseWindow as $heroRow) {
     }
     if ($heroGid !== null) {
         $seenGroupIds[] = $heroGid;
+        // Full group membership for this slot, regardless of status — reading from
+        // $nextDoseWindow (already filtered to pending/due rows) meant a sibling
+        // auto-marked missed or already taken/skipped vanished from the hero card
+        // entirely instead of still being listed. Match by reminder_time (the
+        // schedule slot itself) rather than any status/postpone-adjusted due time,
+        // since that's what ties the group's members together for this dose event.
         $heroRow['_group_members'] = array_values(
-            array_filter($nextDoseWindow, static fn(array $r): bool => $r['group_id'] === $heroGid)
+            array_filter(
+                $todaySchedule,
+                static fn(array $r): bool => $r['group_id'] === $heroGid && $r['reminder_time'] === $heroRow['reminder_time']
+            )
         );
     } else {
         $heroRow['_group_members'] = [];
