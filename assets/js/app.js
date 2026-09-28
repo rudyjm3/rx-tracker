@@ -3743,7 +3743,17 @@ function wireCalendarGroupBulkEdit(container) {
     if (cancelBtn) {
       const form = cancelBtn.closest('[data-cal-day-group-bulk-form]');
       if (form) {
-        form.reset();
+        // form is a <div>, not a <form> element (see buildCalendarDayHtml
+        // above), so it has no reset() — reset each control by hand back to
+        // its rendered default instead.
+        const timeSelect = form.querySelector('select[name="bulk_time"]');
+        if (timeSelect) timeSelect.selectedIndex = 0;
+        const statusSelect = form.querySelector('select[name="bulk_status"]');
+        if (statusSelect) statusSelect.value = 'taken';
+        const timeInput = form.querySelector('input[name="bulk_taken_time"]');
+        if (timeInput) timeInput.value = '';
+        const noteField = form.querySelector('textarea[name="bulk_note"]');
+        if (noteField) noteField.value = '';
         const errEl = form.querySelector('.cal-day-group-bulk-error');
         if (errEl) errEl.hidden = true;
         const timeField = form.querySelector('[data-cal-day-group-bulk-time-field]');
