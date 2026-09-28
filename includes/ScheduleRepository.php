@@ -1169,12 +1169,30 @@ final class ScheduleRepository
             $groupMembers = null;
             if ($row['group_id'] !== null) {
                 $groupMembers = array_values(array_map(
-                    static fn (array $m): array => [
-                        'medication_id' => (int) $m['medication_id'],
-                        'name' => (string) $m['name'],
-                        'dose' => formattedDose($m),
-                        'status' => (string) ($m['status'] ?? 'pending'),
-                    ],
+                    // A member with no dose-log status yet is either genuinely due
+                    // now, or individually snoozed into the future (its own
+                    // postponed_until hasn't arrived). Reporting both as bare
+                    // 'pending' made snoozed siblings indistinguishable from
+                    // due-now ones to consumers (alarm overlay showed "Pending",
+                    // notifications/fallback banner counted and listed it as due).
+                    static function (array $m) use ($now): array {
+                        $status = (string) ($m['status'] ?? '');
+                        $postponedUntil = $m['postponed_until'] ?? null;
+                        if ($status === '') {
+                            $status = (is_string($postponedUntil) && $postponedUntil !== ''
+                                && new DateTimeImmutable($postponedUntil) > $now)
+                                ? 'snoozed'
+                                : 'pending';
+                        }
+
+                        return [
+                            'medication_id' => (int) $m['medication_id'],
+                            'name' => (string) $m['name'],
+                            'dose' => formattedDose($m),
+                            'status' => $status,
+                            'postponed_until' => $postponedUntil,
+                        ];
+                    },
                     array_filter(
                         $schedule,
                         static fn (array $m): bool => $m['group_id'] === $row['group_id']
